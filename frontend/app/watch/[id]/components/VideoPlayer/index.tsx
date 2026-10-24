@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MediaPlayer, MediaProvider, Track } from "@vidstack/react";
 import {
   DefaultVideoLayout,
@@ -122,6 +122,7 @@ export default function VideoPlayer({
   const [playing, setPlaying] = useState(false);
   const [skipRanges, setSkipRanges] = useState<any>(null);
   const [visibleSkip, setVisibleSkip] = useState<any>(null);
+  const visibleSkipKeyRef = useRef<string | null>(null);
   const data: any = watch.status === "ready" ? watch.data : null;
   const error = watch.status === "error" ? watch.errorMessage : playbackError;
 
@@ -143,6 +144,26 @@ export default function VideoPlayer({
   const stream = data?.stream || data?.source || data;
   const source = stream?.url || stream?.src;
   const sourceId = `${data?.provider || "provider"}:${source || ""}`;
+  const subtitleUrls = (data?.subtitles ?? [])
+    .map((track: any) => track.url)
+    .join("\u0001");
+  const subtitleTracks = useMemo(() => {
+    const subs: any[] = data?.subtitles ?? [];
+    const enIdx = subs.findIndex((track) => /english/i.test(track.label || ""));
+    const defIdx = enIdx >= 0 ? enIdx : 0;
+
+    return subs.map((track, i) => (
+      <Track
+        key={track.url}
+        src={track.url}
+        kind="subtitles"
+        type="vtt"
+        label={track.label}
+        lang={track.lang || "en"}
+        default={i === defIdx}
+      />
+    ));
+  }, [subtitleUrls]);
 
   const persist = () => {
     const value = progressRef.current;
@@ -266,12 +287,15 @@ export default function VideoPlayer({
               progressRef.current.time = event.currentTarget.currentTime;
               progressRef.current.duration = event.currentTarget.duration || 0;
               const current = event.currentTarget.currentTime;
-              const range = ["intro", "recap", "outro"]
-                .map((key) => ({ key, range: skipRanges?.[key] }))
-                .find((item) => isSkipVisible(current, item.range));
-              setVisibleSkip((prev: any) =>
-                prev?.key === range?.key ? prev : range || null,
-              );
+              const rangeKey = ["intro", "recap", "outro"].find((key) =>
+                isSkipVisible(current, skipRanges?.[key]),
+              ) ?? null;
+              if (visibleSkipKeyRef.current !== rangeKey) {
+                visibleSkipKeyRef.current = rangeKey;
+                setVisibleSkip(
+                  rangeKey ? { key: rangeKey, range: skipRanges?.[rangeKey] } : null,
+                );
+              }
             }}
             onDurationChange={(event: any) => {
               progressRef.current.duration = event.currentTarget.duration || 0;
@@ -292,26 +316,7 @@ export default function VideoPlayer({
             }}
             onProviderChange={providerChange}
           >
-            <MediaProvider>
-              {(() => {
-                const subs: any[] = data?.subtitles ?? [];
-                const enIdx = subs.findIndex((s) =>
-                  /english/i.test(s.label || ""),
-                );
-                const defIdx = enIdx >= 0 ? enIdx : 0;
-                return subs.map((track: any, i: number) => (
-                  <Track
-                    key={track.url}
-                    src={track.url}
-                    kind="subtitles"
-                    type="vtt"
-                    label={track.label}
-                    lang={track.lang || "en"}
-                    default={i === defIdx}
-                  />
-                ));
-              })()}
-            </MediaProvider>
+            <MediaProvider>{subtitleTracks}</MediaProvider>
             <DefaultVideoLayout
               icons={defaultLayoutIcons}
               thumbnails={data?.thumbnails?.url}
