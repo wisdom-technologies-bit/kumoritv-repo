@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MediaPlayer, MediaProvider, Track } from "@vidstack/react";
 import {
   DefaultVideoLayout,
@@ -14,8 +14,8 @@ import {
   saveProgress,
   shouldResume,
 } from "@/app/lib/local-store/progress";
-import { normalizeSubtitles } from "@/app/lib/watch/subtitles";
 import { isSkipVisible } from "@/app/lib/watch/skip";
+import { useWatchState } from "../WatchState";
 
 const HLS_CONFIG = {
   autoStartLoad: true,
@@ -86,75 +86,33 @@ export default function VideoPlayer({
     swapped: false,
     switched: false,
   });
-  const [data, setData] = useState<any>(null);
-  const [error, setError] = useState("");
-  const [retry, setRetry] = useState(0);
+  const watch = useWatchState();
+  const [playbackError, setPlaybackError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const excludedProvidersRef = useRef(new Set<string>());
-  const [excludedProvider, setExcludedProvider] = useState("");
   const [skipRanges, setSkipRanges] = useState<any>(null);
   const [visibleSkip, setVisibleSkip] = useState<any>(null);
+  const data: any = watch.status === "ready" ? watch.data : null;
+  const error = watch.status === "error" ? watch.errorMessage : playbackError;
 
   useEffect(() => {
     const controller = new AbortController();
-    console.count("[kumori-player] /api/watch fetch");
-    fetch(`/api/skip/${anilistId}/${episode}`)
+    fetch(`/api/skip/${anilistId}/${episode}`, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => {
         if (!controller.signal.aborted) setSkipRanges(body);
       })
       .catch(() => undefined);
-    setData(null);
-    fetch(
-      `/api/watch/${anilistId}/${episode}?audio=${audio}&sublang=${encodeURIComponent(subtitleLanguage)}${excludedProvidersRef.current.size ? `&exclude=${encodeURIComponent([...excludedProvidersRef.current].join(","))}` : ""}${provider ? `&provider=${encodeURIComponent(provider)}` : ""}`,
-      { signal: controller.signal },
-    )
-      .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "stream_error");
-        return body;
-      })
-      .then((body) => {
-        if (!controller.signal.aborted) {
-          setData(body);
-          onResolved?.(body);
-          setError("");
-        }
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted)
-          setError(cause.message || "Unable to load stream");
-      });
     return () => controller.abort();
-  }, [
-    anilistId,
-    episode,
-    audio,
-    subtitleLanguage,
-    retry,
-    excludedProvider,
-    provider,
-  ]);
+  }, [anilistId, episode]);
 
   useEffect(() => {
-    console.count("[kumori-player] render");
-  });
+    if (data) onResolved?.(data);
+  }, [data]);
+
   const stream = data?.stream || data?.source || data;
   const source = stream?.url || stream?.src;
   const sourceId = `${data?.provider || "provider"}:${source || ""}`;
-  const tracks = useMemo(
-    () =>
-      normalizeSubtitles(
-        stream?.subtitles || data?.subtitles || [],
-        data?.subtitles || [],
-        subtitleLanguage.toLowerCase().slice(0, 2),
-      ),
-    [sourceId],
-  );
-  useEffect(() => {
-    if (source) console.count(`[kumori-player] src change ${sourceId}`);
-  }, [source, sourceId]);
 
   const persist = () => {
     const value = progressRef.current;
@@ -207,31 +165,12 @@ export default function VideoPlayer({
       switched: false,
     };
     const handleError = (_: string, details: any) => {
-      console.warn(
-        "[kumori-hls]",
-        details?.type,
-        details?.details,
-        details?.response?.code,
-      );
+      console.warn("[kumori-hls]", details?.type, details?.details);
       if (!details?.fatal) return;
       if (details.type === "networkError" && !recoveryRef.current.switched) {
         recoveryRef.current.switched = true;
-        const failedProvider = data?.provider || "";
-        if (failedProvider) excludedProvidersRef.current.add(failedProvider);
-        void fetch("/api/watch/report", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            anilistId,
-            episode,
-            audio,
-            provider: failedProvider,
-            reason: "blocked",
-          }),
-        }).catch(() => undefined);
-        setExcludedProvider(failedProvider);
         setWaiting(true);
-        setRetry((value) => value + 1);
+        watch.failover("blocked");
         return;
       }
       if (details.type === "mediaError" && recoveryRef.current.media < 3) {
@@ -247,25 +186,11 @@ export default function VideoPlayer({
       }
       if (!recoveryRef.current.switched) {
         recoveryRef.current.switched = true;
-        const failedProvider = data?.provider || "";
-        if (failedProvider) excludedProvidersRef.current.add(failedProvider);
-        void fetch("/api/watch/report", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            anilistId,
-            episode,
-            audio,
-            provider: failedProvider,
-            reason: "blocked",
-          }),
-        }).catch(() => undefined);
-        setExcludedProvider(failedProvider);
         setWaiting(true);
-        setRetry((value) => value + 1);
+        watch.failover("blocked");
         return;
       }
-      setError("stream_recovery_exhausted");
+      setPlaybackError("stream_recovery_exhausted");
     };
     hls.on("hlsError", handleError);
     return () => hls.off?.("hlsError", handleError);
@@ -336,16 +261,24 @@ export default function VideoPlayer({
             onProviderChange={providerChange}
           >
             <MediaProvider>
-              {(data?.subtitles ?? []).map((track: any) => (
-                <Track
-                  key={track.upstreamUrl}
-                  src={track.upstreamUrl}
-                  kind="subtitles"
-                  label={track.label}
-                  language={track.lang}
-                  default={track.default}
-                />
-              ))}
+              {(() => {
+                const subs: any[] = data?.subtitles ?? [];
+                const enIdx = subs.findIndex((s) =>
+                  /english/i.test(s.label || ""),
+                );
+                const defIdx = enIdx >= 0 ? enIdx : 0;
+                return subs.map((track: any, i: number) => (
+                  <Track
+                    key={track.url}
+                    src={track.url}
+                    kind="subtitles"
+                    type="vtt"
+                    label={track.label}
+                    lang={track.lang || "en"}
+                    default={i === defIdx}
+                  />
+                ));
+              })()}
             </MediaProvider>
             <DefaultVideoLayout
               icons={defaultLayoutIcons}
@@ -369,7 +302,10 @@ export default function VideoPlayer({
               <p>{error}</p>
               <button
                 type="button"
-                onClick={() => setRetry((value) => value + 1)}
+                onClick={() => {
+                  setPlaybackError("");
+                  watch.retry();
+                }}
               >
                 Retry
               </button>
