@@ -194,13 +194,17 @@ export async function GET(
       );
   }
   if (!winner) {
-    const ordered = [...providers].sort(
-      (a: any, b: any) => providerRank(a.provider) - providerRank(b.provider),
-    );
+    const ordered = [...providers]
+      .filter((p: any) => !exclude.includes(p.provider))
+      .sort(
+        (a: any, b: any) => providerRank(a.provider) - providerRank(b.provider),
+      );
     const results = await Promise.all(
       ordered
         .slice(0, 6)
-        .map((p: any) => resolveProvider(p.provider, p, audio, exclude, trace)),
+        .map((p: any) =>
+          resolveProvider(p.provider, p, audio, exclude, trace, requestedServer),
+        ),
     );
     const nonEmbed = results.find((r) => r && !r.embedOnly);
     winner = nonEmbed || results.find(Boolean);
@@ -238,6 +242,18 @@ export async function GET(
       (a) =>
         Array.isArray(row[`${a}_providers`]) && row[`${a}_providers`].length,
     );
+  const servers = [...allProviders]
+    .sort((a: any, b: any) => providerRank(a.provider) - providerRank(b.provider))
+    .map((p: any) => ({
+      id: p.provider,
+      label: p.provider.charAt(0).toUpperCase() + p.provider.slice(1),
+      active: p.provider === winner.provider,
+      ...(trace.some(
+        (t: any) => t.provider === p.provider && t.outcome === "failed",
+      )
+        ? { healthy: false }
+        : {}),
+    }));
   let result: any = {
     anilistId: id,
     episode,
@@ -251,6 +267,7 @@ export async function GET(
     intro: intro.intro,
     outro: intro.outro,
     availableAudio,
+    servers,
     alternatives: providers
       .filter((p: any) => p.provider !== winner.provider)
       .map((p: any) => ({ provider: p.provider, server: p.server || null })),
