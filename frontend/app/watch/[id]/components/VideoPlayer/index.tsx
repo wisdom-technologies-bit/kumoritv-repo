@@ -144,15 +144,11 @@ export default function VideoPlayer({
   const stream = data?.stream || data?.source || data;
   const source = stream?.url || stream?.src;
   const sourceId = `${data?.provider || "provider"}:${source || ""}`;
-  const subtitleUrls = (data?.subtitles ?? [])
-    .map((track: any) => track.url)
-    .join("\u0001");
   const subtitleTracks = useMemo(() => {
     const subs: any[] = data?.subtitles ?? [];
-    const enIdx = subs.findIndex((track) => /english/i.test(track.label || ""));
+    const enIdx = subs.findIndex((s) => /english/i.test(s.label || ""));
     const defIdx = enIdx >= 0 ? enIdx : 0;
-
-    return subs.map((track, i) => (
+    return subs.map((track: any, i: number) => (
       <Track
         key={track.url}
         src={track.url}
@@ -163,7 +159,7 @@ export default function VideoPlayer({
         default={i === defIdx}
       />
     ));
-  }, [subtitleUrls]);
+  }, [sourceId]);
 
   const persist = () => {
     const value = progressRef.current;
