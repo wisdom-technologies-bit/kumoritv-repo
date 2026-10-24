@@ -18,16 +18,6 @@ import { isSkipVisible } from "@/app/lib/watch/skip";
 import { useWatchState } from "../WatchState";
 
 const HLS_CONFIG = {
-  autoStartLoad: true,
-  startFragPrefetch: true,
-  capLevelToPlayerSize: true,
-  startLevel: -1,
-  maxBufferLength: 60,
-  maxMaxBufferLength: 120,
-  maxBufferHole: 0.5,
-  backBufferLength: 30,
-  enableWorker: true,
-  lowLatencyMode: false,
   enableCEA708Captions: false,
   enableWebVTT: false,
   enableIMSC1: false,
@@ -56,11 +46,12 @@ const HLS_CONFIG = {
     },
   },
 };
+
 type Props = {
   anilistId: number;
   episode: number;
   audio: "sub" | "dub";
-  subtitleLanguage: string;
+  subtitleLanguage?: string;
   initialTime: number;
   title: string;
   provider?: string;
@@ -71,12 +62,11 @@ export default function VideoPlayer({
   anilistId,
   episode,
   audio,
-  subtitleLanguage,
   initialTime,
   title,
-  provider,
   onResolved,
 }: Props) {
+  const watch = useWatchState();
   const playerRef = useRef<any>(null);
   const progressRef = useRef({ time: initialTime, duration: 0 });
   const resumeRef = useRef(false);
@@ -86,7 +76,19 @@ export default function VideoPlayer({
     swapped: false,
     switched: false,
   });
-  const watch = useWatchState();
+  const [playbackError, setPlaybackError] = useState("");
+  const [waiting, setWaiting] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [skipRanges, setSkipRanges] = useState<any>(null);
+  const [visibleSkip, setVisibleSkip] = useState<any>(null);
+
+  const data: any = watch.status === "ready" ? watch.data : null;
+  const error = watch.status === "error" ? watch.errorMessage : playbackError;
+  const stream = data?.stream || data?.source || data;
+  const source = stream?.url || stream?.src;
+  const sourceId = `${data?.provider || "provider"}:${source || ""}`;
+
+  // ---- debug box (only with ?dbg=1) ----
   const renders = useRef(0);
   renders.current++;
   const [dbg, setDbg] = useState<string[] | null>(null);
@@ -102,7 +104,9 @@ export default function VideoPlayer({
         tracks = (Array.from(pl.textTracks) as any[])
           .map((t, i) => {
             const act = Array.from(t.activeCues || [])
-              .map((c: any) => String(c.text).replace(/<[^>]+>/g, "").slice(0, 25))
+              .map((c: any) =>
+                String(c.text).replace(/<[^>]+>/g, "").slice(0, 25),
+              )
               .join("/");
             return `#${i}:${t.label}:${t.mode} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
           })
@@ -117,14 +121,6 @@ export default function VideoPlayer({
     }, 1000);
     return () => clearInterval(iv);
   }, []);
-  const [playbackError, setPlaybackError] = useState("");
-  const [waiting, setWaiting] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [skipRanges, setSkipRanges] = useState<any>(null);
-  const [visibleSkip, setVisibleSkip] = useState<any>(null);
-  const visibleSkipKeyRef = useRef<string | null>(null);
-  const data: any = watch.status === "ready" ? watch.data : null;
-  const error = watch.status === "error" ? watch.errorMessage : playbackError;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -141,9 +137,6 @@ export default function VideoPlayer({
     if (data) onResolved?.(data);
   }, [data]);
 
-  const stream = data?.stream || data?.source || data;
-  const source = stream?.url || stream?.src;
-  const sourceId = `${data?.provider || "provider"}:${source || ""}`;
   const subtitleTracks = useMemo(() => {
     const subs: any[] = data?.subtitles ?? [];
     const enIdx = subs.findIndex((s) => /english/i.test(s.label || ""));
@@ -187,6 +180,7 @@ export default function VideoPlayer({
       persist();
     };
   }, [anilistId, episode, audio, title]);
+
   const canPlay = () => {
     if (resumeRef.current || !playerRef.current) return;
     resumeRef.current = true;
@@ -276,22 +270,19 @@ export default function VideoPlayer({
             }}
             title={`Ep. ${episode} - ${title}`}
             playsInline
-            load="eager"
             onProviderSetup={providerSetup}
+            onProviderChange={providerChange}
             onCanPlay={canPlay}
             onTimeUpdate={(event: any) => {
-              progressRef.current.time = event.currentTarget.currentTime;
-              progressRef.current.duration = event.currentTarget.duration || 0;
               const current = event.currentTarget.currentTime;
-              const rangeKey = ["intro", "recap", "outro"].find((key) =>
-                isSkipVisible(current, skipRanges?.[key]),
-              ) ?? null;
-              if (visibleSkipKeyRef.current !== rangeKey) {
-                visibleSkipKeyRef.current = rangeKey;
-                setVisibleSkip(
-                  rangeKey ? { key: rangeKey, range: skipRanges?.[rangeKey] } : null,
-                );
-              }
+              progressRef.current.time = current;
+              progressRef.current.duration = event.currentTarget.duration || 0;
+              const hit = ["intro", "recap", "outro"]
+                .map((key) => ({ key, range: skipRanges?.[key] }))
+                .find((item) => isSkipVisible(current, item.range));
+              setVisibleSkip((prev: any) =>
+                (prev?.key ?? null) === (hit?.key ?? null) ? prev : hit || null,
+              );
             }}
             onDurationChange={(event: any) => {
               progressRef.current.duration = event.currentTarget.duration || 0;
@@ -310,7 +301,6 @@ export default function VideoPlayer({
               setWaiting(false);
               setPlaying(true);
             }}
-            onProviderChange={providerChange}
           >
             <MediaProvider>{subtitleTracks}</MediaProvider>
             <DefaultVideoLayout
