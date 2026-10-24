@@ -28,9 +28,9 @@ const HLS_CONFIG = {
   backBufferLength: 30,
   enableWorker: true,
   lowLatencyMode: false,
-  enableCEA708Captions: false,
-  enableWebVTT: false,
-  enableIMSC1: false,
+  enableCEA708Captions: true,
+  enableWebVTT: true,
+  enableIMSC1: true,
   fragLoadPolicy: {
     default: {
       maxTimeToFirstByteMs: 4000,
@@ -145,21 +145,53 @@ export default function VideoPlayer({
   const source = stream?.url || stream?.src;
   const sourceId = `${data?.provider || "provider"}:${source || ""}`;
   const subtitleTracks = useMemo(() => {
-    const subs: any[] = data?.subtitles ?? [];
-    const enIdx = subs.findIndex((s) => /english/i.test(s.label || ""));
-    const defIdx = enIdx >= 0 ? enIdx : 0;
-    return subs.map((track: any, i: number) => (
-      <Track
-        key={track.url}
-        src={track.url}
-        kind="subtitles"
-        type="vtt"
-        label={track.label}
-        lang={track.lang || "en"}
-        default={i === defIdx}
-      />
-    ));
-  }, [sourceId]);
+  const subs: any[] = Array.isArray(data?.subtitles)
+    ? data.subtitles.filter(
+        (track: any) =>
+          typeof track?.url === "string" && track.url.trim().length > 0,
+      )
+    : [];
+
+  const normalise = (value: unknown) =>
+    String(value ?? "").trim().toLowerCase().replace(/_/g, "-");
+
+  const preferredLanguage = normalise(subtitleLanguage);
+
+  const preferredIndex = subs.findIndex((track: any) => {
+    const lang = normalise(track.lang);
+    const label = normalise(track.label);
+
+    return (
+      preferredLanguage !== "" &&
+      (lang === preferredLanguage ||
+        label === preferredLanguage ||
+        lang.startsWith(`${preferredLanguage}-`) ||
+        preferredLanguage.startsWith(`${lang}-`) ||
+        label.includes(preferredLanguage))
+    );
+  });
+
+  const englishIndex = subs.findIndex(
+    (track: any) =>
+      /\benglish\b/i.test(track.label || "") ||
+      /^en(?:[-_]|$)/i.test(track.lang || ""),
+  );
+
+  const defaultIndex =
+    preferredIndex >= 0 ? preferredIndex : englishIndex >= 0 ? englishIndex : 0;
+
+  return subs.map((track: any, index: number) => (
+    <Track
+      key={`${track.url}-${index}`}
+      src={track.url}
+      kind="subtitles"
+      type="vtt"
+      label={track.label || track.lang || `Subtitle ${index + 1}`}
+      lang={track.lang || "en"}
+      default={index === defaultIndex}
+    />
+  ));
+}, [data?.subtitles, subtitleLanguage]);
 
   const persist = () => {
     const value = progressRef.current;
