@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -45,6 +46,7 @@ type State = {
   selectServer: (id: string) => void;
   tryNextServer: (reason?: string) => void;
   retry: () => void;
+  failover: (reason?: string) => void;
   setSubtitleLanguage: (value: string) => void;
   setOffset: (value: number) => void;
 };
@@ -142,6 +144,20 @@ export function WatchState({
     setTried((value) => [...value, current || ""]);
     selectServer(next.id);
   };
+  const latest = useRef({ data, tried });
+  latest.current = { data, tried };
+  const failover = (reason = "network") => {
+    const current = latest.current.data?.provider;
+    if (!current) return;
+    void fetch("/api/watch/report", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ anilistId, episode, audio, provider: current, reason }),
+    }).catch(() => undefined);
+    const next = [...latest.current.tried, current];
+    setTried(next);
+    void load("auto", next);
+  };
   const setSubtitleLanguage = (value: string) => {
     setSubtitleLanguageState(value);
     try {
@@ -161,7 +177,13 @@ export function WatchState({
       selectedServer,
       servers: data?.servers || [],
       activeProvider: data?.provider || "",
-      availableAudio: data?.availableAudio || { sub: true, dub: true },
+      availableAudio: (() => {
+        const raw: any = data?.availableAudio;
+        if (Array.isArray(raw))
+          return { sub: raw.includes("sub"), dub: raw.includes("dub") };
+        if (raw && typeof raw === "object") return raw;
+        return { sub: true, dub: true };
+      })(),
       status,
       errorMessage,
       tried,
@@ -174,6 +196,7 @@ export function WatchState({
       setAudio,
       selectServer,
       tryNextServer,
+      failover,
       retry: () => setNonce((value) => value + 1),
       setSubtitleLanguage,
       setOffset,
