@@ -7,7 +7,7 @@ const LANGS: Record<string, string> = {
 
 export function labelToLang(label: string) {
   const raw = String(label || "Unknown").trim();
-  const word = raw.split(/[\\s(\\[]/)[0].toLowerCase();
+  const word = raw.split(/[\s(\[]/)[0].toLowerCase();
   return {
     lang: LANGS[word] || "und",
     name: raw,
@@ -22,8 +22,8 @@ function preferredCode(value: string) {
 
 function cleanLabel(label: string) {
   return String(label || "Unknown")
-    .replace(/\\s*\\(-\\s*([^()]+)\\(([^()]+)\\)\\)/g, " ($2)")
-    .replace(/\\s+/g, " ")
+    .replace(/\s*\(-\s*([^()]+)\(([^()]+)\)\)/g, " ($2)")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
