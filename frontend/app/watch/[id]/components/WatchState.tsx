@@ -75,6 +75,7 @@ export function WatchState({
   );
   const [offset, setOffsetState] = useState(0);
   const [nonce, setNonce] = useState(0);
+  const dead = useRef(new Set<string>());
   const load = useCallback(
     async (provider = selectedServer, exclude: string[] = []) => {
       setStatus("loading");
@@ -89,6 +90,8 @@ export function WatchState({
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "stream_error");
         setData(body);
+        for (const s of body.servers || [])
+          if (s.healthy === false) dead.current.add(s.id);
         setStatus("ready");
         setErrorMessage("");
       } catch (error) {
@@ -175,7 +178,11 @@ export function WatchState({
     () => ({
       audio,
       selectedServer,
-      servers: data?.servers || [],
+      servers: (data?.servers || []).map((s) =>
+        dead.current.has(s.id) || tried.includes(s.id)
+          ? { ...s, healthy: false }
+          : s,
+      ),
       activeProvider: data?.provider || "",
       availableAudio: (() => {
         const raw: any = data?.availableAudio;
