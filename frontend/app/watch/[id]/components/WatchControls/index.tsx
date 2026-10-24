@@ -17,11 +17,14 @@ export default function WatchControls({
   const state = useWatchState();
   const hasSub = state.availableAudio.sub !== false;
   const hasDub = state.availableAudio.dub !== false;
-  const servers: { id: string; label?: string }[] = state.servers.length
+  const all: any[] = state.servers.length
     ? state.servers
     : state.activeProvider
       ? [{ id: state.activeProvider, label: state.activeProvider }]
       : [];
+  const servers = all.filter(
+    (s) => s.healthy !== false || s.id === state.activeProvider,
+  );
 
   return (
     <div className={styles.wrapper} data-testid="watch-controls">
