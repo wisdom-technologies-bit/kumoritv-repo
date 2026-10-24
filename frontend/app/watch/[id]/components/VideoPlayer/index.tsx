@@ -87,6 +87,36 @@ export default function VideoPlayer({
     switched: false,
   });
   const watch = useWatchState();
+  const renders = useRef(0);
+  renders.current++;
+  const [dbg, setDbg] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("dbg")) return;
+    setDbg([]);
+    let last = 0;
+    const iv = setInterval(() => {
+      const pl: any = playerRef.current;
+      if (!pl) return;
+      let tracks = "";
+      try {
+        tracks = (Array.from(pl.textTracks) as any[])
+          .map((t, i) => {
+            const act = Array.from(t.activeCues || [])
+              .map((c: any) => String(c.text).replace(/<[^>]+>/g, "").slice(0, 25))
+              .join("/");
+            return `#${i}:${t.label}:${t.mode} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
+          })
+          .join(" ; ");
+      } catch (e: any) {
+        tracks = "err " + e.message;
+      }
+      const cap = document.querySelector("media-captions, .vds-captions");
+      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
+      last = renders.current;
+      setDbg((all) => [...(all || []).slice(-40), line]);
+    }, 1000);
+    return () => clearInterval(iv);
+  }, []);
   const [playbackError, setPlaybackError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -239,7 +269,9 @@ export default function VideoPlayer({
               const range = ["intro", "recap", "outro"]
                 .map((key) => ({ key, range: skipRanges?.[key] }))
                 .find((item) => isSkipVisible(current, item.range));
-              setVisibleSkip(range || null);
+              setVisibleSkip((prev: any) =>
+                prev?.key === range?.key ? prev : range || null,
+              );
             }}
             onDurationChange={(event: any) => {
               progressRef.current.duration = event.currentTarget.duration || 0;
@@ -339,6 +371,30 @@ export default function VideoPlayer({
           <span className="sr-only">Paused</span>
         )}
       </div>
+      {dbg && (
+        <>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(dbg.join("\n"))}
+          >
+            Copy log
+          </button>
+          <pre
+            style={{
+              fontSize: 10,
+              whiteSpace: "pre-wrap",
+              background: "#111",
+              color: "#9f9",
+              padding: 6,
+              maxHeight: 220,
+              overflow: "auto",
+              userSelect: "text",
+            }}
+          >
+            {dbg.join("\n")}
+          </pre>
+        </>
+      )}
     </div>
   );
 }
