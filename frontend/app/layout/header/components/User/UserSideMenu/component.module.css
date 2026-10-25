@@ -86,7 +86,7 @@
         width: 76px;
         min-width: 76px;
         padding: 0 8px;
-        gap: 0 4px;
+        gap: 0 8px;
         border-radius: 4px;
         box-shadow: none;
     }
@@ -118,7 +118,7 @@
         height: 34px;
         min-height: 34px;
         padding: 0 5px;
-        gap: 0 3px;
+        gap: 0 6px;
     }
 
     #user_container #user_btn[data-useractive=false] span {
