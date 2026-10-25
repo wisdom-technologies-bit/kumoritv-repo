@@ -246,9 +246,9 @@ header#background button svg {
     }
 
     header#background button.heading_btn {
-        width: 32px;
-        min-width: 32px;
-        height: 32px;
+        width: 38px;
+        min-width: 38px;
+        height: 38px;
         padding: 4px;
     }
 }

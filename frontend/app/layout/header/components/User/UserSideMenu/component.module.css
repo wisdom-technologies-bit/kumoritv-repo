@@ -76,13 +76,13 @@
 
 @media (max-width: 767px) {
     #user_container #user_btn {
-        height: 30px;
-        min-height: 30px;
+        height: 38px;
+        min-height: 38px;
     }
 
     #user_container #user_btn[data-useractive=false] {
-        height: 30px;
-        min-height: 30px;
+        height: 38px;
+        min-height: 38px;
         width: auto;
         min-width: 0;
         padding: 0 7px;
@@ -115,8 +115,8 @@
 
 @media (max-width: 380px) {
     #user_container #user_btn[data-useractive=false] {
-        height: 28px;
-        min-height: 28px;
+        height: 34px;
+        min-height: 34px;
         padding: 0 5px;
         gap: 0 3px;
     }
