@@ -297,50 +297,33 @@ export default function VideoPlayer({
       const preferredLabel = normaliseLanguage(
         preferredTrack?.label || preferredTrack?.lang,
       );
-      const findTrackIndex = (tracks: TextTrack[]) => {
-        const matchingIndex = tracks.findIndex((candidate) => {
-          const language = normaliseLanguage(candidate.language);
-          const label = normaliseLanguage(candidate.label);
+      const playerTracks = Array.from(player.textTracks || []) as TextTrack[];
+      const matchingTrackIndex = playerTracks.findIndex((candidate) => {
+        const language = normaliseLanguage(candidate.language);
+        const label = normaliseLanguage(candidate.label);
 
-          return (
-            (preferredLanguage !== "" &&
-              (language === preferredLanguage ||
-                language.startsWith(`${preferredLanguage}-`) ||
-                preferredLanguage.startsWith(`${language}-`))) ||
-            (preferredLabel !== "" && label === preferredLabel)
-          );
-        });
-
-        return matchingIndex >= 0
-          ? matchingIndex
-          : defaultSubtitleIndex < tracks.length
+        return (
+          (preferredLanguage !== "" &&
+            (language === preferredLanguage ||
+              language.startsWith(`${preferredLanguage}-`) ||
+              preferredLanguage.startsWith(`${language}-`))) ||
+          (preferredLabel !== "" && label === preferredLabel)
+        );
+      });
+      const trackIndex =
+        matchingTrackIndex >= 0
+          ? matchingTrackIndex
+          : defaultSubtitleIndex < playerTracks.length
             ? defaultSubtitleIndex
             : -1;
-      };
-      const playerTracks = Array.from(player.textTracks || []) as TextTrack[];
-      const playerTrackIndex = findTrackIndex(playerTracks);
-      const video = (player.querySelector?.("video") ||
-        document.querySelector("video")) as HTMLVideoElement | null;
-      const nativeTracks = Array.from(video?.textTracks || []);
-      const nativeTrackIndex = findTrackIndex(nativeTracks);
-      let selectionApplied = false;
 
-      if (nativeTrackIndex >= 0) {
-        nativeTracks[nativeTrackIndex].mode = "showing";
-        selectionApplied = true;
-      }
-
-      if (playerTrackIndex >= 0) {
+      if (trackIndex >= 0) {
         const remote = player.remoteControl;
         if (typeof remote?.changeTextTrackMode === "function") {
-          remote.changeTextTrackMode(playerTrackIndex, "showing");
+          remote.changeTextTrackMode(trackIndex, "showing");
         } else {
-          playerTracks[playerTrackIndex].mode = "showing";
+          playerTracks[trackIndex].mode = "showing";
         }
-        selectionApplied = true;
-      }
-
-      if (selectionApplied) {
         appliedSubtitleSelectionRef.current = defaultSubtitleKey;
       }
     }
@@ -351,7 +334,14 @@ export default function VideoPlayer({
     const time =
       initialTime ||
       (saved && shouldResume(saved.time, saved.duration) ? saved.time : 0);
-    if (time > 0) player.currentTime = time;
+    if (time > 0) {
+      const remote = player.remoteControl;
+      if (typeof remote?.seek === "function") {
+        remote.seek(time);
+      } else {
+        player.currentTime = time;
+      }
+    }
   };
   const providerSetup = (event: any) => {
     const provider = event.detail;
