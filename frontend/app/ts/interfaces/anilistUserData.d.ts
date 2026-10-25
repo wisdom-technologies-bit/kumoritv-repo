@@ -38,7 +38,6 @@ interface UserAnilist {
     };
   };
   options: {
-    displayAdultContent: boolean;
-    titleLanguage: string;
+      titleLanguage: string;
   };
 }

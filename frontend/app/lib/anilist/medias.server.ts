@@ -13,26 +13,22 @@ const timestamp = (daysAgo: number, firstHour: boolean) => {
   return Math.floor(date.getTime() / 1000);
 };
 
-function withoutAdult<T extends { isAdult?: boolean }>(items: T[], showAdultContent?: boolean) {
-  return showAdultContent ? items : items.filter((item) => item.isAdult === false);
-}
-
 function cached<T>(name: string, variables: Record<string, unknown>, ttl: number, load: () => Promise<T>) {
   return unstable_cache(load, [`anilist:${name}`, ...Object.entries(variables).sort().map(([key, value]) => `${key}:${String(value)}`)], { tags: ['anilist'], revalidate: ttl })();
 }
 
 export type MediaOptions = {
-  type?: string; format?: string; sort?: string; showAdultContent?: boolean; status?: string;
+  type?: string; format?: string; sort?: string; status?: string;
   page?: number; perPage?: number; accessToken?: string; season?: string; seasonYear?: number;
   releasedOnLastXDays?: number; showOnlyReleasesOnThisDate?: boolean;
 };
 
 export async function getNewReleases(options: MediaOptions = {}): Promise<any[]> {
-  const { type = 'ANIME', format = 'TV', sort = 'POPULARITY_DESC', showAdultContent = false, status, page = 1, perPage = 20 } = options;
-  const variables = { type, format, sort: options.releasedOnLastXDays ? 'TIME_DESC' : sort, perPage, page, status, season: status ? undefined : season(), seasonYear: new Date().getFullYear(), showAdultContent };
+  const { type = 'ANIME', format = 'TV', sort = 'POPULARITY_DESC', status, page = 1, perPage = 20 } = options;
+  const variables = { type, format, sort: options.releasedOnLastXDays ? 'TIME_DESC' : sort, perPage, page, status, season: status ? undefined : season(), seasonYear: new Date().getFullYear() };
   try {
     const data = await cached('new-releases', variables, options.releasedOnLastXDays ? 900 : 3600, () => anilistFetch<{ Page?: { media?: unknown[] } }>(requestMedias(), variables));
-    return withoutAdult((data.Page?.media || []) as { isAdult?: boolean }[], showAdultContent);
+    return data.Page?.media || [];
   } catch { return []; }
 }
 
@@ -41,22 +37,20 @@ export async function getReleasingThisWeek(options: MediaOptions = {}) {
 }
 
 export async function getReleasingByDaysRange(options: MediaOptions & { days?: number; pageNumber?: number } = {}): Promise<any[]> {
-  const { type = 'ANIME', days = 0, pageNumber = 1, perPage = 5, showAdultContent = false, showOnlyReleasesOnThisDate } = options;
-  const variables = { type, page: pageNumber, perPage, sort: 'TIME_DESC', showAdultContent, airingAt_greater: timestamp(days, true), airingAt_lesser: timestamp(showOnlyReleasesOnThisDate ? days : 0, false) };
+  const { type = 'ANIME', days = 0, pageNumber = 1, perPage = 5, showOnlyReleasesOnThisDate } = options;
+  const variables = { type, page: pageNumber, perPage, sort: 'TIME_DESC', airingAt_greater: timestamp(days, true), airingAt_lesser: timestamp(showOnlyReleasesOnThisDate ? days : 0, false) };
   try {
     const data = await cached('releasing-by-days', variables, 900, () => anilistFetch<{ Page?: { airingSchedules?: unknown[] } }>(requestMediasByDateRelease(), variables));
-    const results = (data.Page?.airingSchedules || []) as Array<{ media: { isAdult?: boolean } }>;
-    return showAdultContent ? results : results.filter((item) => item.media?.isAdult === false);
+    return data.Page?.airingSchedules || [];
   } catch { return []; }
 }
 
-export async function getTrendingMedia(options: { sort?: string; showAdultContent?: boolean; accessToken?: string; page?: number; perPage?: number } = {}): Promise<any[]> {
-  const { sort = 'TRENDING_DESC', showAdultContent = false, page = 1, perPage = 20 } = options;
+export async function getTrendingMedia(options: { sort?: string; accessToken?: string; page?: number; perPage?: number } = {}): Promise<any[]> {
+  const { sort = 'TRENDING_DESC', page = 1, perPage = 20 } = options;
   const variables = { sort, page, perPage };
   try {
     const data = await cached('trending', variables, 3600, () => anilistFetch<{ Page?: { mediaTrends?: unknown[] } }>(requestMediasByTrendingSort(), variables));
-    const results = (data.Page?.mediaTrends || []) as Array<{ media: { isAdult?: boolean } }>;
-    return showAdultContent ? results : results.filter((item) => item.media?.isAdult === false);
+    return data.Page?.mediaTrends || [];
   } catch { return []; }
 }
 
@@ -71,12 +65,13 @@ export async function getMediaInfo({ id }: { id: number; accessToken?: string })
   } catch { return null; }
 }
 
-export async function searchMedias({ query, showAdultContent = false, page = 1, perPage = 15 }: { query: string; showAdultContent?: boolean; page?: number; perPage?: number }) {
+export async function searchMedias({ query, page = 1, perPage = 15 }: { query: string; page?: number; perPage?: number }) {
   const search = query.trim();
   if (search.length < 2) return [];
   try {
-    const data = await cached('search', { search, showAdultContent, page, perPage }, 600, () => anilistFetch<{ Page?: { media?: unknown[] } }>(requestMedias('$search: String', ', search: $search'), { search, showAdultContent, page, perPage, sort: 'TRENDING_DESC', type: 'ANIME' }));
-    return withoutAdult((data.Page?.media || []) as { isAdult?: boolean }[], showAdultContent);
+    const variables = { search, page, perPage, sort: 'TRENDING_DESC', type: 'ANIME' };
+    const data = await cached('search', variables, 600, () => anilistFetch<{ Page?: { media?: unknown[] } }>(requestMedias('$search: String', ', search: $search'), variables));
+    return data.Page?.media || [];
   } catch { return []; }
 }
 
@@ -84,7 +79,7 @@ export async function searchCatalog(options: { type?: string; title?: string; ge
   const page = Math.min(8, Math.max(1, Number(options.page) || 1));
   const genres = (Array.isArray(options.genre) ? options.genre : options.genre ? [options.genre] : []).filter(Boolean);
   const genreMap: Record<string, string> = { 'slice-of-life': 'Slice of Life', 'sci-fi': 'Sci-Fi', mahou: 'Mahou Shoujo' };
-  const variables = { search: options.title?.trim() || undefined, seasonYear: options.year, season: options.season?.toUpperCase(), format: options.type ? ({ tv: 'TV', movie: 'MOVIE', special: 'SPECIAL', ova: 'OVA', ona: 'ONA', music: 'MUSIC', tv_short: 'TV_SHORT' } as Record<string, string>)[options.type] : undefined, status: options.status ? ({ finished: 'FINISHED', ongoing: 'RELEASING', upcoming: 'NOT_YET_RELEASED', unknown: 'HIATUS' } as Record<string, string>)[options.status] : undefined, genre_in: genres.filter((g) => g.toLowerCase() !== 'shoujo').map((g) => genreMap[g.toLowerCase()] || g), tag_in: genres.some((g) => g.toLowerCase() === 'shoujo') ? ['Shoujo'] : undefined, sort: ({ releases_asc: 'START_DATE', title_desc: 'TITLE_ENGLISH_DESC', title_asc: 'TITLE_ENGLISH' } as Record<string, string>)[options.sort || ''] || 'START_DATE_DESC', type: 'ANIME', perPage: 12, showAdultContent: false };
+  const variables = { search: options.title?.trim() || undefined, seasonYear: options.year, season: options.season?.toUpperCase(), format: options.type ? ({ tv: 'TV', movie: 'MOVIE', special: 'SPECIAL', ova: 'OVA', ona: 'ONA', music: 'MUSIC', tv_short: 'TV_SHORT' } as Record<string, string>)[options.type] : undefined, status: options.status ? ({ finished: 'FINISHED', ongoing: 'RELEASING', upcoming: 'NOT_YET_RELEASED', unknown: 'HIATUS' } as Record<string, string>)[options.status] : undefined, genre_in: genres.filter((g) => g.toLowerCase() !== 'shoujo').map((g) => genreMap[g.toLowerCase()] || g), tag_in: genres.some((g) => g.toLowerCase() === 'shoujo') ? ['Shoujo'] : undefined, sort: ({ releases_asc: 'START_DATE', title_desc: 'TITLE_ENGLISH_DESC', title_asc: 'TITLE_ENGLISH' } as Record<string, string>)[options.sort || ''] || 'START_DATE_DESC', type: 'ANIME', perPage: 12 };
   try {
     const pages = await Promise.all(Array.from({ length: page }, (_, index) => cached('catalog', { ...variables, page: index + 1 }, 600, () => anilistFetch<{ Page?: { media?: any[]; pageInfo?: { total?: number } } }>(requestMedias('$search: String, $genre_in: [String], $tag_in: [String]', ', search: $search, genre_in: $genre_in, tag_in: $tag_in'), { ...variables, page: index + 1 }))));
     const media = pages.flatMap((result) => result.Page?.media || []);
@@ -93,10 +88,10 @@ export async function searchCatalog(options: { type?: string; title?: string; ge
 }
 
 export async function getMediaForThisFormat(options: MediaOptions & { pageNumber?: number } = {}) {
-  const { type = 'ANIME', status, sort = 'TRENDING_DESC', pageNumber = 1, perPage = 20, showAdultContent = false, format = 'TV' } = options;
-  const variables = { type, format, status, sort, page: pageNumber, perPage, showAdultContent, season: options.season, seasonYear: options.seasonYear };
+  const { type = 'ANIME', status, sort = 'TRENDING_DESC', pageNumber = 1, perPage = 20, format = 'TV' } = options;
+  const variables = { type, format, status, sort, page: pageNumber, perPage, season: options.season, seasonYear: options.seasonYear };
   try {
     const data = await cached('media-for-format', variables, 3600, () => anilistFetch<{ Page?: { media?: unknown[] } }>(requestMedias(), variables));
-    return withoutAdult((data.Page?.media || []) as { isAdult?: boolean }[], showAdultContent);
+    return data.Page?.media || [];
   } catch { return []; }
 }

@@ -95,9 +95,6 @@ function UserSettingsModal({
   const [currentSource, setCurrentSource] = useState<string | null>(null);
   const [currentTitleLang, setCurrentTitleLang] = useState<string | null>(null);
   const [currentQuality, setCurrentQuality] = useState<string | null>(null);
-  const [currentShowAdultContent, setCurrentShowAdultContent] = useState<
-    boolean | null
-  >(null);
   const [currentPlayWrongMediaEnabled, setCurrentPlayWrongMediaEnabled] =
     useState<boolean | null>(null);
   const [currentSkipIntroAndOutro, setCurrentSkipIntroAndOutro] = useState<
@@ -137,7 +134,6 @@ function UserSettingsModal({
       videoSubtitleLanguage: form.language.value,
       videoSource: form.source.value,
       videoQuality: form.quality.value,
-      showAdultContent: form.showAdultContent.checked,
       autoNextEpisode: form.autoNextEpisode.checked,
       autoSkipIntroAndOutro: form.skipIntroAndOutro.checked,
       playVideoWhenMediaAndVideoIdMismatch: form.playVideoWhenMismatch.checked,
@@ -150,10 +146,6 @@ function UserSettingsModal({
         lang: form.mediaTitlePreferredLang.value,
       });
 
-      await anilistUsersActions.handleAdultContentSetting({
-        isEnabled: `${form.showAdultContent.checked}`,
-      });
-
       await anilistUsersActions.handleSubtitleLanguageSetting({
         lang: form.language.value,
       });
@@ -164,10 +156,6 @@ function UserSettingsModal({
     } else {
       await userSettingsActions.setMediaTitleLanguageCookie({
         lang: form.mediaTitlePreferredLang.value,
-      });
-
-      await userSettingsActions.setAdultContentCookie({
-        isEnabled: `${form.showAdultContent.checked}`,
       });
 
       await userSettingsActions.setSubtitleLanguageCookie({
@@ -261,9 +249,6 @@ function UserSettingsModal({
     );
     setCurrentQuality(
       ((await userDoc.get("videoQuality")) as string) || "auto"
-    );
-    setCurrentShowAdultContent(
-      (await userDoc.get("showAdultContent")) || false
     );
     setCurrentSkipIntroAndOutro(
       (await userDoc.get("autoSkipIntroAndOutro")) || false
@@ -640,33 +625,6 @@ function UserSettingsModal({
                     Focus the anime episodes to the source selected.{" "}
                     <b>You can still use the others sources.</b>
                   </small>
-                </>
-              )}
-            </div>
-
-            <div>
-              {currentShowAdultContent != null && (
-                <>
-                  <div className={styles.checkbox_container}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="showAdultContent"
-                        defaultChecked={
-                          (currentShowAdultContent == true) as boolean
-                        }
-                      ></input>
-                      <span />
-                    </label>
-                    <p>Show Adult Content (+18)</p>
-                  </div>
-
-                  {userAnilist && (
-                    <small style={{ marginTop: "16px", display: "block" }}>
-                      Changing this option will also change on your AniList
-                      Account
-                    </small>
-                  )}
                 </>
               )}
             </div>

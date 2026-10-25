@@ -36,7 +36,6 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
     const listAnimesReleasingByPopularity = await anilist
       .getNewReleases({
         type: "ANIME",
-        showAdultContent: false,
         status: "RELEASING",
         page: currFetchPage,
         perPage: 14,

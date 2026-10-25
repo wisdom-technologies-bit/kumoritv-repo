@@ -128,7 +128,6 @@ export default {
                             }
                             options {
                                 titleLanguage 
-                                displayAdultContent
                                 activityMergeTime
                             }
                             favourites {
@@ -439,40 +438,6 @@ export default {
                 }`,
         variables: {
           lang: lang?.toUpperCase(),
-        },
-      };
-
-      await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
-
-      return cookieSetResult;
-    } catch (err) {
-      console.error(err);
-
-      return null;
-    }
-  },
-
-  handleAdultContentSetting: async ({ isEnabled }: { isEnabled?: string }) => {
-    try {
-      const cookieSetResult = await userSettingsActions.setAdultContentCookie({
-        isEnabled: isEnabled,
-      });
-
-      const graphqlQuery = {
-        query: `mutation ($isEnabled: Boolean) {
-                    UpdateUser (displayAdultContent: $isEnabled){
-                        options{
-                            displayAdultContent
-                        }
-                    }
-                }`,
-        variables: {
-          isEnabled: isEnabled == "true",
         },
       };
 

@@ -20,16 +20,16 @@ export async function GET(request: NextRequest) {
   if (fn === 'search') {
     const query = (p.get('query') ?? p.get('q'))?.trim() || '';
     if (query.length < 2 || query.length > 80) return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
-    return NextResponse.json({ results: await searchMedias({ query, showAdultContent: bool(p.get('showAdultContent')) ?? false, page: integer(p.get('page'), 1, 100, 1) || 1, perPage: integer(p.get('perPage'), 1, 50, 15) || 15 }) });
+    return NextResponse.json({ results: await searchMedias({ query, page: integer(p.get('page'), 1, 100, 1) || 1, perPage: integer(p.get('perPage'), 1, 50, 15) || 15 }) });
   }
   if (fn === 'searchCatalog') return NextResponse.json(await searchCatalog(Object.fromEntries(p.entries())));
   if (!['getNewReleases', 'getReleasingThisWeek', 'getReleasingByDaysRange', 'getTrendingMedia', 'getMediaForThisFormat'].includes(fn || '')) return NextResponse.json({ error: 'Invalid fn' }, { status: 400 });
   const pick = <K extends keyof typeof enums>(key: K) => { const value = p.get(key); return value === null ? undefined : (enums[key] as readonly string[]).includes(value) ? value : null; };
   const type = pick('type'); const format = pick('format'); const sort = pick('sort'); const status = pick('status'); const season = pick('season');
   const page = integer(p.get('page'), 1, 100, 1); const perPage = integer(p.get('perPage'), 1, 50, 20); const seasonYear = integer(p.get('seasonYear'), 1960, 2100); const days = integer(p.get('releasedOnLastXDays'), 0, 30);
-  const showAdultContent = bool(p.get('showAdultContent')); const showOnlyReleasesOnThisDate = bool(p.get('showOnlyReleasesOnThisDate'));
-  if ([type, format, sort, status, season, page, perPage, seasonYear, days, showAdultContent, showOnlyReleasesOnThisDate].some((value) => value === null)) return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
-  const common = { type: type || 'ANIME', format: format || undefined, sort: sort || undefined, status: status || undefined, page: page || undefined, perPage: perPage || undefined, season: season || undefined, seasonYear: seasonYear || undefined, showAdultContent: showAdultContent ?? false, releasedOnLastXDays: days || undefined, showOnlyReleasesOnThisDate: showOnlyReleasesOnThisDate ?? undefined };
+  const showOnlyReleasesOnThisDate = bool(p.get('showOnlyReleasesOnThisDate'));
+  if ([type, format, sort, status, season, page, perPage, seasonYear, days, showOnlyReleasesOnThisDate].some((value) => value === null)) return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
+  const common = { type: type || 'ANIME', format: format || undefined, sort: sort || undefined, status: status || undefined, page: page || undefined, perPage: perPage || undefined, season: season || undefined, seasonYear: seasonYear || undefined, releasedOnLastXDays: days || undefined, showOnlyReleasesOnThisDate: showOnlyReleasesOnThisDate ?? undefined };
   try {
     let results: unknown[];
     if (fn === 'getNewReleases') results = await getNewReleases(common);

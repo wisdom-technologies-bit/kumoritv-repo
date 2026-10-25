@@ -49,8 +49,6 @@ export async function createNewUserDocument({
     }
 
     addUserCookies({
-      isAdultContentEnabled:
-        `${userAnilist?.options.displayAdultContent}` || `${false}`,
       subtitleLanguage: doesUserHasDoc.videoSubtitleLanguage || "English",
       titleLanguage: userAnilist?.options.titleLanguage || "romaji",
       playWrongMedia: doesUserHasDoc.playVideoWhenMediaAndVideoIdMismatch
@@ -82,9 +80,6 @@ export async function createNewUserDocument({
     chaptersRead: {},
     videoSource: "gogoanime",
     mediaTitlePreferredLang: "romaji",
-    showAdultContent: userAnilist
-      ? userAnilist.options.displayAdultContent
-      : false,
     autoNextEpisode: true,
     autoSkipIntroAndOutro: false,
     playVideoWhenMediaAndVideoIdMismatch: false,
@@ -116,8 +111,6 @@ export async function createNewUserDocument({
     localStorage.setItem("anilist-user", JSON.stringify(userAnilist));
 
     addUserCookies({
-      isAdultContentEnabled:
-        `${userAnilist?.options.displayAdultContent}` || `${false}`,
       subtitleLanguage: "English",
       titleLanguage: userAnilist?.options.titleLanguage || "romaji",
       playWrongMedia: "false",

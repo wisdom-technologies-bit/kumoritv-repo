@@ -18,22 +18,6 @@ export default {
     }
   },
 
-  setAdultContentCookie: async ({ isEnabled }: { isEnabled?: string }) => {
-    try {
-      const setAdultContentResult = await Axios({
-        url: `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/adult-content`,
-        method: "POST",
-        data: { isAdultContentEnabled: isEnabled },
-      });
-
-      return setAdultContentResult;
-    } catch (err) {
-      console.log(err);
-
-      return err;
-    }
-  },
-
   setSubtitleLanguageCookie: async ({ lang }: { lang?: string }) => {
     try {
       const setAdultContentResult = await Axios({

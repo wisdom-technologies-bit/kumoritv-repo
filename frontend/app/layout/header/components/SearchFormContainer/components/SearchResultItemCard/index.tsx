@@ -114,7 +114,6 @@ function SearchResultItemCard({
 
           <div className={`${styles.width_flex} display_flex_row`}>
             <p>
-              {mediaFromAnilist?.isAdult && <span>+18</span>}
               {mediaType}
             </p>
 

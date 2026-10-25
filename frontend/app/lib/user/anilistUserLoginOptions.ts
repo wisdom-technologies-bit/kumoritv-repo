@@ -60,12 +60,10 @@ export async function checkAccessTokenStillValid() {
 }
 
 export async function addUserCookies({
-  isAdultContentEnabled,
   titleLanguage,
   subtitleLanguage,
   playWrongMedia,
 }: {
-  isAdultContentEnabled: string;
   titleLanguage: string;
   subtitleLanguage: string;
   playWrongMedia: string;
@@ -73,10 +71,6 @@ export async function addUserCookies({
   try {
     await userSettingsActions.setMediaTitleLanguageCookie({
       lang: titleLanguage,
-    });
-
-    await userSettingsActions.setAdultContentCookie({
-      isEnabled: isAdultContentEnabled,
     });
 
     await userSettingsActions.setSubtitleLanguageCookie({
@@ -95,9 +89,6 @@ export async function addUserCookies({
 
 export async function removeCookies() {
   try {
-    await axios.delete(
-      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/adult-content`
-    );
     await axios.delete(
       `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/media-title-language`
     );

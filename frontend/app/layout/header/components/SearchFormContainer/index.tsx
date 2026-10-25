@@ -8,11 +8,7 @@ import LoadingIcon from "@/public/assets/ripple-1s-200px.svg";
 import SearchIcon from "@/public/assets/search.svg";
 import CloseSvg from "@/public/assets/x.svg";
 import { AnimatePresence, motion } from "framer-motion";
-import { useAuthState } from "react-firebase-hooks/auth";
-import { getFirebaseAuth } from "@/app/firebaseApp";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
-import { getUserAdultContentPreference } from "@/app/lib/user/userDocFetchOptions";
-import { useAppSelector } from "@/app/lib/redux/hooks";
 
 const framerMotionshowUpMotion = {
   hidden: {
@@ -49,25 +45,12 @@ function SearchFormContainer() {
   const [searchInputValue, setSearchInputValue] = useState<string>("");
   const searchAbortController = useRef<AbortController | null>(null);
 
-  const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
-
-  const anilistUser = useAppSelector((state) => state.UserInfo.value);
-
   async function handleSearchFormSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setSearchType("anilist");
 
     setSearchResultsList(null);
-
-    let isAdultContentAllowed = false;
-
-    if (user)
-      isAdultContentAllowed = await getUserAdultContentPreference(user.uid);
-
-    if (anilistUser)
-      isAdultContentAllowed = anilistUser.options.displayAdultContent;
 
     if (searchInputValue.trim().length < 3) {
       setSearchResultsList([]);
@@ -81,7 +64,6 @@ function SearchFormContainer() {
 
     const searchResults = await anilist.getSeachResults({
       query: searchInputValue,
-      showAdultContent: isAdultContentAllowed,
       signal: controller.signal,
     });
 

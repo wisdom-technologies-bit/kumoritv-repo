@@ -2,7 +2,7 @@ import axios from 'axios'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// handles user selected language for media title, adult content...
+// handles the user-selected language for media titles.
 export async function middleware(request: NextRequest) {
 
     // Related to Anilist Login Access

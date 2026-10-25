@@ -58,7 +58,7 @@ const mediaListFields = `
 `;
 
 export function requestMedias(otherQueryFields = "", otherMediasFields = "") {
-  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $showAdultContent: Boolean, $status: MediaStatus${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, isAdult: $showAdultContent, status: $status${otherMediasFields}) { ${mediaListFields} } } }`;
+  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $status: MediaStatus${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, status: $status${otherMediasFields}) { ${mediaListFields} } } }`;
 }
 
 export function requestMediasByDateRelease() {
