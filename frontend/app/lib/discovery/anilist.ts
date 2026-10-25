@@ -12,14 +12,24 @@ async function gql(query: string, variables: Record<string, unknown>, retries = 
   if (requestTimes.length >= 80) await sleep(Math.max(0, 60000 - (Date.now() - requestTimes[0]) + 10));
   requestTimes.push(Date.now());
   const response = await fetch(ENDPOINT, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, variables }), cache: "no-store" });
-  const body = (await response.text()).slice(0, 500);
+  const body = await response.text();
   if (response.status === 429 && retries > 0) { const retry = Number(response.headers.get("retry-after") || response.headers.get("x-ratelimit-reset") || 1); await sleep(Math.min(60000, Math.max(300, retry * 1000))); return gql(query, variables, retries - 1); }
-  if (!response.ok) throw new Error(`anilist_${response.status}: ${body}`);
-  let json: any; try { json = JSON.parse(body); } catch { throw new Error(`anilist_${response.status}: ${body}`); }
-  if (json.errors?.length) throw new Error(`anilist_${response.status}: ${body}`);
-  return json.data;
+  if (!response.ok) throw new Error(`anilist_${response.status}: ${body.slice(0, 500)}`);
+  let json: any; try { json = JSON.parse(body); } catch { throw new Error(`anilist_${response.status}: ${body.slice(0, 500)}`); }
+  if (Array.isArray(json.errors) && json.errors.length > 0) throw new Error(`anilist_${response.status}: ${body.slice(0, 500)}`);
+  return json;
 }
-export async function fetchAiringWindow(fromUnix: number, toUnix: number, page: number) { integer(fromUnix, "from"); integer(toUnix, "to"); integer(page, "page"); if (fromUnix >= toUnix) throw new Error("invalid_airing_window"); return (await gql(AIRING_QUERY, { page, from: fromUnix, to: toUnix })).Page; }
-export async function fetchRecentStarts(sinceYYYYMMDD: number, page: number) { integer(sinceYYYYMMDD, "since"); integer(page, "page"); return (await gql(RECENT_QUERY, { page, since: sinceYYYYMMDD })).Page; }
-export async function fetchMediaByIds(ids: number[]) { const out: any[] = []; for (let i = 0; i < ids.length; i += 50) { const chunk = ids.slice(i, i + 50); chunk.forEach((id) => integer(id, "id")); const page = await gql(MEDIA_QUERY, { ids: chunk }); out.push(...(page.Page.media || [])); } return out; }
-export async function resolveAniListIds(malIds: number[]) { const out: any[] = []; for (let i = 0; i < malIds.length; i += 50) { const ids = malIds.slice(i, i + 50); ids.forEach((id) => integer(id, "mal_id")); const data = await gql(RESOLVE_QUERY, { ids }); out.push(...(data.Page.media || [])); if (i + 50 < malIds.length) await sleep(300); } return out; }
+function pageWithArray(result: any, path: "Page.airingSchedules" | "Page.media") {
+  const value = path === "Page.airingSchedules" ? result?.data?.Page?.airingSchedules : result?.data?.Page?.media;
+  if (!Array.isArray(value)) throw new Error(`anilist_invalid_response: missing ${path}`);
+  return value;
+}
+function pageInfo(result: any) {
+  const value = result?.data?.Page?.pageInfo;
+  if (!value || typeof value.hasNextPage !== "boolean") throw new Error("anilist_invalid_response: missing Page.pageInfo.hasNextPage");
+  return value;
+}
+export async function fetchAiringWindow(fromUnix: number, toUnix: number, page: number) { integer(fromUnix, "from"); integer(toUnix, "to"); integer(page, "page"); if (fromUnix >= toUnix) throw new Error("invalid_airing_window"); const result = await gql(AIRING_QUERY, { page, from: fromUnix, to: toUnix }); return { airingSchedules: pageWithArray(result, "Page.airingSchedules"), pageInfo: pageInfo(result) }; }
+export async function fetchRecentStarts(sinceYYYYMMDD: number, page: number) { integer(sinceYYYYMMDD, "since"); integer(page, "page"); const result = await gql(RECENT_QUERY, { page, since: sinceYYYYMMDD }); return { media: pageWithArray(result, "Page.media"), pageInfo: pageInfo(result) }; }
+export async function fetchMediaByIds(ids: number[]) { const out: any[] = []; for (let i = 0; i < ids.length; i += 50) { const chunk = ids.slice(i, i + 50); chunk.forEach((id) => integer(id, "id")); const result = await gql(MEDIA_QUERY, { ids: chunk }); out.push(...pageWithArray(result, "Page.media")); } return out; }
+export async function resolveAniListIds(malIds: number[]) { const out: any[] = []; for (let i = 0; i < malIds.length; i += 50) { const ids = malIds.slice(i, i + 50); ids.forEach((id) => integer(id, "mal_id")); const result = await gql(RESOLVE_QUERY, { ids }); out.push(...pageWithArray(result, "Page.media")); if (i + 50 < malIds.length) await sleep(300); } return out; }
