@@ -5,7 +5,7 @@ import { sanitizeNextPath } from "@/app/lib/supabase/auth";
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const next = sanitizeNextPath(request.nextUrl.searchParams.get("next"));
-  const client = createClient();
+  const client = await createClient();
   if (!client || !code) return NextResponse.redirect(new URL("/?auth_error=callback", request.url));
   const { error } = await client.auth.exchangeCodeForSession(code);
   if (error) return NextResponse.redirect(new URL("/?auth_error=callback", request.url));
