@@ -26,7 +26,11 @@ export async function GET(request: Request) {
   return runDiscovery(request, "airing", async () => {
     const db: any = createAdminClient();
     if (!db) throw new Error("supabase_not_configured");
-    const { data: run } = await db.from("cron_runs").select("last_window_end").eq("job", "airing").maybeSingle();
+    for (const table of ["discovered_anime", "airing_episodes", "discovery_state"]) {
+      const { error } = await db.from(table).select("*").limit(1);
+      if (error) throw new Error(`schema_unavailable:${table}:${error.message}`);
+    }
+    const { data: run } = await db.from("discovery_state").select("last_window_end").eq("job", "airing").maybeSingle();
     const now = Math.floor(Date.now() / 1000);
     const from = run?.last_window_end
       ? Math.max(now - 172800, Math.floor(new Date(run.last_window_end).getTime() / 1000) - 3600)
