@@ -5,7 +5,7 @@ import { importAnime } from "@/app/lib/anime-db/import";
 import { proxyUrl, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
 import { normalizeSubtitles } from "@/app/lib/watch/subtitles";
 import { normalizeIntroOutro } from "@/app/lib/watch/intro";
-import { qualifyStream, pickBestStream } from "@/app/lib/watch/qualify";
+import { qualifyStream } from "@/app/lib/watch/qualify";
 import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
@@ -13,8 +13,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 const cache = new Map<string, { at: number; value: any }>();
-export function watchCacheKey(input: { id: string | number; episode: string | number; provider?: string | null; server?: string | null; exclude?: string[]; audio: string; sublang: string }) {
-  return [input.id, input.episode, input.provider || "", input.server || "", input.exclude?.join(",") || "", input.audio, input.sublang.trim().toLowerCase()].join("-");
+function watchCacheKey(input: {
+  id: string | number;
+  episode: string | number;
+  provider?: string | null;
+  server?: string | null;
+  exclude?: string[];
+  audio: string;
+  sublang: string;
+}) {
+  return [
+    input.id,
+    input.episode,
+    input.provider || "",
+    input.server || "",
+    input.exclude?.join(",") || "",
+    input.audio,
+    input.sublang.trim().toLowerCase(),
+  ].join("-");
 }
 const hits = new Map<string, number[]>();
 const json = (body: any, status = 200) =>
@@ -29,7 +45,7 @@ function valid(id: string, max: number) {
   const n = Number(id);
   return Number.isInteger(n) && n > 0 && n < max ? n : null;
 }
-  async function resolveProvider(
+async function resolveProvider(
   provider: string,
   entry: any,
   audio: string,
@@ -55,7 +71,8 @@ function valid(id: string, max: number) {
     );
     const candidates = qualified.sort(
       (a: any, b: any) =>
-        Number(requestedServer && b.server === requestedServer) - Number(requestedServer && a.server === requestedServer) ||
+        Number(requestedServer && b.server === requestedServer) -
+          Number(requestedServer && a.server === requestedServer) ||
         Number(b.isActive === true) - Number(a.isActive === true) ||
         Number(b.priority || 0) - Number(a.priority || 0) ||
         Number(a.index || 0) - Number(b.index || 0),
@@ -140,7 +157,15 @@ export async function GET(
   if (recent.length >= 40) return json({ error: "rate_limited" }, 429);
   recent.push(now);
   hits.set(ip, recent);
-  const key = watchCacheKey({ id, episode, provider: requestedProvider, server: requestedServer, exclude, audio, sublang }),
+  const key = watchCacheKey({
+      id,
+      episode,
+      provider: requestedProvider,
+      server: requestedServer,
+      exclude,
+      audio,
+      sublang,
+    }),
     cached = cache.get(key);
   if (!refresh && !debug && cached && now - cached.at < 300000)
     return json(cached.value);
@@ -160,9 +185,17 @@ export async function GET(
       .maybeSingle());
   }
   if (!row) return json({ error: "episode_not_found" }, 404);
-  const allProviders = Array.isArray(row[`${audio}_providers`]) ? row[`${audio}_providers`] : [];
-  if (requestedProvider && !allProviders.some((p: any) => p.provider === requestedProvider)) return json({ error: "unknown_provider" }, 400);
-  const providers = allProviders.filter((p: any) => !requestedProvider || p.provider === requestedProvider);
+  const allProviders = Array.isArray(row[`${audio}_providers`])
+    ? row[`${audio}_providers`]
+    : [];
+  if (
+    requestedProvider &&
+    !allProviders.some((p: any) => p.provider === requestedProvider)
+  )
+    return json({ error: "unknown_provider" }, 400);
+  const providers = allProviders.filter(
+    (p: any) => !requestedProvider || p.provider === requestedProvider,
+  );
   if (!providers.length) {
     const availableAudio = ["sub", "dub"].filter(
       (a) =>
@@ -203,7 +236,14 @@ export async function GET(
       ordered
         .slice(0, 6)
         .map((p: any) =>
-          resolveProvider(p.provider, p, audio, exclude, trace, requestedServer),
+          resolveProvider(
+            p.provider,
+            p,
+            audio,
+            exclude,
+            trace,
+            requestedServer,
+          ),
         ),
     );
     const nonEmbed = results.find((r) => r && !r.embedOnly);
@@ -243,7 +283,9 @@ export async function GET(
         Array.isArray(row[`${a}_providers`]) && row[`${a}_providers`].length,
     );
   const servers = [...allProviders]
-    .sort((a: any, b: any) => providerRank(a.provider) - providerRank(b.provider))
+    .sort(
+      (a: any, b: any) => providerRank(a.provider) - providerRank(b.provider),
+    )
     .map((p: any) => ({
       id: p.provider,
       label: p.provider.charAt(0).toUpperCase() + p.provider.slice(1),
@@ -274,7 +316,8 @@ export async function GET(
     resolvedAt: new Date().toISOString(),
   };
   try {
-    if (stream.type === "embed") result.embedUrl = stream.embedUrl || stream.url;
+    if (stream.type === "embed")
+      result.embedUrl = stream.embedUrl || stream.url;
     else {
       result.url = await proxyUrl(
         stream.type === "hls" ? "manifest" : "segment",
@@ -296,8 +339,12 @@ export async function GET(
       result.subtitles = await Promise.all(
         subs.map(async (s: any) => ({
           ...s,
-          url: await proxyUrl("subtitle", { u: s.url, h: winner.headers, f: "vtt" }),
-        })), 
+          url: await proxyUrl("subtitle", {
+            u: s.url,
+            h: winner.headers,
+            f: "vtt",
+          }),
+        })),
       );
     }
   } catch (error) {
@@ -318,8 +365,8 @@ export async function GET(
   );
   if (debug) {
     result.trace = trace;
-    result.upstreamUrl = stream.url;
-  } else delete result.upstreamUrl;
-  cache.set(key, { at: now, value: result });
+  } else {
+    cache.set(key, { at: now, value: result });
+  }
   return json(result);
 }

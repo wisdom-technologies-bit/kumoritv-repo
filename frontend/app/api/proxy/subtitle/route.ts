@@ -1,5 +1,5 @@
 import { verifyToken, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
-import { safeFetch } from "@/app/lib/proxy/upstream";
+import { readResponseText, safeFetch } from "@/app/lib/proxy/upstream";
 
 export const runtime = "edge";
 
@@ -29,10 +29,9 @@ function convert(input: string): string {
   const text = input.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 
   // Already WebVTT
-  if (/^\s*WEBVTT(?:\s|$)/i.test(text)) {
-    return text.trimStart().startsWith("WEBVTT")
-      ? text
-      : `WEBVTT\n\n${text.trimStart()}`;
+  const trimmed = text.trimStart();
+  if (/^WEBVTT(?:\s|$)/i.test(trimmed)) {
+    return `WEBVTT${trimmed.slice(6)}`;
   }
 
   // ASS/SSA subtitle format
@@ -82,7 +81,9 @@ function convert(input: string): string {
       // Skip signs/songs and positioned karaoke or drawing-only subtitles.
       if (
         !/^default$/i.test(style) &&
-        /(sign|song|karaoke|romaji|kanji|credit|title|typeset|^op|^ed|_op|_ed)/i.test(style)
+        /(sign|song|karaoke|romaji|kanji|credit|title|typeset|^op|^ed|_op|_ed)/i.test(
+          style,
+        )
       ) {
         continue;
       }
@@ -99,9 +100,7 @@ function convert(input: string): string {
 
       if (!caption) continue;
 
-      output.push(
-        `${toVttTime(start)} --> ${toVttTime(end)}\n${caption}\n`,
-      );
+      output.push(`${toVttTime(start)} --> ${toVttTime(end)}\n${caption}\n`);
     }
 
     return output.join("\n");
@@ -118,9 +117,7 @@ function convert(input: string): string {
     if (timeIndex < 0) continue;
 
     const timing = lines[timeIndex].trim();
-    const match = timing.match(
-      /^(\S+)\s+-->\s+(\S+)(.*)$/,
-    );
+    const match = timing.match(/^(\S+)\s+-->\s+(\S+)(.*)$/);
 
     if (!match) continue;
 
@@ -128,14 +125,14 @@ function convert(input: string): string {
     const end = toVttTime(match[2]);
     const settings = match[3] || "";
     const captionLines = lines
-      .filter((_, index) => index !== timeIndex && !/^\s*\d+\s*$/.test(lines[index]))
+      .filter(
+        (_, index) => index !== timeIndex && !/^\s*\d+\s*$/.test(lines[index]),
+      )
       .filter((line) => !/^\s*(?:WEBVTT|NOTE)\s*$/i.test(line));
 
     if (!captionLines.some((line) => line.trim())) continue;
 
-    output.push(
-      `${start} --> ${end}${settings}\n${captionLines.join("\n")}\n`,
-    );
+    output.push(`${start} --> ${end}${settings}\n${captionLines.join("\n")}\n`);
   }
 
   return output.join("\n");
@@ -175,11 +172,10 @@ export async function GET(req: Request) {
       });
     }
 
-    const source = await result.response.text();
-
-    if (source.length > 6_000_000) {
-      return new Response("subtitle too large", { status: 502 });
-    }
+    const source = await readResponseText(result.response, {
+      maxBytes: 6_000_000,
+      timeoutMs: 15_000,
+    });
 
     return new Response(convert(source), {
       headers: {
@@ -189,8 +185,13 @@ export async function GET(req: Request) {
         "x-content-type-options": "nosniff",
       },
     });
-  } catch {
-    return new Response("upstream fetch failed", { status: 502 });
+  } catch (error) {
+    return new Response(
+      error instanceof Error && error.message === "upstream_body_too_large"
+        ? "subtitle too large"
+        : "upstream fetch failed",
+      { status: 502 },
+    );
   }
 }
 
