@@ -166,10 +166,6 @@ function UserSettingsModal({
         lang: form.mediaTitlePreferredLang.value,
       });
 
-      await userSettingsActions.setAdultContentCookie({
-        isEnabled: `${form.showAdultContent.checked}`,
-      });
-
       await userSettingsActions.setSubtitleLanguageCookie({
         lang: form.language.value,
       });
