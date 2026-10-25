@@ -80,6 +80,7 @@ export default function VideoPlayer({
   const playerRef = useRef<any>(null);
   const progressRef = useRef({ time: initialTime, duration: 0 });
   const resumeRef = useRef(false);
+  const appliedSubtitleSelectionRef = useRef<string | null>(null);
   const recoveryRef = useRef({
     network: 0,
     media: 0,
@@ -191,61 +192,67 @@ export default function VideoPlayer({
   }
 
   const sourceId = `${data?.provider || "provider"}:${streamType}:${source || embedSource || ""}`;
-  const subtitleTracks = useMemo(() => {
-    const subs: any[] = Array.isArray(data?.subtitles)
-      ? data.subtitles.filter(
-          (track: any) =>
-            typeof track?.url === "string" && track.url.trim().length > 0,
-        )
-      : [];
+  const subtitleOptions = useMemo(
+    () =>
+      Array.isArray(data?.subtitles)
+        ? data.subtitles.filter(
+            (track: any) =>
+              typeof track?.url === "string" && track.url.trim().length > 0,
+          )
+        : [],
+    [data?.subtitles],
+  );
+  const normaliseLanguage = (value: unknown) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "-");
+  const preferredLanguage = normaliseLanguage(subtitleLanguage);
+  const preferredSubtitleIndex = subtitleOptions.findIndex((track: any) => {
+    const lang = normaliseLanguage(track.lang);
+    const label = normaliseLanguage(track.label);
 
-    const normalise = (value: unknown) =>
-      String(value ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/_/g, "-");
-
-    const preferredLanguage = normalise(subtitleLanguage);
-
-    const preferredIndex = subs.findIndex((track: any) => {
-      const lang = normalise(track.lang);
-      const label = normalise(track.label);
-
-      return (
-        preferredLanguage !== "" &&
-        (lang === preferredLanguage ||
-          label === preferredLanguage ||
-          lang.startsWith(`${preferredLanguage}-`) ||
-          preferredLanguage.startsWith(`${lang}-`) ||
-          label.includes(preferredLanguage))
-      );
-    });
-
-    const englishIndex = subs.findIndex(
-      (track: any) =>
-        /\benglish\b/i.test(track.label || "") ||
-        /^en(?:[-_]|$)/i.test(track.lang || ""),
+    return (
+      preferredLanguage !== "" &&
+      (lang === preferredLanguage ||
+        label === preferredLanguage ||
+        lang.startsWith(`${preferredLanguage}-`) ||
+        preferredLanguage.startsWith(`${lang}-`) ||
+        label.includes(preferredLanguage))
     );
-
-    const defaultIndex =
-      preferredIndex >= 0
-        ? preferredIndex
-        : englishIndex >= 0
-          ? englishIndex
+  });
+  const englishSubtitleIndex = subtitleOptions.findIndex(
+    (track: any) =>
+      /\benglish\b/i.test(track.label || "") ||
+      /^en(?:[-_]|$)/i.test(track.lang || ""),
+  );
+  const defaultSubtitleIndex =
+    subtitleOptions.length === 0
+      ? -1
+      : preferredSubtitleIndex >= 0
+        ? preferredSubtitleIndex
+        : englishSubtitleIndex >= 0
+          ? englishSubtitleIndex
           : 0;
-
-    return subs.map((track: any, index: number) => (
-      <Track
-        key={`${track.url}-${index}`}
-        src={track.url}
-        kind="subtitles"
-        type="vtt"
-        label={track.label || track.lang || `Subtitle ${index + 1}`}
-        lang={track.lang || "en"}
-        default={index === defaultIndex}
-      />
-    ));
-  }, [data?.subtitles, subtitleLanguage]);
+  const defaultSubtitleKey =
+    defaultSubtitleIndex >= 0
+      ? `${sourceId}:${subtitleOptions[defaultSubtitleIndex]?.url || defaultSubtitleIndex}`
+      : "";
+  const subtitleTracks = useMemo(
+    () =>
+      subtitleOptions.map((track: any, index: number) => (
+        <Track
+          key={`${track.url}-${index}`}
+          src={track.url}
+          kind="subtitles"
+          type="vtt"
+          label={track.label || track.lang || `Subtitle ${index + 1}`}
+          lang={track.lang || "en"}
+          default={index === defaultSubtitleIndex}
+        />
+      )),
+    [subtitleOptions, defaultSubtitleIndex],
+  );
 
   const persist = () => {
     const value = progressRef.current;
@@ -274,13 +281,46 @@ export default function VideoPlayer({
     };
   }, [anilistId, episode, audio, title]);
   const canPlay = () => {
-    if (resumeRef.current || !playerRef.current) return;
+    const player = playerRef.current;
+    if (!player) return;
+
+    if (
+      defaultSubtitleIndex >= 0 &&
+      appliedSubtitleSelectionRef.current !== defaultSubtitleKey
+    ) {
+      const preferredTrack = subtitleOptions[defaultSubtitleIndex];
+      const preferredLanguage = normaliseLanguage(preferredTrack?.lang);
+      const preferredLabel = normaliseLanguage(
+        preferredTrack?.label || preferredTrack?.lang,
+      );
+      const textTracks = Array.from(player.textTracks || []) as TextTrack[];
+      const track =
+        textTracks.find((candidate) => {
+          const language = normaliseLanguage(candidate.language);
+          const label = normaliseLanguage(candidate.label);
+
+          return (
+            (preferredLanguage !== "" &&
+              (language === preferredLanguage ||
+                language.startsWith(`${preferredLanguage}-`) ||
+                preferredLanguage.startsWith(`${language}-`))) ||
+            (preferredLabel !== "" && label === preferredLabel)
+          );
+        }) || textTracks[defaultSubtitleIndex];
+
+      if (track) {
+        track.mode = "showing";
+        appliedSubtitleSelectionRef.current = defaultSubtitleKey;
+      }
+    }
+
+    if (resumeRef.current) return;
     resumeRef.current = true;
     const saved = getProgress(anilistId);
     const time =
       initialTime ||
       (saved && shouldResume(saved.time, saved.duration) ? saved.time : 0);
-    if (time > 0) playerRef.current.currentTime = time;
+    if (time > 0) player.currentTime = time;
   };
   const providerSetup = (event: any) => {
     const provider = event.detail;
