@@ -80,6 +80,7 @@ export default function VideoPlayer({
   const playerRef = useRef<any>(null);
   const progressRef = useRef({ time: initialTime, duration: 0 });
   const resumeRef = useRef(false);
+  const appliedSubtitleSelectionRef = useRef<string | null>(null);
   const recoveryRef = useRef({
     network: 0,
     media: 0,
@@ -108,20 +109,24 @@ export default function VideoPlayer({
                   .slice(0, 25),
               )
               .join("/");
-            return `#${i}:${t.label}:${t.mode} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
+            return `#${i}:${t.label}:${t.mode} default=${t.default} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
           })
           .join(" ; ");
       } catch (e: any) {
         tracks = "err " + e.message;
       }
       const cap = document.querySelector("media-captions, .vds-captions");
-      const media = pl.querySelector?.("video") as HTMLVideoElement | null;
+      const media = (pl.querySelector?.("video") ||
+        document.querySelector("video")) as HTMLVideoElement | null;
+      const nativeTrack = media?.textTracks?.[0];
+      const nativeTrackElement = (media?.querySelector("track") ||
+        document.querySelector("track")) as HTMLTrackElement | null;
       const durationValue = media?.duration ?? pl.state?.duration;
       const duration = Number(durationValue);
       const durationLabel = Number.isFinite(duration)
         ? duration.toFixed(1)
         : String(durationValue ?? "unknown");
-      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} duration=${durationLabel} ready=${media?.readyState ?? "?"} network=${media?.networkState ?? "?"} media-error=${media?.error?.code ?? "none"} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
+      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} native-t=${Number(media?.currentTime ?? 0).toFixed(1)} duration=${durationLabel} ready=${media?.readyState ?? "?"} network=${media?.networkState ?? "?"} native-track=${nativeTrack?.mode ?? "?"}/${nativeTrack?.cues?.length ?? "null"}/${nativeTrack?.activeCues?.length ?? 0} default=${nativeTrackElement?.default ?? false} media-error=${media?.error?.code ?? "none"} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
       last = renders.current;
       setDbg((all) => [...(all || []).slice(-40), line]);
     }, 1000);
@@ -191,61 +196,67 @@ export default function VideoPlayer({
   }
 
   const sourceId = `${data?.provider || "provider"}:${streamType}:${source || embedSource || ""}`;
-  const subtitleTracks = useMemo(() => {
-    const subs: any[] = Array.isArray(data?.subtitles)
-      ? data.subtitles.filter(
-          (track: any) =>
-            typeof track?.url === "string" && track.url.trim().length > 0,
-        )
-      : [];
+  const subtitleOptions = useMemo(
+    () =>
+      Array.isArray(data?.subtitles)
+        ? data.subtitles.filter(
+            (track: any) =>
+              typeof track?.url === "string" && track.url.trim().length > 0,
+          )
+        : [],
+    [data?.subtitles],
+  );
+  const normaliseLanguage = (value: unknown) =>
+    String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, "-");
+  const preferredLanguage = normaliseLanguage(subtitleLanguage);
+  const preferredSubtitleIndex = subtitleOptions.findIndex((track: any) => {
+    const lang = normaliseLanguage(track.lang);
+    const label = normaliseLanguage(track.label);
 
-    const normalise = (value: unknown) =>
-      String(value ?? "")
-        .trim()
-        .toLowerCase()
-        .replace(/_/g, "-");
-
-    const preferredLanguage = normalise(subtitleLanguage);
-
-    const preferredIndex = subs.findIndex((track: any) => {
-      const lang = normalise(track.lang);
-      const label = normalise(track.label);
-
-      return (
-        preferredLanguage !== "" &&
-        (lang === preferredLanguage ||
-          label === preferredLanguage ||
-          lang.startsWith(`${preferredLanguage}-`) ||
-          preferredLanguage.startsWith(`${lang}-`) ||
-          label.includes(preferredLanguage))
-      );
-    });
-
-    const englishIndex = subs.findIndex(
-      (track: any) =>
-        /\benglish\b/i.test(track.label || "") ||
-        /^en(?:[-_]|$)/i.test(track.lang || ""),
+    return (
+      preferredLanguage !== "" &&
+      (lang === preferredLanguage ||
+        label === preferredLanguage ||
+        lang.startsWith(`${preferredLanguage}-`) ||
+        preferredLanguage.startsWith(`${lang}-`) ||
+        label.includes(preferredLanguage))
     );
-
-    const defaultIndex =
-      preferredIndex >= 0
-        ? preferredIndex
-        : englishIndex >= 0
-          ? englishIndex
+  });
+  const englishSubtitleIndex = subtitleOptions.findIndex(
+    (track: any) =>
+      /\benglish\b/i.test(track.label || "") ||
+      /^en(?:[-_]|$)/i.test(track.lang || ""),
+  );
+  const defaultSubtitleIndex =
+    subtitleOptions.length === 0
+      ? -1
+      : preferredSubtitleIndex >= 0
+        ? preferredSubtitleIndex
+        : englishSubtitleIndex >= 0
+          ? englishSubtitleIndex
           : 0;
-
-    return subs.map((track: any, index: number) => (
-      <Track
-        key={`${track.url}-${index}`}
-        src={track.url}
-        kind="subtitles"
-        type="vtt"
-        label={track.label || track.lang || `Subtitle ${index + 1}`}
-        lang={track.lang || "en"}
-        default={index === defaultIndex}
-      />
-    ));
-  }, [data?.subtitles, subtitleLanguage]);
+  const defaultSubtitleKey =
+    defaultSubtitleIndex >= 0
+      ? `${sourceId}:${subtitleOptions[defaultSubtitleIndex]?.url || defaultSubtitleIndex}`
+      : "";
+  const subtitleTracks = useMemo(
+    () =>
+      subtitleOptions.map((track: any, index: number) => (
+        <Track
+          key={`${track.url}-${index}`}
+          src={track.url}
+          kind="subtitles"
+          type="vtt"
+          label={track.label || track.lang || `Subtitle ${index + 1}`}
+          lang={track.lang || "en"}
+          default={index === defaultSubtitleIndex}
+        />
+      )),
+    [subtitleOptions, defaultSubtitleIndex],
+  );
 
   const persist = () => {
     const value = progressRef.current;
@@ -274,13 +285,63 @@ export default function VideoPlayer({
     };
   }, [anilistId, episode, audio, title]);
   const canPlay = () => {
-    if (resumeRef.current || !playerRef.current) return;
+    const player = playerRef.current;
+    if (!player) return;
+
+    if (
+      defaultSubtitleIndex >= 0 &&
+      appliedSubtitleSelectionRef.current !== defaultSubtitleKey
+    ) {
+      const preferredTrack = subtitleOptions[defaultSubtitleIndex];
+      const preferredLanguage = normaliseLanguage(preferredTrack?.lang);
+      const preferredLabel = normaliseLanguage(
+        preferredTrack?.label || preferredTrack?.lang,
+      );
+      const playerTracks = Array.from(player.textTracks || []) as TextTrack[];
+      const matchingTrackIndex = playerTracks.findIndex((candidate) => {
+        const language = normaliseLanguage(candidate.language);
+        const label = normaliseLanguage(candidate.label);
+
+        return (
+          (preferredLanguage !== "" &&
+            (language === preferredLanguage ||
+              language.startsWith(`${preferredLanguage}-`) ||
+              preferredLanguage.startsWith(`${language}-`))) ||
+          (preferredLabel !== "" && label === preferredLabel)
+        );
+      });
+      const trackIndex =
+        matchingTrackIndex >= 0
+          ? matchingTrackIndex
+          : defaultSubtitleIndex < playerTracks.length
+            ? defaultSubtitleIndex
+            : -1;
+
+      if (trackIndex >= 0) {
+        const remote = player.remoteControl;
+        if (typeof remote?.changeTextTrackMode === "function") {
+          remote.changeTextTrackMode(trackIndex, "showing");
+        } else {
+          playerTracks[trackIndex].mode = "showing";
+        }
+        appliedSubtitleSelectionRef.current = defaultSubtitleKey;
+      }
+    }
+
+    if (resumeRef.current) return;
     resumeRef.current = true;
     const saved = getProgress(anilistId);
     const time =
       initialTime ||
       (saved && shouldResume(saved.time, saved.duration) ? saved.time : 0);
-    if (time > 0) playerRef.current.currentTime = time;
+    if (time > 0) {
+      const remote = player.remoteControl;
+      if (typeof remote?.seek === "function") {
+        remote.seek(time);
+      } else {
+        player.currentTime = time;
+      }
+    }
   };
   const providerSetup = (event: any) => {
     const provider = event.detail;
@@ -373,9 +434,20 @@ export default function VideoPlayer({
             onProviderSetup={providerSetup}
             onCanPlay={canPlay}
             onTimeUpdate={(event: any) => {
-              progressRef.current.time = event.currentTarget.currentTime;
-              progressRef.current.duration = event.currentTarget.duration || 0;
-              const current = event.currentTarget.currentTime;
+              const media = document.querySelector("video");
+              const current = Number(
+                event?.detail?.currentTime ??
+                  event?.currentTarget?.currentTime ??
+                  media?.currentTime ??
+                  0,
+              );
+              const duration = Number(
+                event?.currentTarget?.duration ?? media?.duration ?? 0,
+              );
+              progressRef.current.time = current;
+              progressRef.current.duration = Number.isFinite(duration)
+                ? duration
+                : 0;
               const rangeKey =
                 ["intro", "recap", "outro"].find((key) =>
                   isSkipVisible(current, skipRanges?.[key]),
@@ -390,7 +462,15 @@ export default function VideoPlayer({
               }
             }}
             onDurationChange={(event: any) => {
-              progressRef.current.duration = event.currentTarget.duration || 0;
+              const duration = Number(
+                event?.detail ??
+                  event?.currentTarget?.duration ??
+                  document.querySelector("video")?.duration ??
+                  0,
+              );
+              progressRef.current.duration = Number.isFinite(duration)
+                ? duration
+                : 0;
             }}
             onPlay={() => {
               setPlaying(true);
