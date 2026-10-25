@@ -1,7 +1,7 @@
 const ENDPOINT = "https://graphql.anilist.co";
 const FIELDS = `id idMal isAdult format status popularity seasonYear episodes title{romaji english} coverImage{large}`;
 const AIRING_QUERY = `query($page:Int,$from:Int,$to:Int){Page(page:$page,perPage:50){pageInfo{hasNextPage} airingSchedules(airingAt_greater:$from,airingAt_lesser:$to,sort:TIME_DESC){episode airingAt media{id idMal isAdult format status popularity seasonYear episodes title{romaji english} coverImage{large}}}}}`;
-const RECENT_QUERY = `query($page:Int,$since:Int){Page(page:$page,perPage:50){pageInfo{hasNextPage} media(type:ANIME,sort:START_DATE_DESC,startDate_greater:$since,status_in:[RELEASING,FINISHED]){id idMal isAdult format status popularity seasonYear episodes title{romaji english} coverImage{large} startDate{year month day}}}}`;
+const RECENT_QUERY = `query($page:Int,$since:FuzzyDateInt){Page(page:$page,perPage:50){pageInfo{hasNextPage} media(type:ANIME,sort:START_DATE_DESC,startDate_greater:$since,status_in:[RELEASING,FINISHED]){id idMal isAdult format status popularity seasonYear episodes title{romaji english} coverImage{large} startDate{year month day}}}}`;
 const MEDIA_QUERY = `query($ids:[Int]){Page(page:1,perPage:50){media(id_in:$ids,type:ANIME){${FIELDS}}}}`;
 const RESOLVE_QUERY = `query($ids:[Int]){Page(page:1,perPage:50){media(idMal_in:$ids,type:ANIME){id idMal}}}`;
 let requestTimes: number[] = [];
