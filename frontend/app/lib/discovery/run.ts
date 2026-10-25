@@ -1,0 +1,4 @@
+import { waitUntil } from "@vercel/functions";
+import { NextResponse } from "next/server";
+import { acquireLock, finishRun } from "./lock";
+export async function runDiscovery(request: Request, job: string, work: () => Promise<any>) { const locked = await acquireLock(job, 4); if (!locked) return NextResponse.json({ error: "locked" }, { status: 409 }); const execute = async () => { try { const stats = await work(); await finishRun(job, { ok: true, stats, windowEnd: new Date().toISOString() }); return stats; } catch (error) { await finishRun(job, { ok: false, stats: {}, error: error instanceof Error ? error.message : String(error) }); throw error; } }; if (new URL(request.url).searchParams.get("wait") === "1") { try { return NextResponse.json(await execute()); } catch { return NextResponse.json({ error: "cron_failed" }, { status: 500 }); } } waitUntil(execute().catch(() => undefined)); return NextResponse.json({ started: true, job }, { status: 202 }); }
