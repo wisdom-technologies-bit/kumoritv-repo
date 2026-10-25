@@ -109,20 +109,24 @@ export default function VideoPlayer({
                   .slice(0, 25),
               )
               .join("/");
-            return `#${i}:${t.label}:${t.mode} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
+            return `#${i}:${t.label}:${t.mode} default=${t.default} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
           })
           .join(" ; ");
       } catch (e: any) {
         tracks = "err " + e.message;
       }
       const cap = document.querySelector("media-captions, .vds-captions");
-      const media = pl.querySelector?.("video") as HTMLVideoElement | null;
+      const media = (pl.querySelector?.("video") ||
+        document.querySelector("video")) as HTMLVideoElement | null;
+      const nativeTrack = media?.textTracks?.[0];
+      const nativeTrackElement = (media?.querySelector("track") ||
+        document.querySelector("track")) as HTMLTrackElement | null;
       const durationValue = media?.duration ?? pl.state?.duration;
       const duration = Number(durationValue);
       const durationLabel = Number.isFinite(duration)
         ? duration.toFixed(1)
         : String(durationValue ?? "unknown");
-      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} duration=${durationLabel} ready=${media?.readyState ?? "?"} network=${media?.networkState ?? "?"} media-error=${media?.error?.code ?? "none"} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
+      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} native-t=${Number(media?.currentTime ?? 0).toFixed(1)} duration=${durationLabel} ready=${media?.readyState ?? "?"} network=${media?.networkState ?? "?"} native-track=${nativeTrack?.mode ?? "?"}/${nativeTrack?.cues?.length ?? "null"}/${nativeTrack?.activeCues?.length ?? 0} default=${nativeTrackElement?.default ?? false} media-error=${media?.error?.code ?? "none"} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
       last = renders.current;
       setDbg((all) => [...(all || []).slice(-40), line]);
     }, 1000);
@@ -293,9 +297,8 @@ export default function VideoPlayer({
       const preferredLabel = normaliseLanguage(
         preferredTrack?.label || preferredTrack?.lang,
       );
-      const textTracks = Array.from(player.textTracks || []) as TextTrack[];
-      const track =
-        textTracks.find((candidate) => {
+      const findTrackIndex = (tracks: TextTrack[]) => {
+        const matchingIndex = tracks.findIndex((candidate) => {
           const language = normaliseLanguage(candidate.language);
           const label = normaliseLanguage(candidate.label);
 
@@ -306,10 +309,38 @@ export default function VideoPlayer({
                 preferredLanguage.startsWith(`${language}-`))) ||
             (preferredLabel !== "" && label === preferredLabel)
           );
-        }) || textTracks[defaultSubtitleIndex];
+        });
 
-      if (track) {
-        track.mode = "showing";
+        return matchingIndex >= 0
+          ? matchingIndex
+          : defaultSubtitleIndex < tracks.length
+            ? defaultSubtitleIndex
+            : -1;
+      };
+      const playerTracks = Array.from(player.textTracks || []) as TextTrack[];
+      const playerTrackIndex = findTrackIndex(playerTracks);
+      const video = (player.querySelector?.("video") ||
+        document.querySelector("video")) as HTMLVideoElement | null;
+      const nativeTracks = Array.from(video?.textTracks || []);
+      const nativeTrackIndex = findTrackIndex(nativeTracks);
+      let selectionApplied = false;
+
+      if (nativeTrackIndex >= 0) {
+        nativeTracks[nativeTrackIndex].mode = "showing";
+        selectionApplied = true;
+      }
+
+      if (playerTrackIndex >= 0) {
+        const remote = player.remoteControl;
+        if (typeof remote?.changeTextTrackMode === "function") {
+          remote.changeTextTrackMode(playerTrackIndex, "showing");
+        } else {
+          playerTracks[playerTrackIndex].mode = "showing";
+        }
+        selectionApplied = true;
+      }
+
+      if (selectionApplied) {
         appliedSubtitleSelectionRef.current = defaultSubtitleKey;
       }
     }
@@ -413,9 +444,20 @@ export default function VideoPlayer({
             onProviderSetup={providerSetup}
             onCanPlay={canPlay}
             onTimeUpdate={(event: any) => {
-              progressRef.current.time = event.currentTarget.currentTime;
-              progressRef.current.duration = event.currentTarget.duration || 0;
-              const current = event.currentTarget.currentTime;
+              const media = document.querySelector("video");
+              const current = Number(
+                event?.detail?.currentTime ??
+                  event?.currentTarget?.currentTime ??
+                  media?.currentTime ??
+                  0,
+              );
+              const duration = Number(
+                event?.currentTarget?.duration ?? media?.duration ?? 0,
+              );
+              progressRef.current.time = current;
+              progressRef.current.duration = Number.isFinite(duration)
+                ? duration
+                : 0;
               const rangeKey =
                 ["intro", "recap", "outro"].find((key) =>
                   isSkipVisible(current, skipRanges?.[key]),
@@ -430,7 +472,15 @@ export default function VideoPlayer({
               }
             }}
             onDurationChange={(event: any) => {
-              progressRef.current.duration = event.currentTarget.duration || 0;
+              const duration = Number(
+                event?.detail ??
+                  event?.currentTarget?.duration ??
+                  document.querySelector("video")?.duration ??
+                  0,
+              );
+              progressRef.current.duration = Number.isFinite(duration)
+                ? duration
+                : 0;
             }}
             onPlay={() => {
               setPlaying(true);
