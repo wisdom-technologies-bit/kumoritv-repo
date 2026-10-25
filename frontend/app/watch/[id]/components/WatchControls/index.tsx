@@ -78,7 +78,11 @@ export default function WatchControls({
         </button>
       </div>
 
-      <div className={styles.segment} role="group" aria-label="Servers">
+      <div
+        className={`${styles.segment} ${styles.serverSegment}`}
+        role="group"
+        aria-label="Servers"
+      >
         {servers.map((server) => (
           <button
             key={server.id}

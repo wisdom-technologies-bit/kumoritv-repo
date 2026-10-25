@@ -102,7 +102,11 @@ export default function VideoPlayer({
         tracks = (Array.from(pl.textTracks) as any[])
           .map((t, i) => {
             const act = Array.from(t.activeCues || [])
-              .map((c: any) => String(c.text).replace(/<[^>]+>/g, "").slice(0, 25))
+              .map((c: any) =>
+                String(c.text)
+                  .replace(/<[^>]+>/g, "")
+                  .slice(0, 25),
+              )
               .join("/");
             return `#${i}:${t.label}:${t.mode} cues=${t.cues ? t.cues.length : "null"} act="${act}"`;
           })
@@ -111,7 +115,13 @@ export default function VideoPlayer({
         tracks = "err " + e.message;
       }
       const cap = document.querySelector("media-captions, .vds-captions");
-      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
+      const media = pl.querySelector?.("video") as HTMLVideoElement | null;
+      const durationValue = media?.duration ?? pl.state?.duration;
+      const duration = Number(durationValue);
+      const durationLabel = Number.isFinite(duration)
+        ? duration.toFixed(1)
+        : String(durationValue ?? "unknown");
+      const line = `t=${Number(pl.state?.currentTime ?? 0).toFixed(1)} duration=${durationLabel} ready=${media?.readyState ?? "?"} network=${media?.networkState ?? "?"} media-error=${media?.error?.code ?? "none"} renders/s=${renders.current - last} paused=${pl.state?.paused} ${tracks} | dom="${(cap?.textContent || "").slice(0, 25)}"`;
       last = renders.current;
       setDbg((all) => [...(all || []).slice(-40), line]);
     }, 1000);
@@ -124,7 +134,7 @@ export default function VideoPlayer({
   const [visibleSkip, setVisibleSkip] = useState<any>(null);
   const visibleSkipKeyRef = useRef<string | null>(null);
   const data: any = watch.status === "ready" ? watch.data : null;
-  const error = watch.status === "error" ? watch.errorMessage : playbackError;
+  let error = watch.status === "error" ? watch.errorMessage : playbackError;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -142,56 +152,100 @@ export default function VideoPlayer({
   }, [data]);
 
   const stream = data?.stream || data?.source || data;
-  const source = stream?.url || stream?.src;
-  const sourceId = `${data?.provider || "provider"}:${source || ""}`;
+  const streamType = String(stream?.type || "")
+    .trim()
+    .toLowerCase();
+  const candidateSource = stream?.url || stream?.src;
+  const sourceType =
+    streamType === "mp4"
+      ? ("video/mp4" as const)
+      : streamType === "hls"
+        ? ("application/x-mpegurl" as const)
+        : null;
+  const source =
+    sourceType && typeof candidateSource === "string" ? candidateSource : null;
+  const embedCandidate = stream?.embedUrl || candidateSource;
+  const embedSource =
+    streamType === "embed" && typeof embedCandidate === "string"
+      ? (() => {
+          try {
+            const url = new URL(embedCandidate.trim());
+            return url.protocol === "https:" && !url.username && !url.password
+              ? url.toString()
+              : null;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+
+  if (data && streamType === "embed" && !embedSource && !error) {
+    error = "invalid_embed_url";
+  } else if (
+    data &&
+    streamType !== "embed" &&
+    (!sourceType || !source) &&
+    !error
+  ) {
+    error = "unsupported_stream_type";
+  }
+
+  const sourceId = `${data?.provider || "provider"}:${streamType}:${source || embedSource || ""}`;
   const subtitleTracks = useMemo(() => {
-  const subs: any[] = Array.isArray(data?.subtitles)
-    ? data.subtitles.filter(
-        (track: any) =>
-          typeof track?.url === "string" && track.url.trim().length > 0,
-      )
-    : [];
+    const subs: any[] = Array.isArray(data?.subtitles)
+      ? data.subtitles.filter(
+          (track: any) =>
+            typeof track?.url === "string" && track.url.trim().length > 0,
+        )
+      : [];
 
-  const normalise = (value: unknown) =>
-    String(value ?? "").trim().toLowerCase().replace(/_/g, "-");
+    const normalise = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, "-");
 
-  const preferredLanguage = normalise(subtitleLanguage);
+    const preferredLanguage = normalise(subtitleLanguage);
 
-  const preferredIndex = subs.findIndex((track: any) => {
-    const lang = normalise(track.lang);
-    const label = normalise(track.label);
+    const preferredIndex = subs.findIndex((track: any) => {
+      const lang = normalise(track.lang);
+      const label = normalise(track.label);
 
-    return (
-      preferredLanguage !== "" &&
-      (lang === preferredLanguage ||
-        label === preferredLanguage ||
-        lang.startsWith(`${preferredLanguage}-`) ||
-        preferredLanguage.startsWith(`${lang}-`) ||
-        label.includes(preferredLanguage))
+      return (
+        preferredLanguage !== "" &&
+        (lang === preferredLanguage ||
+          label === preferredLanguage ||
+          lang.startsWith(`${preferredLanguage}-`) ||
+          preferredLanguage.startsWith(`${lang}-`) ||
+          label.includes(preferredLanguage))
+      );
+    });
+
+    const englishIndex = subs.findIndex(
+      (track: any) =>
+        /\benglish\b/i.test(track.label || "") ||
+        /^en(?:[-_]|$)/i.test(track.lang || ""),
     );
-  });
 
-  const englishIndex = subs.findIndex(
-    (track: any) =>
-      /\benglish\b/i.test(track.label || "") ||
-      /^en(?:[-_]|$)/i.test(track.lang || ""),
-  );
+    const defaultIndex =
+      preferredIndex >= 0
+        ? preferredIndex
+        : englishIndex >= 0
+          ? englishIndex
+          : 0;
 
-  const defaultIndex =
-    preferredIndex >= 0 ? preferredIndex : englishIndex >= 0 ? englishIndex : 0;
-
-  return subs.map((track: any, index: number) => (
-    <Track
-      key={`${track.url}-${index}`}
-      src={track.url}
-      kind="subtitles"
-      type="vtt"
-      label={track.label || track.lang || `Subtitle ${index + 1}`}
-      lang={track.lang || "en"}
-      default={index === defaultIndex}
-    />
-  ));
-}, [data?.subtitles, subtitleLanguage]);
+    return subs.map((track: any, index: number) => (
+      <Track
+        key={`${track.url}-${index}`}
+        src={track.url}
+        kind="subtitles"
+        type="vtt"
+        label={track.label || track.lang || `Subtitle ${index + 1}`}
+        lang={track.lang || "en"}
+        default={index === defaultIndex}
+      />
+    ));
+  }, [data?.subtitles, subtitleLanguage]);
 
   const persist = () => {
     const value = progressRef.current;
@@ -297,15 +351,22 @@ export default function VideoPlayer({
             }}
           />
         )}
-        {data && source && (
+        {data && embedSource && (
+          <iframe
+            key={sourceId}
+            className={styles.embedFrame}
+            src={embedSource}
+            title={`Ep. ${episode} - ${title} embedded video`}
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        )}
+        {data && source && sourceType && (
           <MediaPlayer
             ref={playerRef}
             key={sourceId}
-            src={{
-              src: source,
-              type:
-                stream?.type === "mp4" ? "video/mp4" : "application/x-mpegurl",
-            }}
+            src={{ src: source, type: sourceType }}
             title={`Ep. ${episode} - ${title}`}
             playsInline
             load="eager"
@@ -315,13 +376,16 @@ export default function VideoPlayer({
               progressRef.current.time = event.currentTarget.currentTime;
               progressRef.current.duration = event.currentTarget.duration || 0;
               const current = event.currentTarget.currentTime;
-              const rangeKey = ["intro", "recap", "outro"].find((key) =>
-                isSkipVisible(current, skipRanges?.[key]),
-              ) ?? null;
+              const rangeKey =
+                ["intro", "recap", "outro"].find((key) =>
+                  isSkipVisible(current, skipRanges?.[key]),
+                ) ?? null;
               if (visibleSkipKeyRef.current !== rangeKey) {
                 visibleSkipKeyRef.current = rangeKey;
                 setVisibleSkip(
-                  rangeKey ? { key: rangeKey, range: skipRanges?.[rangeKey] } : null,
+                  rangeKey
+                    ? { key: rangeKey, range: skipRanges?.[rangeKey] }
+                    : null,
                 );
               }
             }}
@@ -377,7 +441,7 @@ export default function VideoPlayer({
             </div>
           </div>
         )}
-        {visibleSkip && (
+        {visibleSkip && source && (
           <button
             type="button"
             onClick={() => {
@@ -395,12 +459,12 @@ export default function VideoPlayer({
                 : "Ending"}
           </button>
         )}
-        {waiting && (
+        {waiting && source && (
           <span className="sr-only" role="status">
             Buffering
           </span>
         )}
-        {!playing && !waiting && data && (
+        {!playing && !waiting && data && source && (
           <span className="sr-only">Paused</span>
         )}
       </div>

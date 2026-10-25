@@ -64,6 +64,22 @@
   border-radius: 0 6px 6px 0;
   margin-left: -1px;
 }
+.serverSegment {
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.serverSegment .button,
+.serverSegment .button:first-child,
+.serverSegment .button:last-child {
+  border-radius: 6px;
+  flex: 0 0 auto;
+  margin-left: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
 .selected {
   background: var(--brand-color);
 }
@@ -122,6 +138,9 @@
 @media (max-width: 600px) {
   .wrapper {
     gap: 8px 10px;
+  }
+  .serverSegment {
+    flex-basis: 100%;
   }
   .status {
     width: 100%;
