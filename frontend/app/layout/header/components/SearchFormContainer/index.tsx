@@ -11,7 +11,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth } from "@/app/firebaseApp";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
-import { getUserAdultContentPreference } from "@/app/lib/user/userDocFetchOptions";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 
 const framerMotionshowUpMotion = {
@@ -61,14 +60,6 @@ function SearchFormContainer() {
 
     setSearchResultsList(null);
 
-    let isAdultContentAllowed = false;
-
-    if (user)
-      isAdultContentAllowed = await getUserAdultContentPreference(user.uid);
-
-    if (anilistUser)
-      isAdultContentAllowed = anilistUser.options.displayAdultContent;
-
     if (searchInputValue.trim().length < 3) {
       setSearchResultsList([]);
       return;
@@ -81,7 +72,7 @@ function SearchFormContainer() {
 
     const searchResults = await anilist.getSeachResults({
       query: searchInputValue,
-      showAdultContent: isAdultContentAllowed,
+      showAdultContent: undefined,
       signal: controller.signal,
     });
 

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
-import { mediaUrl, recentAiringTopUp, rows, sitemapDoc, sitemapUrl, watchUrl, xmlResponse } from "@/app/lib/sitemap";
+import { mediaUrl, recentAiringTopUp, rows, sitemapDoc, sitemapUrl, watchUrl, xmlResponse } from "@/lib/sitemap";
+export const dynamic = "force-dynamic";
 export const revalidate = 600;
 export async function GET() { const cutoff = new Date(Date.now() - 48 * 3600000).toISOString(); const dbRows = await rows("airing_episodes", "anilist_id,episode,aired_at", "aired_at", (q) => q.gte("aired_at", cutoff)); const topUp = await recentAiringTopUp(); const map = new Map<string, any>(); for (const row of dbRows) { map.set(`${row.anilist_id}-${row.episode}`, row); } for (const item of topUp) map.set(`${item.media.id}-${item.episode}`, { anilist_id: item.media.id, episode: item.episode, aired_at: new Date(item.airingAt * 1000).toISOString(), media: item.media }); const urls: string[] = []; for (const row of map.values()) { urls.push(sitemapUrl(watchUrl(row.anilist_id, row.episode), row.aired_at, "always", "0.9")); urls.push(sitemapUrl(mediaUrl(row.anilist_id), row.aired_at)); } return xmlResponse(sitemapDoc(urls), 600); }

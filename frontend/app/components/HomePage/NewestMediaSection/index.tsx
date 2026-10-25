@@ -13,7 +13,6 @@ import {
 import anilist from "@/app/api/anilist/anilistMedias";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth } from "@/app/firebaseApp";
-import { getUserAdultContentPreference } from "@/app/lib/user/userDocFetchOptions";
 
 export const revalidate = 1800; // revalidate the data every 30 min
 
@@ -30,12 +29,6 @@ function NewestMediaSection({
 
   const [currDaysValue] = useState<number>(1);
 
-  const [isAdultContentSetToShow, setIsAdultContentSetToShow] = useState<
-    boolean | null
-  >(null);
-
-  const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
 
   useEffect(() => {
     if (!initialAnimesList[0]) {
@@ -48,19 +41,6 @@ function NewestMediaSection({
     setIsLoading(false);
   }, [currDaysValue]);
 
-  async function getUserPreference() {
-    if (!user) return false;
-
-    if (isAdultContentSetToShow) return isAdultContentSetToShow;
-
-    const userAdultContentPreference: boolean =
-      await getUserAdultContentPreference(user.uid);
-
-    setIsAdultContentSetToShow(userAdultContentPreference);
-
-    return userAdultContentPreference;
-  }
-
   const handleParameterToFetchNewData: (parameter: 0 | 7 | 30) => void = async (
     parameter: 0 | 7 | 30
   ) => {
@@ -70,14 +50,12 @@ function NewestMediaSection({
   async function fetchMediaByDaysRange(days: 0 | 7 | 30) {
     setIsLoading(true);
 
-    const isAdultContentAllowed = await getUserPreference();
-
     const listAnimesByDaysRange = await anilist
       .getReleasingByDaysRange({
         type: "ANIME",
         days: days,
         perPage: 11,
-        showAdultContent: isAdultContentAllowed,
+        showAdultContent: undefined,
       })
       .then((res) =>
         (res as AiringMediaResult[])

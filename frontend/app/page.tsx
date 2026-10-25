@@ -67,7 +67,7 @@ export default async function Home() {
   const listAnimesReleasingByPopularity = await anilist
     .getNewReleases({
       type: "ANIME",
-      showAdultContent: false,
+      showAdultContent: undefined,
       status: "RELEASING",
       page: 1,
       perPage: 12,
@@ -82,9 +82,7 @@ export default async function Home() {
       sort: "SCORE_DESC",
       accessToken: userAuthorization,
     })
-    .then((res) =>
-      (res as MediaData[]).filter((item) => item.isAdult == false)
-    );
+    .then((res) => res as MediaData[]);
 
   const randomIndexForBannerSection = listMediasToBannerSection.length
     ? Math.min(Math.floor(Math.random() * listMediasToBannerSection.length), listMediasToBannerSection.length - 1)
