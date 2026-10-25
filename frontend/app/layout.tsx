@@ -9,6 +9,7 @@ import Script from "next/script";
 import StoreProvider from "./lib/redux/StoreProvider";
 import LoadingPageContainer from "./components/LoadingContainer";
 import GoogleAnalytics from "./googleAnalytics";
+import { AuthProvider } from "./lib/supabase/AuthProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -57,13 +58,15 @@ export default function RootLayout({
       <body className={inter.className}>
         <Analytics /> {/* Vercel Analytics - Has use limit */}
         <StoreProvider>
-          <Header />
+          <AuthProvider>
+            <Header />
 
-          <NextTopLoader color="var(--brand-color)" showSpinner={false} />
+            <NextTopLoader color="var(--brand-color)" showSpinner={false} />
 
-          {children || <LoadingPageContainer />}
+            {children || <LoadingPageContainer />}
 
-          <Footer />
+            <Footer />
+          </AuthProvider>
         </StoreProvider>
       </body>
     </html>

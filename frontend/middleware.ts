@@ -1,39 +1,27 @@
-import axios from 'axios'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import axios from "axios";
+import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-// handles user selected language for media title, adult content...
 export async function middleware(request: NextRequest) {
-
-    // Related to Anilist Login Access
-    if (request.nextUrl.hash) {
-
-        const anilistAccessHashOnURL = request.nextUrl.hash
-
-        const accessTokenHash = anilistAccessHashOnURL.slice(anilistAccessHashOnURL.search(/\baccess_token=\b/), anilistAccessHashOnURL.search(/\b&token_type\b/)).slice(13)
-        const tokenType = anilistAccessHashOnURL.slice(anilistAccessHashOnURL.search(/\btoken_type=\b/), anilistAccessHashOnURL.search(/\b&expires_in\b/)).slice(11)
-        const expiresIn = anilistAccessHashOnURL.slice(anilistAccessHashOnURL.search(/\bexpires_in=\b/)).slice(11)
-
-        axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`, {
-            accessToken: accessTokenHash,
-            tokenType: tokenType,
-            expiresIn: expiresIn
-        })
-
-    }
-
-    const tokenOnCookie = request.cookies.get("access_token")
-
-    const accessToken = tokenOnCookie ? JSON.parse(tokenOnCookie.value!).accessToken : undefined
-
-    if (request.nextUrl.pathname.startsWith("/watch")) {
-
-    }
-
-    if (accessToken) {
-        return NextResponse.next({ headers: { authorization: `Bearer ${accessToken}` } })
-    }
-
-    return NextResponse.next()
-
+  let response = NextResponse.next({ request });
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (url && key) {
+    const supabase = createServerClient(url, key, { cookies: { getAll: () => request.cookies.getAll(), setAll: (cookies) => cookies.forEach(({ name, value, options }) => { response.cookies.set(name, value, options); }) } });
+    await supabase.auth.getUser();
+  }
+  if (request.nextUrl.hash) {
+    const hash = request.nextUrl.hash;
+    const accessToken = hash.match(/access_token=([^&]+)/)?.[1];
+    const tokenType = hash.match(/token_type=([^&]+)/)?.[1];
+    const expiresIn = hash.match(/expires_in=([^&]+)/)?.[1];
+    if (accessToken) void axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`, { accessToken, tokenType, expiresIn });
+  }
+  const raw = request.cookies.get("access_token")?.value;
+  if (raw) {
+    try { response.headers.set("authorization", `Bearer ${JSON.parse(raw).accessToken}`); } catch {}
+  }
+  return response;
 }
+
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };

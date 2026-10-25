@@ -13,3 +13,17 @@ export function createClient(): SupabaseClient<Database> | null {
     setAll: (items) => { try { items.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {} },
   }});
 }
+
+export async function getUser() {
+  const client = createClient();
+  if (!client) return null;
+  const { data: { user } } = await client.auth.getUser();
+  return user;
+}
+
+export async function requireUser() {
+  const user = await getUser();
+  if (!user) throw new Error("Unauthorized");
+  return user;
+}
+
