@@ -20,12 +20,12 @@ export async function generateMetadata({
   const media = await getMediaInfo({ id: Number(params.id) });
   if (!media) return { title: "Not Found | KumoriTV" };
   const ep = Number(searchParams.ep || 1);
+  const title = media.title.userPreferred || `Anime ${params.id}`;
+  const site = process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app";
   return {
-    title:
-      media.format === "MOVIE"
-        ? `Watch ${media.title.userPreferred} | KumoriTV`
-        : `Episode ${ep} - ${media.title.userPreferred} | KumoriTV`,
-    description: clean(media.description),
+    title: `Watch ${title} Episode ${ep} - KumoriTV`,
+    description: `Watch ${title} episode ${ep} on KumoriTV.`,
+    alternates: { canonical: `${site}/watch/${params.id}?ep=${ep}` },
   };
 }
 export default async function WatchPage({

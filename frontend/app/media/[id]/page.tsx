@@ -24,6 +24,7 @@ export async function generateMetadata({ params }: { params: { id: number } }) {
   if (!mediaData) return { title: "Not Found | KumoriTV" };
 
   return {
+    alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app"}/media/${params.id}` },
     title: `${mediaData.title.english || mediaData.title.romaji || mediaData.title.native} | KumoriTV`,
     description:
       mediaData.description ||
