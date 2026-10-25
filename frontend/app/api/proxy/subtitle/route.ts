@@ -1,99 +1,206 @@
 import { verifyToken, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
 import { safeFetch } from "@/app/lib/proxy/upstream";
+
 export const runtime = "edge";
-const time = (s: string) => {
-  const m = s.replace(",", ".").match(/(\d+):(\d\d):(\d\d)[.,](\d\d\d)/);
-  return m ? `${m[1].padStart(2, "0")}:${m[2]}:${m[3]}.${m[4]}` : s;
-};
-function convert(text: string, fmt?: string) {
-  const x = text.replace(/^\uFEFF/, "");
-  if (/^\s*WEBVTT/i.test(x))
-    return x.startsWith("WEBVTT") ? x : `WEBVTT\n\n${x}`;
-  if (/\[Events\]/i.test(x) || /\[Script Info\]/i.test(x)) {
-    const lines = x.split(/\r?\n/),
-      out = ["WEBVTT", ""],
-      format = (
-        lines.find((l) => /^Format:/i.test(l)) ||
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
-      )
-        .split(":")[1]
-        .split(",")
-        .map((s) => s.trim().toLowerCase()),
-      si = format.indexOf("start"),
-      ei = format.indexOf("end"),
-      sti = format.indexOf("style"),
-      ti = format.lastIndexOf("text");
-    for (const l of lines.filter((l) => /^Dialogue:/i.test(l))) {
-      const v = l.slice(l.indexOf(":") + 1).split(","),
-        start = v[si],
-        end = v[ei],
-        style = v[sti] || "Default";
+
+function toVttTime(value: string): string {
+  const input = value.trim();
+
+  // ASS/SSA timestamps: H:MM:SS.cc
+  const ass = input.match(/^(\d+):(\d{2}):(\d{2})[.](\d{1,3})$/);
+  if (ass) {
+    const hours = ass[1].padStart(2, "0");
+    const minutes = ass[2];
+    const seconds = ass[3];
+    const fraction = ass[4].padEnd(3, "0").slice(0, 3);
+    return `${hours}:${minutes}:${seconds}.${fraction}`;
+  }
+
+  // SRT timestamps: HH:MM:SS,mmm or HH:MM:SS.mmm
+  const srt = input.match(/^(\d+):(\d{2}):(\d{2})[,.](\d{1,3})$/);
+  if (srt) {
+    return `${srt[1].padStart(2, "0")}:${srt[2]}:${srt[3]}.${srt[4].padEnd(3, "0")}`;
+  }
+
+  return input;
+}
+
+function convert(input: string): string {
+  const text = input.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+
+  // Already WebVTT
+  if (/^\s*WEBVTT(?:\s|$)/i.test(text)) {
+    return text.trimStart().startsWith("WEBVTT")
+      ? text
+      : `WEBVTT\n\n${text.trimStart()}`;
+  }
+
+  // ASS/SSA subtitle format
+  if (/^\s*\[Script Info\]/im.test(text) || /^\s*\[Events\]/im.test(text)) {
+    const lines = text.split("\n");
+    const formatLine = lines.find((line) => /^\s*Format\s*:/i.test(line));
+    const fields = (
+      formatLine?.slice(formatLine.indexOf(":") + 1) ||
+      "Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
+    )
+      .split(",")
+      .map((field) => field.trim().toLowerCase());
+
+    const startIndex = fields.indexOf("start");
+    const endIndex = fields.indexOf("end");
+    const styleIndex = fields.indexOf("style");
+    const textIndex = fields.lastIndexOf("text");
+
+    if (startIndex < 0 || endIndex < 0 || textIndex < 0) {
+      return "WEBVTT\n\n";
+    }
+
+    const output = ["WEBVTT", ""];
+
+    for (const line of lines) {
+      if (!/^\s*Dialogue\s*:/i.test(line)) continue;
+
+      const raw = line.slice(line.indexOf(":") + 1).trim();
+      const values: string[] = [];
+      let remaining = raw;
+
+      // Split only the fields before Text so commas inside captions survive.
+      for (let i = 0; i < fields.length - 1; i++) {
+        const comma = remaining.indexOf(",");
+        if (comma < 0) break;
+        values.push(remaining.slice(0, comma));
+        remaining = remaining.slice(comma + 1);
+      }
+      values.push(remaining);
+
+      const start = values[startIndex]?.trim();
+      const end = values[endIndex]?.trim();
+      const style = values[styleIndex]?.trim() || "Default";
+
+      if (!start || !end || values.length < fields.length) continue;
+
+      // Skip signs/songs and positioned karaoke or drawing-only subtitles.
       if (
-        !start ||
-        !end ||
-        (/(sign|song|karaoke|romaji|kanji|credit|title|typeset|^op|^ed|_op|_ed)/i.test(
-          style,
-        ) &&
-          !/^default$/i.test(style)) ||
-        /\\p[1-9]/.test(l)
-      )
+        !/^default$/i.test(style) &&
+        /(sign|song|karaoke|romaji|kanji|credit|title|typeset|^op|^ed|_op|_ed)/i.test(style)
+      ) {
         continue;
-      const body = v
-        .slice(ti)
-        .join(",")
+      }
+
+      let caption = values[textIndex] || "";
+
+      if (/\\p[1-9]/i.test(caption)) continue;
+
+      caption = caption
         .replace(/\{[^}]*\}/g, "")
         .replace(/\\[Nn]/g, "\n")
         .replace(/\\h/g, " ")
         .trim();
-      if (body) out.push(`${time(start)} --> ${time(end)}\n${body}\n`);
+
+      if (!caption) continue;
+
+      output.push(
+        `${toVttTime(start)} --> ${toVttTime(end)}\n${caption}\n`,
+      );
     }
-    return out.join("\n");
+
+    return output.join("\n");
   }
-  const blocks = x.split(/\r?\n\s*\r?\n/).filter(Boolean),
-    out = ["WEBVTT", ""];
-  for (const b of blocks) {
-    const ls = b.split(/\r?\n/),
-      ts = ls.find((l) => l.includes("-->"));
-    if (!ts) continue;
-    out.push(
-      `${ts.replace(/(\d\d:\d\d:\d\d),(\d{3})/g, "$1.$2")}\n${ls.filter((l) => l !== ts && !/^\d+$/.test(l)).join("\n")}\n`,
+
+  // SRT or another timestamped subtitle format
+  const output = ["WEBVTT", ""];
+  const blocks = text.split(/\n\s*\n/).filter((block) => block.trim());
+
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    const timeIndex = lines.findIndex((line) => line.includes("-->"));
+
+    if (timeIndex < 0) continue;
+
+    const timing = lines[timeIndex].trim();
+    const match = timing.match(
+      /^(\S+)\s+-->\s+(\S+)(.*)$/,
+    );
+
+    if (!match) continue;
+
+    const start = toVttTime(match[1]);
+    const end = toVttTime(match[2]);
+    const settings = match[3] || "";
+    const captionLines = lines
+      .filter((_, index) => index !== timeIndex && !/^\s*\d+\s*$/.test(lines[index]))
+      .filter((line) => !/^\s*(?:WEBVTT|NOTE)\s*$/i.test(line));
+
+    if (!captionLines.some((line) => line.trim())) continue;
+
+    output.push(
+      `${start} --> ${end}${settings}\n${captionLines.join("\n")}\n`,
     );
   }
-  return out.join("\n");
+
+  return output.join("\n");
 }
+
 export async function GET(req: Request) {
-  const t = new URL(req.url).searchParams.get("t");
-  if (!t) return new Response("invalid or expired token", { status: 403 });
-  let p: any;
+  const token = new URL(req.url).searchParams.get("t");
+
+  if (!token) {
+    return new Response("invalid or expired token", { status: 403 });
+  }
+
+  let payload: Awaited<ReturnType<typeof verifyToken>>;
+
   try {
-    p = await verifyToken(t);
-  } catch (e) {
+    payload = await verifyToken(token);
+  } catch (error) {
     return new Response(
-      e instanceof ProxyNotConfiguredError
+      error instanceof ProxyNotConfiguredError
         ? "proxy_not_configured"
         : "invalid or expired token",
-      { status: e instanceof ProxyNotConfiguredError ? 500 : 403 },
+      {
+        status: error instanceof ProxyNotConfiguredError ? 500 : 403,
+      },
     );
   }
+
   try {
-    const r = await safeFetch(p.u, { headers: p.h, timeoutMs: 15000 });
-    if (!r.response.ok)
-      return new Response(`upstream status ${r.response.status}`, {
+    const result = await safeFetch(payload.u, {
+      headers: payload.h,
+      timeoutMs: 15000,
+    });
+
+    if (!result.response.ok) {
+      return new Response(`upstream status ${result.response.status}`, {
         status: 502,
       });
-    const text = await r.response.text();
-    if (text.length > 6_000_000)
+    }
+
+    const source = await result.response.text();
+
+    if (source.length > 6_000_000) {
       return new Response("subtitle too large", { status: 502 });
-    return new Response(convert(text, p.f), {
+    }
+
+    return new Response(convert(source), {
       headers: {
         "content-type": "text/vtt; charset=utf-8",
         "cache-control": "public, max-age=86400",
+        "access-control-allow-origin": "*",
+        "x-content-type-options": "nosniff",
       },
     });
   } catch {
     return new Response("upstream fetch failed", { status: 502 });
   }
 }
+
 export function OPTIONS() {
-  return new Response(null, { status: 204 });
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "*",
+    },
+  });
 }
