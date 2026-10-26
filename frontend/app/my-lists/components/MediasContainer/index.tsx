@@ -1,8 +1,8 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
@@ -53,12 +53,12 @@ export default function MediasContainer({
   );
 
   const auth = getFirebaseAuth();
-  const [user, loading] = useAuthState(auth);
+  const { user, loading } = useUser();
 
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    if (user?.uid || anilistUser?.id) getUserLists();
+    if (user?.id || anilistUser?.id) getUserLists();
   }, [user, anilistUser]);
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function MediasContainer({
   async function getUserLists() {
     const db = getFirebaseDb();
     const userDoc = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     ).then((doc) => doc.data());
 
     const keepWatchingListFromObjectToArray = Object.keys(

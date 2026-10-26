@@ -1,9 +1,9 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import CheckSvg from "@/public/assets/check-circle.svg";
 import CheckFillSvg from "@/public/assets/check-circle-fill.svg";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import {
   FieldPath,
   arrayRemove,
@@ -43,7 +43,7 @@ export default function MarkChapterAsReadButton({
 
   const auth = getFirebaseAuth();
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -60,7 +60,7 @@ export default function MarkChapterAsReadButton({
     if (!user && !anilistUser) return;
 
     const userDoc = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     );
 
     const chapterRead = userDoc
@@ -84,7 +84,7 @@ export default function MarkChapterAsReadButton({
     };
 
     await setDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`),
+      doc(db, "users", user?.id || `${anilistUser?.id}`),
       {
         chaptersRead: {
           [mediaId]: !wasChapterRead

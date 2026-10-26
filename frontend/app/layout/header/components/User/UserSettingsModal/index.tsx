@@ -8,18 +8,18 @@ import UserSvg from "@/public/assets/person-circle.svg";
 import VideoSvg from "@/public/assets/play.svg";
 import SourceSvg from "@/public/assets/globe2.svg";
 import DeleteSvg from "@/public/assets/trash.svg";
-import { useAuthState } from "react-firebase-hooks/auth";
 import {
   deleteDoc,
   deleteField,
   doc,
   getDoc,
-  getFirestore,
   updateDoc,
 } from "firebase/firestore";
-import { Auth, deleteUser, updateProfile } from "firebase/auth";
 import Image from "next/image";
-import { initFirebase, getFirebaseDb, getFirebaseAuth } from "@/app/firebaseApp";
+import { getFirebaseDb } from "@/app/firebaseApp";
+import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
+import type { Auth } from "firebase/auth";
 import * as contantOptions from "./contantOptions";
 import anilistUsersActions from "@/app/api/anilist/anilistUsers";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
@@ -71,7 +71,14 @@ function UserSettingsModal({
   anilistUser,
   newUser,
 }: SettingsTypes) {
-  const [user] = useAuthState(auth);
+  const { user: supabaseUser, profile } = useUser();
+  const client = createBrowserSupabaseClient();
+  const user = supabaseUser ? {
+    uid: supabaseUser.id,
+    photoURL: profile?.avatar_url || supabaseUser.user_metadata?.avatar_url || null,
+    displayName: profile?.display_name || profile?.username || supabaseUser.user_metadata?.username || null,
+    isAnonymous: supabaseUser.is_anonymous ?? false,
+  } : null;
   const [userAnilist] = useState<UserAnilist | undefined | null>(anilistUser);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -121,29 +128,33 @@ function UserSettingsModal({
 
     const form = e.target as HTMLFormElement;
 
-    if (newImgProfileSelected || form.username.value) {
-      if (user) {
-        await updateProfile(user, {
-          photoURL: newImgProfileSelected || user.photoURL,
-          displayName: user.isAnonymous
-            ? user.displayName
-            : form.username.value.slice(0, 40) || user.displayName,
-        });
-      }
+    if (user && client) {
+      const username = user.isAnonymous ? profile?.username : String(form.username.value || "").slice(0, 40);
+      const { error } = await (client as any).from("profiles").update({
+        username: username || profile?.username,
+        display_name: user.isAnonymous ? "Anonymous" : username || profile?.display_name,
+        avatar_url: newImgProfileSelected || profile?.avatar_url,
+        title_language: form.mediaTitlePreferredLang.value,
+        subtitle_language: form.language.value,
+        preferred_audio: form.source.value,
+        video_quality: form.quality.value,
+        auto_next: form.autoNextEpisode.checked,
+        auto_skip: form.skipIntroAndOutro.checked,
+      }).eq("id", user.uid);
+      if (error) throw error;
     }
 
-    await updateDoc(doc(db, "users", user ? user.uid : `${userAnilist!.id}`), {
+    if (userAnilist) await updateDoc(doc(db, "users", `${userAnilist.id}`), {
       mediaTitlePreferredLang: form.mediaTitlePreferredLang.value,
       videoSubtitleLanguage: form.language.value,
       videoSource: form.source.value,
       videoQuality: form.quality.value,
-      showAdultContent: form.showAdultContent.checked,
       autoNextEpisode: form.autoNextEpisode.checked,
       autoSkipIntroAndOutro: form.skipIntroAndOutro.checked,
       playVideoWhenMediaAndVideoIdMismatch: form.playVideoWhenMismatch.checked,
-    }).then(
-      onClick as ((value: void) => void | PromiseLike<void>) | null | undefined
-    );
+    });
+
+    await (onClick as ((value: void) => void | PromiseLike<void>) | null | undefined)?.();
 
     if (userAnilist) {
       await anilistUsersActions.handleMediaTitleLanguageSetting({
@@ -221,17 +232,15 @@ function UserSettingsModal({
         break;
 
       case "account":
-        await deleteDoc(doc(db, "users", userId));
-
         if (user) {
-          await deleteUser(user);
-          auth.signOut();
+          const response = await fetch("/api/account/delete", { method: "POST" });
+          if (!response.ok) throw new Error("Unable to delete account");
+          await client?.auth.signOut();
+        } else {
+          await deleteDoc(doc(db, "users", userId));
+          removeCookies();
         }
-
-        removeCookies();
-
-        window.location.reload();
-
+        window.location.href = "/";
         break;
 
       default:

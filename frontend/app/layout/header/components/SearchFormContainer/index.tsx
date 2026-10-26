@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { FormEvent, useEffect, useRef, useState } from "react";
 import styles from "./component.module.css";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
@@ -8,7 +9,6 @@ import LoadingIcon from "@/public/assets/ripple-1s-200px.svg";
 import SearchIcon from "@/public/assets/search.svg";
 import CloseSvg from "@/public/assets/x.svg";
 import { AnimatePresence, motion } from "framer-motion";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth } from "@/app/firebaseApp";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
 import { useAppSelector } from "@/app/lib/redux/hooks";
@@ -49,7 +49,7 @@ function SearchFormContainer() {
   const searchAbortController = useRef<AbortController | null>(null);
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 

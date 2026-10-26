@@ -1,3 +1,4 @@
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import * as AddToFavourites from "@/app/components/Buttons/AddToFavourites";
 import { userMediaStatusEntries } from "@/app/lib/dataConstants/anilist";
 import anilistUsers from "@/app/api/anilist/anilistUsers";
@@ -9,7 +10,6 @@ import {
 } from "@/app/lib/user/userDocUpdateOptions";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { getFirestore, getDoc, doc } from "firebase/firestore";
-import { useAuthState } from "react-firebase-hooks/auth";
 import FavouriteSvgFill from "@/public/assets/heart-fill.svg";
 import FavouriteSvg from "@/public/assets/heart.svg";
 import CheckFillSvg from "@/public/assets/check-circle-fill.svg";
@@ -66,7 +66,7 @@ export default function OptionsPanel({
 
   const auth = getFirebaseAuth();
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -80,7 +80,7 @@ export default function OptionsPanel({
   async function isMediaOnUserDoc() {
     if (!user) return;
 
-    const userMediaLists = await getDoc(doc(db, "users", user.uid)).then(
+    const userMediaLists = await getDoc(doc(db, "users", user.id)).then(
       (res) => res.data()?.mediaListSavedByStatus
     );
 
@@ -121,7 +121,7 @@ export default function OptionsPanel({
     // Remove from curr list
     if (mediaStatus) {
       const userMediaList = await getDoc(
-        doc(db, "users", user?.uid || `${anilistUser?.id}`)
+        doc(db, "users", user?.id || `${anilistUser?.id}`)
       ).then(
         (res) => res.data()?.mediaListSavedByStatus[mediaStatus.toLowerCase()]
       );
@@ -133,7 +133,7 @@ export default function OptionsPanel({
       await removeMediaOnListByStatus({
         newListFiltered: filterNewList,
         status: mediaStatus,
-        userId: user?.uid || `${anilistUser?.id}`,
+        userId: user?.id || `${anilistUser?.id}`,
       });
 
       // Remove from anilist list
@@ -156,7 +156,7 @@ export default function OptionsPanel({
 
     await updateUserMediaListByStatus({
       status: status,
-      userId: user?.uid || `${anilistUser?.id}`,
+      userId: user?.id || `${anilistUser?.id}`,
       mediaData: mediaData,
     });
 

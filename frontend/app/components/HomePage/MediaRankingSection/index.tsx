@@ -1,5 +1,6 @@
-// @ts-nocheck
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
+// @ts-nocheck
 import React, { useState } from "react";
 import styles from "./component.module.css";
 import * as MediaCard from "../../MediaCards/MediaCard";
@@ -7,7 +8,6 @@ import * as MediaCardClientSide from "../../MediaCards/MediaCard/variantClientSi
 import NavigationButtons from "../../NavigationButtons";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import anilist from "@/app/api/anilist/anilistMedias";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth } from "@/app/firebaseApp";
 import { AnimatePresence, motion } from "framer-motion";
 import simulateRange from "@/app/lib/simulateRange";
@@ -36,7 +36,7 @@ function MediaRankingSection({
   const [currFormat, setCurrFormat] = useState<"ANIME" | "MANGA">("ANIME");
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   async function getUserPreference() {
     if (!user) return false;
@@ -44,7 +44,7 @@ function MediaRankingSection({
     if (isAdultContentSetToShow) return isAdultContentSetToShow;
 
     const userAdultContentPreference: boolean =
-      await getUserAdultContentPreference(user.uid);
+      await getUserAdultContentPreference(user.id);
 
     setIsAdultContentSetToShow(userAdultContentPreference);
 
