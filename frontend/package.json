@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "NEXT_SHARP_PATH=\"/tmp/node_modules/sharp\" next start",
     "lint": "next lint",
-    "test": "node --import tsx --test 'app/lib/discovery/**/*.test.ts'"
+    "test": "node --import tsx --test 'app/lib/**/*.test.ts'"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.2.5",

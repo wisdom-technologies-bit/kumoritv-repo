@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/app/lib/supabase/server";
+import { createAuthServerClient } from "@/app/lib/supabase/auth-server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
 export async function POST() {
-  const client = await createClient();
+  const client = await createAuthServerClient();
   if (!client) return NextResponse.json({ error: "Auth is not configured" }, { status: 503 });
   const { data: { user }, error } = await client.auth.getUser();
   if (error || !user || user.is_anonymous) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

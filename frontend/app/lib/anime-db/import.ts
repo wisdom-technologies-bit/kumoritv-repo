@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { createClient } from "@/app/lib/supabase/server";
+import { getAnimeWithEpisodesFromClient } from "./queries";
 import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import { getEpisodes, AnivexaTimeout, AnivexaHttpError } from "@/app/lib/anivexa/client";
 import { mergeEpisodes } from "@/app/lib/anivexa/merge";
@@ -14,7 +15,7 @@ function release() { active--; waiters.shift()?.(); }
 export async function importAnime(anilistId: number, options: { source:"open"|"queue"|"cron"; snapshot?: Snapshot; timeoutMs?: number; refreshMetadata?: boolean }): Promise<ImportResult> {
   if (!Number.isInteger(anilistId) || anilistId <= 0 || anilistId >= 1_000_000_000) return { status:"error", episodes:0, message:"Invalid AniList ID" };
   const existing = flights.get(anilistId); if (existing) return existing;
-  const promise = (async () => { await slot(); try {
+  const promise = (async (): Promise<ImportResult> => { await slot(); try {
     const db: any = createAdminClient(); if (!db) return { status:"error", episodes:0, message:"Supabase admin client unavailable" };
     const { data: current } = await db.from("anime").select("*").eq("anilist_id", anilistId).maybeSingle();
     const refreshMetadata = options.refreshMetadata ?? options.source === "open";
@@ -31,4 +32,7 @@ export async function importAnime(anilistId: number, options: { source:"open"|"q
   } catch (error) { return { status:"error", episodes:0, message:error instanceof Error ? error.message : String(error) }; } finally { release(); flights.delete(anilistId); } })(); flights.set(anilistId, promise); return promise;
 }
 export function needsImport(row: AnimeRow | null): boolean { if (!row || !row.episodes_synced_at) return true; const age=Date.now()-new Date(row.last_checked_at || row.episodes_synced_at).getTime(); if (row.not_found_on_anivexa) return age > (row.status === "RELEASING" ? 6 : 24)*3600000; if (!row.has_streams) return age > 3600000; return age > (row.status === "RELEASING" || row.status === "NOT_YET_RELEASED" ? 30*60000 : 7*86400000); }
-export async function getAnimeWithEpisodes(anilistId: number) { const db:any=createClient(); if (!db) return null; const {data:anime}=await db.from("anime").select("*").eq("anilist_id",anilistId).maybeSingle(); if (!anime) return null; const {data:episodes}=await db.from("episodes").select("*").eq("anilist_id",anilistId).order("episode_number"); return { anime, episodes:episodes || [] }; }
+export async function getAnimeWithEpisodes(anilistId: number) {
+  const db = createClient();
+  return await getAnimeWithEpisodesFromClient(db, anilistId);
+}
