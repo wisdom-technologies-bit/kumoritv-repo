@@ -1,3 +1,4 @@
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 "user client";
 import React, { useState } from "react";
 import styles from "./component.module.css";
@@ -13,7 +14,6 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { initFirebase } from "@/app/firebaseApp";
 import { AnimatePresence, motion } from "framer-motion";
 import fallbackImg from "@/public/photo-placeholder.jpg";
@@ -37,13 +37,13 @@ function KeepWatchingEpisodeInfo({
 
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
   async function removeFromKeepWatching() {
     await setDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`),
+      doc(db, "users", user?.id || `${anilistUser?.id}`),
       {
         keepWatching: {
           [animeInfo.id]: arrayRemove(...[animeInfo]),

@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
@@ -8,7 +9,6 @@ import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { motion } from "framer-motion";
 import { updateUserFavouriteMedias } from "@/app/lib/user/userDocUpdateOptions";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
@@ -41,7 +41,7 @@ export function Button({
 
   const auth = getFirebaseAuth();
 
-  const [user, loading] = useAuthState(auth);
+  const { user, loading } = useUser();
 
   const db = getFirebaseDb();
 
@@ -75,7 +75,7 @@ export function Button({
     };
 
     await updateUserFavouriteMedias({
-      userId: user?.uid || `${anilistUser?.id}`,
+      userId: user?.id || `${anilistUser?.id}`,
       mediaData: favouriteMediaData,
       isAddAction: !wasAddedToFavourites,
     });
@@ -95,7 +95,7 @@ export function Button({
     if (!user && !anilistUser) return;
 
     const userDoc = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     );
 
     const wasMediaIdFoundOnDoc = userDoc

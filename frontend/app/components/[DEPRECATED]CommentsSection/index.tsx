@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import {
@@ -14,7 +15,6 @@ import {
 } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import {
   MediaData,
   MediaDataFullInfo,
@@ -50,7 +50,7 @@ export default function CommentsSection({
 
   const auth = getFirebaseAuth();
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 

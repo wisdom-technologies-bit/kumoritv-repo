@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useId, useState } from "react";
 import Image from "next/image";
 import styles from "./component.module.css";
@@ -27,7 +28,6 @@ import {
   where,
 } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import WriteCommentFormContainer from "../WriteCommentForm";
 import {
@@ -83,7 +83,7 @@ export default function Comment({
   const dispatch = useAppDispatch();
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -131,7 +131,7 @@ export default function Comment({
   ) {
     if (!user && !anilistUser) return dispatch(toggleShowLoginModalValue());
 
-    if (user?.isAnonymous) return;
+    if (user?.is_anonymous) return;
 
     const queryComment = await getCommentDoc();
 
@@ -178,7 +178,7 @@ export default function Comment({
         };
 
         await setDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             comments: {
               interacted: isActionSetToTrue
@@ -233,7 +233,7 @@ export default function Comment({
         };
 
         await setDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             comments: {
               interacted: isActionSetToTrue
@@ -282,7 +282,7 @@ export default function Comment({
     if (!user && !anilistUser) return; // bellow is just to check curr user interactions with this comment
 
     const userDoc = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     );
 
     const userInteractionWithCurrComment = userDoc
@@ -381,7 +381,7 @@ export default function Comment({
                   />
                 </button>
 
-                {(user?.uid || `${anilistUser?.id}`) == comment.userId.id && (
+                {(user?.id || `${anilistUser?.id}`) == comment.userId.id && (
                   <button
                     className={styles.delete_btn}
                     onClick={() => deleteCurrComment()}

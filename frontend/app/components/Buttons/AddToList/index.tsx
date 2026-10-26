@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import {
@@ -11,7 +12,6 @@ import {
 import { initFirebase } from "@/app/firebaseApp";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   removeMediaOnListByStatus,
@@ -50,7 +50,7 @@ export function Button({
 
   const auth = getFirebaseAuth();
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -64,7 +64,7 @@ export function Button({
   async function isMediaOnUserDoc() {
     if (!user) return;
 
-    const userMediaLists = await getDoc(doc(db, "users", user.uid)).then(
+    const userMediaLists = await getDoc(doc(db, "users", user.id)).then(
       (res) => res.data()?.mediaListSavedByStatus
     );
 
@@ -102,7 +102,7 @@ export function Button({
     );
 
     await setDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`),
+      doc(db, "users", user?.id || `${anilistUser?.id}`),
       {
         episodesWatched: {
           [mediaInfo.id]: action == "add" ? allEpisodes : null,
@@ -138,7 +138,7 @@ export function Button({
     // Remove from curr list
     if (mediaStatus) {
       const userMediaList = await getDoc(
-        doc(db, "users", user?.uid || `${anilistUser?.id}`)
+        doc(db, "users", user?.id || `${anilistUser?.id}`)
       ).then(
         (res) => res.data()?.mediaListSavedByStatus[mediaStatus.toLowerCase()]
       );
@@ -150,7 +150,7 @@ export function Button({
       await removeMediaOnListByStatus({
         newListFiltered: filterNewList,
         status: mediaStatus,
-        userId: user?.uid || `${anilistUser?.id}`,
+        userId: user?.id || `${anilistUser?.id}`,
       });
 
       // Remove from anilist list
@@ -171,7 +171,7 @@ export function Button({
 
     await updateUserMediaListByStatus({
       status: status,
-      userId: user?.uid || `${anilistUser?.id}`,
+      userId: user?.id || `${anilistUser?.id}`,
       mediaData: mediaData,
     });
 

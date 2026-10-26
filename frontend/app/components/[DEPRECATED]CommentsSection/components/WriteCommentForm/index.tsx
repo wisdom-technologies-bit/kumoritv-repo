@@ -1,3 +1,4 @@
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import styles from "./component.module.css";
 import { initFirebase } from "@/app/firebaseApp";
 import {
@@ -6,7 +7,6 @@ import {
 } from "@/app/ts/interfaces/anilistMediaData";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { FormEvent, useState } from "react";
-import { useAuthState } from "react-firebase-hooks/auth";
 import Image from "next/image";
 import {
   getFirestore,
@@ -60,7 +60,7 @@ export default function WriteCommentFormContainer({
 
   const auth = getFirebaseAuth();
 
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -88,9 +88,9 @@ export default function WriteCommentFormContainer({
     const commentTimestamp = Math.floor(new Date().getTime() / 1000.0);
 
     const completeCommentData = {
-      userId: doc(db, "users", user?.uid || `${anilistUser?.id}`),
-      username: user?.displayName || anilistUser?.name,
-      userPhoto: user?.photoURL || anilistUser?.avatar.medium,
+      userId: doc(db, "users", user?.id || `${anilistUser?.id}`),
+      username: user?.user_metadata?.username || anilistUser?.name,
+      userPhoto: user?.user_metadata?.avatar_url || anilistUser?.avatar.medium,
       createdAt: commentTimestamp,
       comment: commentText,
       isSpoiler: form.spoiler.checked,
@@ -103,9 +103,9 @@ export default function WriteCommentFormContainer({
     };
 
     const replyCommentData: ReplyComment = {
-      userId: doc(db, "users", user?.uid || `${anilistUser?.id}`),
-      username: user?.displayName || anilistUser?.name,
-      userPhoto: user?.photoURL || anilistUser?.avatar.medium,
+      userId: doc(db, "users", user?.id || `${anilistUser?.id}`),
+      username: user?.user_metadata?.username || anilistUser?.name,
+      userPhoto: user?.user_metadata?.avatar_url || anilistUser?.avatar.medium,
       createdAt: commentTimestamp,
       comment: commentText,
       isSpoiler: form.spoiler.checked,
@@ -160,7 +160,7 @@ export default function WriteCommentFormContainer({
       setWasCommentCreatedSuccessfully(true);
 
       await setDoc(
-        doc(db, "users", user?.uid || `${anilistUser?.id}`),
+        doc(db, "users", user?.id || `${anilistUser?.id}`),
         {
           comments: {
             written: arrayUnion(
@@ -210,10 +210,10 @@ export default function WriteCommentFormContainer({
       <div className={styles.img_container}>
         <Image
           src={
-            user?.photoURL || anilistUser?.avatar.medium || ProfileFallbackImg
+            user?.user_metadata?.avatar_url || anilistUser?.avatar.medium || ProfileFallbackImg
           }
           alt={
-            user?.displayName ||
+            user?.user_metadata?.username ||
             anilistUser?.name ||
             "User Not Logged In Profile Picture"
           }
@@ -229,7 +229,7 @@ export default function WriteCommentFormContainer({
       >
         <label>
           {(user || anilistUser) &&
-            `${isAReply ? `Reply as ${user?.displayName || anilistUser?.name}` : `Comment as ${user?.displayName || anilistUser?.name}`}`}
+            `${isAReply ? `Reply as ${user?.user_metadata?.username || anilistUser?.name}` : `Comment as ${user?.user_metadata?.username || anilistUser?.name}`}`}
           {!user && !anilistUser && "Please log in to comment"}
 
           <textarea
@@ -270,7 +270,7 @@ export default function WriteCommentFormContainer({
           type="submit"
           disabled={
             isLoadingHook ||
-            user?.isAnonymous ||
+            user?.is_anonymous ||
             currTextLength > inputCharLimit
           }
           whileTap={{ scale: 0.9 }}

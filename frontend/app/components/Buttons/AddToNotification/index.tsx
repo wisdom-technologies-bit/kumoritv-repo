@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
@@ -25,7 +26,6 @@ import {
   MediaData,
   MediaDataFullInfo,
 } from "@/app/ts/interfaces/anilistMediaData";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { motion } from "framer-motion";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
@@ -44,7 +44,7 @@ function AddToNotificationsButton({
 
   const auth = getFirebaseAuth();
 
-  const [user, loading] = useAuthState(auth);
+  const { user, loading } = useUser();
 
   const db = getFirebaseDb();
 
@@ -81,13 +81,13 @@ function AddToNotificationsButton({
           "notifications",
           `${mediaInfo.id}`,
           "usersAssigned",
-          user?.uid || `${anilistUser?.id}`
+          user?.id || `${anilistUser?.id}`
         )
       );
 
       // add Media Id to Notifications on User DOC
       await updateDoc(
-        doc(db, "users", user?.uid || `${anilistUser?.id}`),
+        doc(db, "users", user?.id || `${anilistUser?.id}`),
         {
           notifications: arrayRemove(
             ...[
@@ -154,10 +154,10 @@ function AddToNotificationsButton({
           "notifications",
           `${mediaInfo.id}`,
           "usersAssigned",
-          user?.uid || `${anilistUser?.id}`
+          user?.id || `${anilistUser?.id}`
         ),
         {
-          userRef: user?.uid || `${anilistUser?.id}`,
+          userRef: user?.id || `${anilistUser?.id}`,
         }
       );
     } else {
@@ -205,17 +205,17 @@ function AddToNotificationsButton({
           "notifications",
           `${mediaInfo.id}`,
           "usersAssigned",
-          user?.uid || `${anilistUser?.id}`
+          user?.id || `${anilistUser?.id}`
         ),
         {
-          userRef: user?.uid || `${anilistUser?.id}`,
+          userRef: user?.id || `${anilistUser?.id}`,
         }
       );
     }
 
     // Add Default Media Info to User Doc, so it keep track of which episode was last notified
     await updateDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`),
+      doc(db, "users", user?.id || `${anilistUser?.id}`),
       {
         notifications: arrayUnion(
           ...[
@@ -255,7 +255,7 @@ function AddToNotificationsButton({
 
     const mediaOnUserNotifications = query(
       collection(db, "notifications", `${mediaInfo.id}`, "usersAssigned"),
-      where("userRef", "==", `${user?.uid}` || `${anilistUser?.id}`)
+      where("userRef", "==", `${user?.id}` || `${anilistUser?.id}`)
     );
 
     const mediaNotificationDoc = await getDocs(mediaOnUserNotifications);

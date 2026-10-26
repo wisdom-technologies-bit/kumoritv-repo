@@ -1,4 +1,5 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { SetStateAction, useEffect, useState } from "react";
 import styles from "./component.module.css";
 import Link from "next/link";
@@ -18,7 +19,6 @@ import * as AddToFavourites from "../../Buttons/AddToFavourites";
 import parse from "html-react-parser";
 import ScoreRating from "../../DynamicAssets/ScoreRating";
 import MediaFormatIcon from "../../DynamicAssets/MediaFormatIcon";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { getFirebaseAuth } from "@/app/firebaseApp";
 import SwiperCarousel from "./swiperCarousel";
 import { SwiperSlide } from "swiper/react";
@@ -81,7 +81,7 @@ function NavigationThroughMedias({
   }, []);
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   async function getUserPreference() {
     if (!user) return false;
@@ -89,7 +89,7 @@ function NavigationThroughMedias({
     if (isAdultContentSetToShow) return isAdultContentSetToShow;
 
     const userAdultContentPreference: boolean =
-      await getUserAdultContentPreference(user.uid);
+      await getUserAdultContentPreference(user.id);
 
     setIsAdultContentSetToShow(userAdultContentPreference);
 

@@ -1,9 +1,9 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import BellFillSvg from "@/public/assets/bell-fill.svg";
 import BellSvg from "@/public/assets/bell.svg";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import {
   arrayRemove,
   arrayUnion,
@@ -52,7 +52,7 @@ function NotificationsContainer() {
   const anilistUser = useAppSelector((state) => state.UserInfo?.value);
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
   const db = getFirebaseDb();
 
   useEffect(() => {
@@ -103,7 +103,7 @@ function NotificationsContainer() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let userAssignedNotifications: any[] = [];
 
-    await getDoc(doc(db, "users", user?.uid || `${anilistUser?.id}`)).then(
+    await getDoc(doc(db, "users", user?.id || `${anilistUser?.id}`)).then(
       (res) => {
         userAssignedNotifications = res.data()?.notifications || [];
       }
@@ -289,7 +289,7 @@ function NotificationsContainer() {
 
     async function updateNotificationsOnLocal() {
       const notificationsOnUserDoc = await getDoc(
-        doc(db, "users", user?.uid || `${anilistUser?.id}`)
+        doc(db, "users", user?.id || `${anilistUser?.id}`)
       ).then((res) => res.data()?.notifications || []);
 
       localStorage.setItem(
@@ -313,7 +313,7 @@ function NotificationsContainer() {
 
         // removes older notication with previous data
         await updateDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             notifications: arrayRemove(
               ...[
@@ -338,7 +338,7 @@ function NotificationsContainer() {
 
         // then adds new data to media notification
         await updateDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             notifications: arrayUnion(
               ...[
@@ -366,7 +366,7 @@ function NotificationsContainer() {
       finishedMediasNotifications.map(async (mediaNotification) => {
         // removes older notication with previous data
         await updateDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             notifications: arrayRemove(...[mediaNotification]),
           } as unknown as FieldPath,
@@ -377,7 +377,7 @@ function NotificationsContainer() {
 
         // add new data to notification media
         await updateDoc(
-          doc(db, "users", user?.uid || `${anilistUser?.id}`),
+          doc(db, "users", user?.id || `${anilistUser?.id}`),
           {
             notifications: arrayUnion(...[mediaNotification]),
           } as unknown as FieldPath,

@@ -1,10 +1,10 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import SwiperCarouselContainer from "../../SwiperCarouselContainer";
 import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
 import KeepWatchingEpisodeInfo from "./components/KeepWatchingEpisodeInfo";
@@ -30,7 +30,7 @@ function KeepWatchingSection() {
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
   const auth = getFirebaseAuth();
-  const [user] = useAuthState(auth);
+  const { user } = useUser();
 
   const db = getFirebaseDb();
 
@@ -56,7 +56,7 @@ function KeepWatchingSection() {
 
   async function getWatchingList() {
     const userDoc = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     );
 
     const watchingList = userDoc.get("keepWatching");

@@ -1,9 +1,9 @@
 "use client";
+import { useUser } from "@/app/lib/supabase/AuthProvider";
 import Link from "next/link";
 import React, { useLayoutEffect, useState } from "react";
 import styles from "./component.module.css";
 import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { doc, getDoc, getFirestore } from "firebase/firestore";
 import { initFirebase } from "@/app/firebaseApp";
 import { useAppSelector } from "@/app/lib/redux/hooks";
@@ -17,7 +17,7 @@ function NavigationSideBar({ params }: { params?: { format: string } }) {
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
   const auth = getFirebaseAuth();
-  const [user, loading] = useAuthState(auth);
+  const { user, loading } = useUser();
 
   const db = getFirebaseDb();
 
@@ -29,7 +29,7 @@ function NavigationSideBar({ params }: { params?: { format: string } }) {
 
   async function getUserBookmarks() {
     const bookmarksList: BookmarkItem[] = await getDoc(
-      doc(db, "users", user?.uid || `${anilistUser?.id}`)
+      doc(db, "users", user?.id || `${anilistUser?.id}`)
     ).then((doc) => doc.get("bookmarks"));
 
     setBookmarksMediaTypesQuantity({
