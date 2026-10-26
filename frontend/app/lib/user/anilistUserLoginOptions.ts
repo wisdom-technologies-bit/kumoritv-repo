@@ -11,6 +11,7 @@ export const userCustomStore = makeStore();
 
 export async function handleAnilistUserLoginWithRedux() {
   const anilistUrlAccessInfo = window.location.hash;
+  if (!anilistUrlAccessInfo.includes("access_token=")) return;
 
   const accessToken = anilistUrlAccessInfo
     .slice(
@@ -29,7 +30,7 @@ export async function handleAnilistUserLoginWithRedux() {
     .slice(11);
 
   if (anilistUrlAccessInfo) {
-    axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`, {
+    await axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`, {
       accessToken: accessToken,
       tokenType: tokenType,
       expiresIn: expiresIn,
@@ -44,13 +45,18 @@ export async function handleAnilistUserLoginWithRedux() {
     localStorage.setItem("anilist-user", JSON.stringify(userData));
 
     userCustomStore.dispatch(addUserInfo(userData));
+    try {
+      await axios.post("/api/auth/anilist-session", { accessToken });
+    } catch {
+      // Keep the original AniList session working if the Supabase bridge is unavailable.
+    }
   }
 }
 
 export async function checkAccessTokenStillValid() {
   try {
     await axios.get(
-      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`
+      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`
     );
 
     return;
@@ -75,10 +81,6 @@ export async function addUserCookies({
       lang: titleLanguage,
     });
 
-    await userSettingsActions.setAdultContentCookie({
-      isEnabled: isAdultContentEnabled,
-    });
-
     await userSettingsActions.setSubtitleLanguageCookie({
       lang: subtitleLanguage,
     });
@@ -95,9 +97,7 @@ export async function addUserCookies({
 
 export async function removeCookies() {
   try {
-    await axios.delete(
-      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/adult-content`
-    );
+
     await axios.delete(
       `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/media-title-language`
     );
@@ -105,7 +105,7 @@ export async function removeCookies() {
       `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/subtitle`
     );
     await axios.delete(
-      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`
+      `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`
     );
   } catch (err) {
     console.log(err);

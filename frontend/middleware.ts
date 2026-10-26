@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
     const accessToken = hash.match(/access_token=([^&]+)/)?.[1];
     const tokenType = hash.match(/token_type=([^&]+)/)?.[1];
     const expiresIn = hash.match(/expires_in=([^&]+)/)?.[1];
-    if (accessToken) void axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`, { accessToken, tokenType, expiresIn });
+    if (accessToken) void axios.post(`${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`, { accessToken, tokenType, expiresIn });
   }
   const raw = request.cookies.get("access_token")?.value;
   if (raw) {
