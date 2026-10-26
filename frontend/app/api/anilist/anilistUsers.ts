@@ -20,7 +20,7 @@ export async function getHeadersWithAuthorization({
 
   try {
     const { data } = await Axios({
-      url: `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL}/api/anilist`,
+      url: `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`,
       method: "GET",
     });
 
@@ -184,7 +184,8 @@ export default {
           data: graphqlQuery,
         });
 
-        const userDataFromAnilist = data.data.Viewer;
+        const userDataFromAnilist = data?.data?.Viewer;
+        if (!userDataFromAnilist) return undefined;
 
         if (getOnlyId) return userDataFromAnilist.id;
 
