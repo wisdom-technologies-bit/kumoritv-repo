@@ -13,8 +13,6 @@ If the Vercel one is blocked by payment, try this one (it takes up to 2 minutes 
 
 </p>
 
-> [!CAUTION]
-> Please note that this project is strictly non-commercial. It is not permitted to generate revenue or include advertisements using this project. Violating this policy may result in legal actions by the respective owners of these intellectual properties.
 
 ## Navigation
 
