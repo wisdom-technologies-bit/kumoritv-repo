@@ -2,16 +2,14 @@
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { useSearchParams } from "next/navigation";
-import { doc, getDoc, getFirestore } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import SvgLoading from "@/public/assets/Eclipse-1s-200px.svg";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
 import { BookmarkItem } from "@/app/ts/interfaces/firestoreData";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
+import { listFavourites } from "@/app/lib/user-data/favourites";
 
 function PlaylistItemsResults({
   params,
@@ -20,7 +18,6 @@ function PlaylistItemsResults({
 }) {
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
-  const auth = getFirebaseAuth();
   const { user, loading } = useUser();
 
   const [userBookmarksList, setUserBookmarksList] = useState<BookmarkItem[]>(
@@ -79,11 +76,7 @@ function PlaylistItemsResults({
   }, [params?.sort]);
 
   async function getUserBookmarksList() {
-    const db = getFirebaseDb();
-
-    const bookmarksList: BookmarkItem[] = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    ).then((doc) => doc.get("bookmarks"));
+    const bookmarksList = (await listFavourites()) as BookmarkItem[];
 
     if (!params) {
       setUserFilteredBookmarks([]);

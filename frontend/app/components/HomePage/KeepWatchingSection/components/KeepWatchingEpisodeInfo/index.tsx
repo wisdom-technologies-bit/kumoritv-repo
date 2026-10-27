@@ -1,24 +1,15 @@
+"use client";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
-"user client";
 import React, { useState } from "react";
 import styles from "./component.module.css";
 import Link from "next/link";
 import Image from "next/image";
 import MediaFormatIcon from "../../../../DynamicAssets/MediaFormatIcon";
 import DeleteSvg from "@/public/assets/trash.svg";
-import {
-  arrayRemove,
-  doc,
-  getFirestore,
-  FieldPath,
-  setDoc,
-} from "firebase/firestore";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { initFirebase } from "@/app/firebaseApp";
 import { AnimatePresence, motion } from "framer-motion";
 import fallbackImg from "@/public/photo-placeholder.jpg";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
-import { useAppSelector } from "@/app/lib/redux/hooks";
+import { deleteContinueWatching } from "@/app/lib/user-data/progress";
 
 type ComponentTypes = {
   animeInfo: KeepWatchingMediaData;
@@ -33,30 +24,17 @@ function KeepWatchingEpisodeInfo({
 }: ComponentTypes) {
   const [wasDeleted, setWasDeleted] = useState<boolean>(false);
 
-  const auth = getFirebaseAuth();
-
-  const anilistUser = useAppSelector((state) => state.UserInfo.value);
-
   const { user } = useUser();
 
-  const db = getFirebaseDb();
-
   async function removeFromKeepWatching() {
-    await setDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`),
-      {
-        keepWatching: {
-          [animeInfo.id]: arrayRemove(...[animeInfo]),
-        },
-      } as unknown as FieldPath,
-      { merge: true }
-    ).then(() => {
-      setWasDeleted(true);
+    // Deletes this anime's incomplete watch_progress rows (and the local copy).
+    await deleteContinueWatching(animeInfo.id);
 
-      setTimeout(() => {
-        deleteFromListHook();
-      }, 350);
-    });
+    setWasDeleted(true);
+
+    setTimeout(() => {
+      deleteFromListHook();
+    }, 350);
   }
 
   return (

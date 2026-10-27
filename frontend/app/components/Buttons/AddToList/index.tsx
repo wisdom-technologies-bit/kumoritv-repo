@@ -2,21 +2,14 @@
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  FieldPath,
-} from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  removeMediaOnListByStatus,
-  updateUserMediaListByStatus,
-} from "@/app/lib/user/userDocUpdateOptions";
+  getListStatus,
+  removeFromList,
+  setListStatus,
+} from "@/app/lib/user-data/lists";
+import { markWatched } from "@/app/lib/user-data/progress";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
 import anilistUsers from "@/app/api/anilist/anilistUsers";
 import { ImdbEpisode } from "@/app/ts/interfaces/imdb";
@@ -48,67 +41,33 @@ export function Button({
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
   const dispatch = useAppDispatch();
 
-  const auth = getFirebaseAuth();
-
   const { user } = useUser();
 
-  const db = getFirebaseDb();
-
   useEffect(() => {
-    if (!statusOnAnilist && user) {
-      isMediaOnUserDoc();
+    if (!statusOnAnilist) {
+      void isMediaOnUserLists();
     }
-  }, [statusOnAnilist]);
+  }, [statusOnAnilist, user, anilistUser]);
 
   // IF MEDIA ID MATCHS ANY RESULT ON DB, IT SETS THIS COMPONENT BUTTON AS ACTIVE
-  async function isMediaOnUserDoc() {
-    if (!user) return;
+  async function isMediaOnUserLists() {
+    const savedStatus = await getListStatus(mediaInfo.id);
 
-    const userMediaLists = await getDoc(doc(db, "users", user.id)).then(
-      (res) => res.data()?.mediaListSavedByStatus
+    if (!savedStatus) return;
+
+    const matchingEntry = userMediaStatusEntries.find(
+      (btn) => btn.value.toLowerCase() == savedStatus.status.toLowerCase()
     );
 
-    if (!userMediaLists) return;
-
-    userMediaStatusEntries.map((btn) => {
-      const wasMediaFound = userMediaLists[btn.value.toLowerCase()]?.find(
-        (media: { id: number }) => media.id == mediaInfo.id
-      );
-
-      if (wasMediaFound)
-        setMediaStatus(btn.value as MediaData["mediaListEntry"]["status"]);
-    });
+    if (matchingEntry)
+      setMediaStatus(matchingEntry.value as MediaData["mediaListEntry"]["status"]);
   }
 
-  async function addToUserDocEpisodesWatched(action: "add" | "remove") {
+  async function setEpisodesWatched(action: "add" | "remove") {
     if (!imdbEpisodesList) return;
 
-    function mapAllEpisodesInfo(index: number) {
-      return {
-        mediaId: mediaInfo.id,
-        episodeNumber: index + 1,
-        episodeTitle: imdbEpisodesList![index]?.title || `${index + 1}`,
-      };
-    }
-
-    const allEpisodes: {
-      mediaId: number;
-      episodeNumber: number;
-      episodeTitle: string;
-    }[] = [];
-
-    imdbEpisodesList.map((episode, key) =>
-      allEpisodes.push(mapAllEpisodesInfo(key))
-    );
-
-    await setDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`),
-      {
-        episodesWatched: {
-          [mediaInfo.id]: action == "add" ? allEpisodes : null,
-        },
-      } as unknown as FieldPath,
-      { merge: true }
+    imdbEpisodesList.map((episode, index) =>
+      markWatched(mediaInfo.id, index + 1, action == "add")
     );
   }
 
@@ -137,27 +96,20 @@ export function Button({
 
     // Remove from curr list
     if (mediaStatus) {
-      const userMediaList = await getDoc(
-        doc(db, "users", user?.id || `${anilistUser?.id}`)
-      ).then(
-        (res) => res.data()?.mediaListSavedByStatus[mediaStatus.toLowerCase()]
-      );
+      const isSameStatus =
+        mediaStatus.toLowerCase() == status.toLowerCase();
 
-      const filterNewList = userMediaList.filter(
-        (media: { id: number }) => media.id != mediaInfo.id
-      );
-
-      await removeMediaOnListByStatus({
-        newListFiltered: filterNewList,
-        status: mediaStatus,
-        userId: user?.id || `${anilistUser?.id}`,
-      });
+      await removeFromList(mediaInfo.id);
 
       // Remove from anilist list
-      if (anilistUser && mediaStatus?.toLowerCase() == status.toLowerCase()) {
-        await anilistUsers.removeMediaFromSelectedList({
-          listItemEntryId: listEntryId!,
-        });
+      if (anilistUser && isSameStatus) {
+        try {
+          await anilistUsers.removeMediaFromSelectedList({
+            listItemEntryId: listEntryId!,
+          });
+        } catch {
+          // AniList sync is best effort
+        }
 
         setIsLoading(false);
 
@@ -167,22 +119,30 @@ export function Button({
       }
     }
 
-    if (status == "COMPLETED") await addToUserDocEpisodesWatched("add");
+    if (status == "COMPLETED") await setEpisodesWatched("add");
 
-    await updateUserMediaListByStatus({
-      status: status,
-      userId: user?.id || `${anilistUser?.id}`,
-      mediaData: mediaData,
+    await setListStatus({
+      snapshot: mediaData,
+      status,
+      progress:
+        status == "COMPLETED"
+          ? mediaInfo.episodes
+          : amountWatchedOrRead || 0,
+      totalEpisodes: mediaInfo.episodes,
     });
 
     if (anilistUser) {
-      await anilistUsers.addMediaToSelectedList({
-        status: status,
-        mediaId: mediaInfo.id,
-        episodeOrChapterNumber:
-          status == "COMPLETED" ? mediaInfo.episodes : amountWatchedOrRead || 0,
-        numberWatchedOrReadUntilNow: amountWatchedOrRead || 0,
-      });
+      try {
+        await anilistUsers.addMediaToSelectedList({
+          status: status,
+          mediaId: mediaInfo.id,
+          episodeOrChapterNumber:
+            status == "COMPLETED" ? mediaInfo.episodes : amountWatchedOrRead || 0,
+          numberWatchedOrReadUntilNow: amountWatchedOrRead || 0,
+        });
+      } catch {
+        // AniList sync is best effort
+      }
     }
 
     setIsLoading(false);

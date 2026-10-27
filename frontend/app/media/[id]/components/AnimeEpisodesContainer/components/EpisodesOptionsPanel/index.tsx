@@ -5,7 +5,6 @@ import {
   MediaDataFullInfo,
 } from "@/app/ts/interfaces/anilistMediaData";
 import { ImdbMediaInfo, ImdbEpisode } from "@/app/ts/interfaces/imdb";
-import { Firestore, getDoc, doc, setDoc, FieldPath } from "firebase/firestore";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { useEffect, useState } from "react";
 import DubbedCheckboxButton from "../ActiveDubbButton";
@@ -13,18 +12,17 @@ import DotsSvg from "@/public/assets/three-dots-vertical.svg";
 import CheckFillSvg from "@/public/assets/check-circle-fill.svg";
 import { useAppDispatch } from "@/app/lib/redux/hooks";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
+import { isWatched, markWatched } from "@/app/lib/user-data/progress";
 
 export default function EpisodesOptionsPanel({
   userId,
   isAnilistUser,
-  db,
   mediaInfo,
   imdb,
   callDubbedFunction,
   dubbedStateValue,
 }: {
   userId: string | undefined;
-  db: Firestore;
   isAnilistUser: boolean;
   imdb: {
     mediaSeasons: ImdbMediaInfo["seasons"];
@@ -45,69 +43,46 @@ export default function EpisodesOptionsPanel({
     setIsDubActive(dubbedStateValue);
   }, [dubbedStateValue]);
 
-  async function toggleOpenOptionsModal() {
+  function toggleOpenOptionsModal() {
     setIsOptionsModalOpen(!isOptionsModalOpen);
 
     if (!userId) return;
 
-    const userDoc = await getDoc(doc(db, "users", userId)).then((res) =>
-      res.data()
-    );
+    const episodesList = imdb.episodesList || [];
 
-    if (
-      userDoc!.episodesWatched[mediaInfo.id]?.length ==
-      imdb.episodesList?.length
-    ) {
-      setAllEpisodesWatched(true);
+    const everyEpisodeWatched =
+      episodesList.length > 0 &&
+      episodesList.every((_episode, index) =>
+        isWatched(mediaInfo.id, index + 1)
+      );
 
-      return;
-    }
-
-    setAllEpisodesWatched(false);
+    setAllEpisodesWatched(everyEpisodeWatched);
   }
 
   async function handleMarkAllEpisodesAsWatched() {
     if (!userId) return dispatch(toggleShowLoginModalValue());
 
-    function mapAllEpisodesInfo(index: number) {
-      return {
-        mediaId: mediaInfo.id,
-        episodeNumber: index + 1,
-        episodeTitle: imdb.episodesList[index]?.title,
-      };
-    }
+    const shouldMarkAsWatched = !allEpisodesWatched;
 
-    const allEpisodes: {
-      mediaId: number;
-      episodeNumber: number;
-      episodeTitle: string;
-    }[] = [];
-
-    imdb.episodesList.map((episode, key) =>
-      allEpisodes.push(mapAllEpisodesInfo(key))
+    imdb.episodesList?.map((_episode, index) =>
+      markWatched(mediaInfo.id, index + 1, shouldMarkAsWatched)
     );
 
-    await setDoc(
-      doc(db, "users", userId),
-      {
-        episodesWatched: {
-          [mediaInfo.id]: allEpisodesWatched ? null : allEpisodes,
-        },
-      } as unknown as FieldPath,
-      { merge: true }
-    ).then(async () => {
-      if (isAnilistUser) {
+    setAllEpisodesWatched(shouldMarkAsWatched);
+
+    if (isAnilistUser) {
+      try {
         await anilistUsers.addMediaToSelectedList({
           mediaId: mediaInfo.id,
-          status: allEpisodesWatched ? "PAUSED" : "COMPLETED",
-          episodeOrChapterNumber: allEpisodesWatched
-            ? 0
-            : mediaInfo.episodes || 0,
+          status: shouldMarkAsWatched ? "COMPLETED" : "PAUSED",
+          episodeOrChapterNumber: shouldMarkAsWatched
+            ? mediaInfo.episodes || 0
+            : 0,
         });
+      } catch {
+        // AniList sync is best effort
       }
-
-      setAllEpisodesWatched(!allEpisodesWatched);
-    });
+    }
   }
 
   return (

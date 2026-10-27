@@ -8,10 +8,8 @@ import * as MediaCardClientSide from "../../MediaCards/MediaCard/variantClientSi
 import NavigationButtons from "../../NavigationButtons";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import anilist from "@/app/api/anilist/anilistMedias";
-import { getFirebaseAuth } from "@/app/firebaseApp";
 import { AnimatePresence, motion } from "framer-motion";
 import simulateRange from "@/app/lib/simulateRange";
-import { getUserAdultContentPreference } from "@/app/lib/user/userDocFetchOptions";
 
 export const revalidate = 1800; // revalidate cached data every 30 min
 
@@ -35,32 +33,17 @@ function MediaRankingSection({
   >(null);
   const [currFormat, setCurrFormat] = useState<"ANIME" | "MANGA">("ANIME");
 
-  const auth = getFirebaseAuth();
   const { user } = useUser();
-
-  async function getUserPreference() {
-    if (!user) return false;
-
-    if (isAdultContentSetToShow) return isAdultContentSetToShow;
-
-    const userAdultContentPreference: boolean =
-      await getUserAdultContentPreference(user.id);
-
-    setIsAdultContentSetToShow(userAdultContentPreference);
-
-    return userAdultContentPreference;
-  }
 
   const fetchMediasByFormat: (format: "ANIME" | "MANGA") => void = async (
     format: "ANIME" | "MANGA"
   ) => {
     setIsLoading(true);
 
-    const isAdultContentAllowed = await getUserPreference();
 
     const listMediaByFormat = (await anilist.getMediaForThisFormat({
       type: format,
-      showAdultContent: isAdultContentAllowed,
+      showAdultContent: true,
     })) as MediaData[];
 
     setCurrFormat(format);
