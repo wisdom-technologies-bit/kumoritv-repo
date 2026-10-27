@@ -1,6 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { ANIVEXA_BASE } from "@/app/lib/anivexa/client";
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import { getWatchEpisodeResult } from "@/app/lib/watch/episode-data";
 import { importAnime } from "@/app/lib/anime-db/import";
 import { proxyUrl, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
 import { normalizeSubtitles } from "@/app/lib/watch/subtitles";
@@ -171,18 +172,10 @@ export async function GET(
     return json(cached.value);
   const db: any = createAdminClient();
   if (!db) return json({ error: "database_unavailable" }, 500);
-  let { data: row } = await db
-    .from("episodes")
-    .select("*")
-    .eq("play_id", `${id}-${episode}`)
-    .maybeSingle();
+  let { data: row } = await getWatchEpisodeResult(db, id, episode);
   if (!row) {
     await importAnime(id, { source: "open", timeoutMs: 20000 });
-    ({ data: row } = await db
-      .from("episodes")
-      .select("*")
-      .eq("play_id", `${id}-${episode}`)
-      .maybeSingle());
+    ({ data: row } = await getWatchEpisodeResult(db, id, episode));
   }
   if (!row) return json({ error: "episode_not_found" }, 404);
   const allProviders = Array.isArray(row[`${audio}_providers`])

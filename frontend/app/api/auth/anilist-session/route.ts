@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/app/lib/supabase/admin";
-import { createClient } from "@/app/lib/supabase/server";
+import { createAuthServerClient } from "@/app/lib/supabase/auth-server";
 
 const attempts = new Map<string, { count: number; expiresAt: number }>();
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     if (!viewer || viewer.id !== id) throw new Error("invalid viewer");
 
     const admin = createAdminClient();
-    const serverClient = await createClient();
+    const serverClient = await createAuthServerClient();
     if (!admin || !serverClient) throw new Error("unavailable");
     const email = `anilist-${id}@anilist.invalid`;
     let userId: string | null = null;
