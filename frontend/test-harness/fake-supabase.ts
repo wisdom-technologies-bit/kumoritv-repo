@@ -1,12 +1,14 @@
-// In-memory Supabase stand-in used by the Prompt 9 tests. It implements just the
-// query builder shapes the user-data layer uses, including failure injection.
+// In-memory Supabase stand-in used by the user-data and comments tests. It
+// implements just the query builder shapes those layers use, including failure
+// injection, multi-column ordering, `in`, `range` and exact counts.
 
 type Row = Record<string, any>;
 export type Tables = Record<string, Row[]>;
 
 export class FakeSupabaseClient {
   tables: Tables;
-  failures = new Set<string>();
+  /** table -> error message (undefined message = default "<table> unavailable") */
+  failures = new Map<string, string | undefined>();
   writes = 0;
 
   auth = {
@@ -18,8 +20,8 @@ export class FakeSupabaseClient {
     this.tables = seed;
   }
 
-  failOn(table: string) {
-    this.failures.add(table);
+  failOn(table: string, message?: string) {
+    this.failures.set(table, message);
   }
 
   heal(table: string) {
@@ -36,18 +38,24 @@ export class FakeSupabaseClient {
   }
 }
 
-class FakeQuery implements PromiseLike<{ data: any; error: any }> {
+class FakeQuery implements PromiseLike<{ data: any; error: any; count?: number | null }> {
   private filters: ((row: Row) => boolean)[] = [];
-  private orderBy: { column: string; ascending: boolean } | null = null;
+  private orderBys: { column: string; ascending: boolean }[] = [];
   private limitCount: number | null = null;
+  private offsetCount = 0;
+  private wantsCount = false;
+  private headOnly = false;
   private operation: { kind: "select" | "insert" | "upsert" | "update" | "delete"; payload?: any } = {
     kind: "select",
   };
 
   constructor(private client: FakeSupabaseClient, private table: string) {}
 
-  select(_columns?: string) {
-    this.operation = { kind: "select" };
+  select(_columns?: string, options?: { count?: "exact" | "planned" | "estimated"; head?: boolean }) {
+    // `insert(...).select().single()` keeps the write, only the return shape changes.
+    if (this.operation.kind === "select") this.operation = { kind: "select", payload: _columns };
+    this.wantsCount = options?.count === "exact" || options?.count === "planned" || options?.count === "estimated";
+    this.headOnly = options?.head === true;
     return this;
   }
 
@@ -76,13 +84,19 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
     return this;
   }
 
+  in(column: string, values: unknown[]) {
+    const allowed = new Set((values ?? []).map((value) => String(value)));
+    this.filters.push((row) => allowed.has(String(row[column])));
+    return this;
+  }
+
   is(column: string, value: unknown) {
     this.filters.push((row) => (row[column] ?? null) === value);
     return this;
   }
 
   order(column: string, options?: { ascending?: boolean }) {
-    this.orderBy = { column, ascending: options?.ascending ?? true };
+    this.orderBys.push({ column, ascending: options?.ascending ?? true });
     return this;
   }
 
@@ -91,13 +105,20 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
     return this;
   }
 
+  range(from: number, to: number) {
+    this.offsetCount = from;
+    this.limitCount = Math.max(0, to - from + 1);
+    return this;
+  }
+
   private matching(): Row[] {
     return this.client.rows(this.table).filter((row) => this.filters.every((filter) => filter(row)));
   }
 
-  private run(): { data: any; error: any } {
+  private run(): { data: any; error: any; count?: number | null } {
     if (this.client.failures.has(this.table)) {
-      return { data: null, error: new Error(`${this.table} unavailable`) };
+      const message = this.client.failures.get(this.table);
+      return { data: null, error: new Error(message ?? `${this.table} unavailable`), count: null };
     }
 
     const { kind, payload } = this.operation;
@@ -109,16 +130,28 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
         payload?.onConflict?.split(",").map((item: string) => item.trim()) ??
         Object.keys(incoming[0] ?? {}).slice(0, 1);
 
+      const written: Row[] = [];
       for (const row of incoming) {
-        const existingIndex = rows.findIndex((existing) =>
-          conflictColumns.every((column) => String(existing[column]) === String(row[column])),
-        );
-        if (existingIndex >= 0) rows[existingIndex] = { ...rows[existingIndex], ...row };
-        else rows.push({ ...row });
+        // Real tables generate the id/timestamp when they are not supplied.
+        const prepared: Row = {
+          ...(row.id == null ? { id: `fake-${rows.length + written.length + 1}` } : {}),
+          ...(row.created_at == null ? { created_at: new Date().toISOString() } : {}),
+          ...row,
+        };
+        // `upsert` merges on its conflict target; a plain `insert` always appends.
+        const existingIndex =
+          kind === "upsert"
+            ? rows.findIndex((existing) =>
+                conflictColumns.every((column) => String(existing[column]) === String(prepared[column])),
+              )
+            : -1;
+        if (existingIndex >= 0) rows[existingIndex] = { ...rows[existingIndex], ...prepared };
+        else rows.push({ ...prepared });
+        written.push({ ...prepared });
       }
 
-      this.client.writes += incoming.length;
-      return { data: incoming, error: null };
+      this.client.writes += written.length;
+      return { data: written, error: null };
     }
 
     if (kind === "update") {
@@ -137,8 +170,7 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
     }
 
     let result = this.matching();
-    if (this.orderBy) {
-      const { column, ascending } = this.orderBy;
+    for (const { column, ascending } of [...this.orderBys].reverse()) {
       result = [...result].sort((a, b) => {
         const left = a[column];
         const right = b[column];
@@ -147,9 +179,12 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
         return ascending ? compared : -compared;
       });
     }
+    if (this.offsetCount) result = result.slice(this.offsetCount);
     if (this.limitCount !== null) result = result.slice(0, this.limitCount);
 
-    return { data: result.map((row) => ({ ...row })), error: null };
+    const count = this.wantsCount ? this.matching().length : null;
+    const data = this.headOnly ? null : result.map((row) => ({ ...row }));
+    return { data, error: null, count };
   }
 
   async maybeSingle() {
@@ -161,8 +196,8 @@ class FakeQuery implements PromiseLike<{ data: any; error: any }> {
     return this.maybeSingle();
   }
 
-  then<TResult1 = { data: any; error: any }, TResult2 = never>(
-    onFulfilled?: ((value: { data: any; error: any }) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = { data: any; error: any; count?: number | null }, TResult2 = never>(
+    onFulfilled?: ((value: { data: any; error: any; count?: number | null }) => TResult1 | PromiseLike<TResult1>) | null,
     onRejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     return Promise.resolve(this.run()).then(onFulfilled, onRejected);

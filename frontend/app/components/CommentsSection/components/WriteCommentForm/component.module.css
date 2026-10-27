@@ -235,3 +235,13 @@
     transform: scale(1.4);
 
 }
+/* Prompt 10: inline form/action errors (same palette as the rest of the section) */
+#write_comment_container form .form_error {
+
+    margin-top: 8px;
+
+    color: var(--error);
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+
+}

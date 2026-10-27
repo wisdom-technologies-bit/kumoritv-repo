@@ -107,3 +107,13 @@
     filter: brightness(90%);
 
 }
+/* Prompt 10: action errors (same palette as the section) */
+#all_comments_container .section_error {
+
+    margin-top: 16px;
+
+    color: var(--error);
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+
+}
