@@ -1,394 +1,87 @@
 "use client";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import BellFillSvg from "@/public/assets/bell-fill.svg";
 import BellSvg from "@/public/assets/bell.svg";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import {
-  arrayRemove,
-  arrayUnion,
-  collection,
-  doc,
-  DocumentData,
-  FieldPath,
-  getDoc,
-  getDocs,
-  getFirestore,
-  query,
-  updateDoc,
-  where,
-} from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { convertFromUnix, getCurrentUnixDate } from "@/app/lib/formatDateUnix";
-import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
+import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { useAppSelector } from "@/app/lib/redux/hooks";
-import { NotificationsCollectionFirebase } from "@/app/ts/interfaces/firestoreData";
-import { getMediaInfo } from "@/app/api/mediaInfo/anilist/mediaInfo";
+import {
+  listNotifications,
+  markAllNotificationsRead,
+  type NotificationView,
+} from "@/app/lib/user-data/notifications";
 
 function NotificationsContainer() {
   //
   // HOW IT WORKS
   //
-  // This component is related to a Collection called "Notifications" on Firebase. This collection stores
-  // the episodes for each media and has the number and release date on it.
-  // The logic here is that, the user is assigned to these Medias on Notifications Collection, and in this
-  // component, it checks the latest date the User Doc with these info awas updated. If the date is older than
-  // the latests episodes released, it shows on Header Notification Modal.
+  // Notifications live in Supabase now. The fanout_episode_notifications trigger
+  // creates a row for every subscribed user when a new aired episode is stored, so
+  // this component only reads them: on mount, on window focus and every 5 minutes.
+  // Unread rows (read_at is null) drive the badge.
   //
-  // Was make this way because any time a user is assigned to this same media, that user updates the medias info available
-  // for all the user. Previously, it was meant that each user had its own notification field on his doc.
-
-  const [notificationsList, setNotificationsList] = useState<
-    NotificationsCollectionFirebase[]
-  >([]);
-  const [hasNewNotifications, setHasNewNotifications] =
-    useState<boolean>(false);
+  const [notificationsList, setNotificationsList] = useState<NotificationView[]>(
+    []
+  );
+  const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(false);
 
   const anilistUser = useAppSelector((state) => state.UserInfo?.value);
 
-  const auth = getFirebaseAuth();
   const { user } = useUser();
-  const db = getFirebaseDb();
 
-  useEffect(() => {
-    if (
-      localStorage.getItem("notificationsVisualized") &&
-      localStorage.getItem("notificationsVisualized") == "true"
-    ) {
-      setHasNewNotifications(false);
-    } else {
-      localStorage.setItem("notificationsVisualized", "true");
+  const refreshNotifications = useCallback(async () => {
+    if (!user) {
+      setNotificationsList([]);
+      setUnreadCount(0);
+
+      return;
     }
 
-    doesNotificationsIsOnLocalStorage();
+    const result = await listNotifications();
+
+    setNotificationsList(result.items);
+    setUnreadCount(result.unreadCount);
   }, [user]);
 
-  function isCurrDateBiggerThanLastUpdate() {
-    const dateNow = getCurrentUnixDate();
-    const dateLastUpdate =
-      Number(Number(localStorage.getItem("notificationsLastUpdate")) + 600) ||
-      0;
+  useEffect(() => {
+    refreshNotifications();
+  }, [refreshNotifications]);
 
-    return dateNow >= dateLastUpdate;
-  }
+  useEffect(() => {
+    if (!user) return;
 
-  async function doesNotificationsIsOnLocalStorage() {
-    if (!user && !anilistUser) return;
-
-    if (localStorage.getItem("notifications") == undefined) {
-      return verifyNotificationsAssignedThenStore();
+    function handleWindowFocus() {
+      refreshNotifications();
     }
 
-    updateNotificationsOnLocalStorage();
-  }
+    window.addEventListener("focus", handleWindowFocus);
 
-  function setNewNotificationsToPanel(
-    notificationsList: NotificationsCollectionFirebase[]
-  ) {
-    if (notificationsList.length == 0) return;
-
-    localStorage.setItem("notificationsVisualized", "false");
-
-    setHasNewNotifications(true);
-
-    setNotificationsList(notificationsList);
-  }
-
-  async function mapUserAssignedNotificationsToFullMediaDoc() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let userAssignedNotifications: any[] = [];
-
-    await getDoc(doc(db, "users", user?.id || `${anilistUser?.id}`)).then(
-      (res) => {
-        userAssignedNotifications = res.data()?.notifications || [];
-      }
+    const refreshInterval = window.setInterval(
+      () => refreshNotifications(),
+      5 * 60 * 1000
     );
 
-    if (userAssignedNotifications.length > 0) {
-      const mediasIDsArray = [];
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      window.clearInterval(refreshInterval);
+    };
+  }, [user, refreshNotifications]);
 
-      mediasIDsArray.push(
-        userAssignedNotifications.map((item) => `${item.mediaId}`)
-      );
+  const hasNewNotifications = unreadCount > 0;
 
-      const notificationsDocs = (await getDocs(
-        query(
-          collection(db, "notifications"),
-          where("mediaId", "in", mediasIDsArray[0])
-        )
-      ).then((res) =>
-        res.docs.map((item) => item.data())
-      )) as NotificationsCollectionFirebase[];
-
-      if (notificationsDocs) {
-        // sort episodes number
-        notificationsDocs.map(
-          (media) =>
-            (media.episodes = media.episodes.sort(
-              (episode1, episode2) => episode1.number - episode2.number
-            ))
-        );
-
-        notificationsDocs.map(
-          (media) =>
-            (media.episodes = [media.episodes[media.episodes.length - 1]])
-        );
-      }
-
-      userAssignedNotifications = notificationsDocs;
-    }
-
-    return userAssignedNotifications;
-  }
-
-  async function verifyNotificationsAssignedThenStore() {
-    const userAssignedNotifications =
-      await mapUserAssignedNotificationsToFullMediaDoc();
-
-    localStorage.setItem("notificationsVisualized", "true");
-    localStorage.setItem(
-      "notifications",
-      JSON.stringify(userAssignedNotifications)
-    );
-    localStorage.setItem(
-      "notificationsLastUpdate",
-      `${(new Date().getTime() / 1000).toFixed(0)}`
-    );
-
-    setNewNotificationsToPanel(userAssignedNotifications);
-  }
-
-  async function updateNotificationsOnLocalStorage() {
-    const userAssignedNotifications =
-      await mapUserAssignedNotificationsToFullMediaDoc();
-
-    if (isCurrDateBiggerThanLastUpdate()) {
-      if (userAssignedNotifications) {
-        const notificationsToBeShownList = [];
-
-        for (let i = 0; userAssignedNotifications.length >= i + 1; i++) {
-          const notificationsMatchingIDsList = userAssignedNotifications.find(
-            (notification) =>
-              `${notification.mediaId}` ==
-              `${userAssignedNotifications[i].mediaId}`
-          );
-
-          if (notificationsMatchingIDsList) {
-            if (!notificationsMatchingIDsList.title)
-              notificationsMatchingIDsList.title =
-                userAssignedNotifications[i].title;
-
-            const lastEpisodeNotificationVisualizedOnDB =
-              notificationsMatchingIDsList.episodes[
-                notificationsMatchingIDsList.episodes.length - 1
-              ];
-
-            const lastEpisodeNotificationVisualizedOnLocal =
-              userAssignedNotifications[i];
-
-            // if latest Episode Released on DB is bigger than last episode notified
-            if (
-              lastEpisodeNotificationVisualizedOnDB.number >
-              lastEpisodeNotificationVisualizedOnLocal.lastEpisodeNotified
-            ) {
-              if (
-                Number((new Date().getTime() / 1000).toFixed(0)) >
-                lastEpisodeNotificationVisualizedOnDB.releaseDate!
-              ) {
-                notificationsToBeShownList.push(notificationsMatchingIDsList);
-              }
-            }
-          }
-        }
-
-        if (notificationsToBeShownList.length > 0) {
-          setNewNotificationsToPanel(notificationsToBeShownList);
-        }
-
-        localStorage.setItem("notificationsVisualized", "true");
-        localStorage.setItem(
-          "notifications",
-          JSON.stringify(userAssignedNotifications)
-        );
-        localStorage.setItem(
-          "notificationsLastUpdate",
-          `${(new Date().getTime() / 1000).toFixed(0)}`
-        );
-      }
-    }
-
-    // if (userAssignedNotifications.length == 0) {
-    //     userAssignedNotifications = JSON.parse(localStorage.getItem('notifications')!) || []
-    // }
-  }
-
-  function toggleOpenNotificationsPanel() {
+  async function toggleOpenNotificationsPanel() {
     setIsPanelOpen(!isPanelOpen);
 
-    localStorage.setItem("notificationsVisualized", "true");
+    if (!isPanelOpen) {
+      setUnreadCount(0);
 
-    setHasNewNotifications(false);
-
-    if (notificationsList.length == 0) return;
-
-    const stillReleasingMediasNotifications: NotificationsCollectionFirebase[] =
-      notificationsList.filter(
-        (mediaNotification) => mediaNotification.isComplete == false
-      );
-
-    const finishedMediasNotifications: NotificationsCollectionFirebase[] =
-      notificationsList.filter(
-        (mediaNotification) => mediaNotification.isComplete == true
-      );
-
-    async function updateMediaOnNotificationsCollection(
-      mediaData: MediaDataFullInfo
-    ) {
-      const mediaNotificationDoc = (await getDoc(
-        doc(db, "notifications", `${mediaData.id}`)
-      ).then((res) => res.data())) as
-        | NotificationsCollectionFirebase
-        | DocumentData;
-
-      mediaNotificationDoc.nextReleaseDate =
-        mediaData.nextAiringEpisode?.airingAt;
-      mediaNotificationDoc.status = mediaData.status;
-      mediaNotificationDoc.lastUpdate = Number(
-        (new Date().getTime() / 1000).toFixed(0)
-      );
-      mediaNotificationDoc.isComplete =
-        mediaData.status == "COMPLETE" ? true : false;
-
-      if (mediaData.status != "FINISHED") {
-        (mediaNotificationDoc as NotificationsCollectionFirebase).episodes.map(
-          (item) =>
-            (item.wasReleased =
-              Number((new Date().getTime() / 1000).toFixed(0)) >
-              (item.releaseDate ? item.releaseDate : 0))
-        );
-
-        mediaNotificationDoc.episodes.push({
-          releaseDate: mediaData.nextAiringEpisode?.airingAt || null,
-          number: mediaData.nextAiringEpisode?.episode,
-          wasReleased:
-            Number((new Date().getTime() / 1000).toFixed(0)) >
-            mediaData.nextAiringEpisode?.airingAt,
-        });
-      }
-
-      await updateDoc(
-        doc(db, "notifications", `${mediaData.id}`),
-        mediaNotificationDoc
-      );
+      await markAllNotificationsRead();
     }
-
-    async function updateNotificationsOnLocal() {
-      const notificationsOnUserDoc = await getDoc(
-        doc(db, "users", user?.id || `${anilistUser?.id}`)
-      ).then((res) => res.data()?.notifications || []);
-
-      localStorage.setItem(
-        "notifications",
-        JSON.stringify(notificationsOnUserDoc)
-      );
-      localStorage.setItem(
-        "notificationsLastUpdate",
-        `${(new Date().getTime() / 1000).toFixed(0)}`
-      );
-    }
-
-    if (stillReleasingMediasNotifications.length > 0) {
-      stillReleasingMediasNotifications.map(async (mediaNotification) => {
-        // gets curr media's latest info
-        const mediaInfo = (await getMediaInfo({
-          id: Number(mediaNotification.mediaId),
-        })) as MediaDataFullInfo;
-
-        await updateMediaOnNotificationsCollection(mediaInfo);
-
-        // removes older notication with previous data
-        await updateDoc(
-          doc(db, "users", user?.id || `${anilistUser?.id}`),
-          {
-            notifications: arrayRemove(
-              ...[
-                {
-                  // if theres no new episode to release, set total episodes number as last notified
-                  lastEpisodeNotified: mediaInfo.nextAiringEpisode
-                    ? mediaInfo.nextAiringEpisode.episode - 2
-                    : mediaInfo.episodes,
-                  mediaId: mediaInfo.id,
-                  title: {
-                    romaji: mediaInfo.title.romaji,
-                    native: mediaInfo.title.native,
-                  },
-                },
-              ]
-            ),
-          } as unknown as FieldPath,
-          { merge: true }
-        ).catch((err) => {
-          return console.log(err);
-        });
-
-        // then adds new data to media notification
-        await updateDoc(
-          doc(db, "users", user?.id || `${anilistUser?.id}`),
-          {
-            notifications: arrayUnion(
-              ...[
-                {
-                  lastEpisodeNotified: mediaInfo.nextAiringEpisode
-                    ? mediaInfo.nextAiringEpisode?.episode - 1
-                    : mediaInfo.episodes,
-                  mediaId: mediaInfo.id,
-                  title: {
-                    romaji: mediaInfo.title.romaji,
-                    native: mediaInfo.title.native,
-                  },
-                },
-              ]
-            ),
-          } as unknown as FieldPath,
-          { merge: true }
-        ).catch((err) => {
-          return console.log(err);
-        });
-      });
-    }
-
-    if (finishedMediasNotifications.length > 0) {
-      finishedMediasNotifications.map(async (mediaNotification) => {
-        // removes older notication with previous data
-        await updateDoc(
-          doc(db, "users", user?.id || `${anilistUser?.id}`),
-          {
-            notifications: arrayRemove(...[mediaNotification]),
-          } as unknown as FieldPath,
-          { merge: true }
-        ).catch((err) => {
-          return console.log(err);
-        });
-
-        // add new data to notification media
-        await updateDoc(
-          doc(db, "users", user?.id || `${anilistUser?.id}`),
-          {
-            notifications: arrayUnion(...[mediaNotification]),
-          } as unknown as FieldPath,
-          { merge: true }
-        ).catch((err) => {
-          return console.log(err);
-        });
-      });
-    }
-
-    updateNotificationsOnLocal();
   }
 
   if (user || anilistUser) {
@@ -415,9 +108,7 @@ function NotificationsContainer() {
           </button>
 
           {hasNewNotifications && (
-            <span id={styles.notifications_badge}>
-              {notificationsList.length}
-            </span>
+            <span id={styles.notifications_badge}>{unreadCount}</span>
           )}
 
           <AnimatePresence>
@@ -472,10 +163,19 @@ function NotificationsContainer() {
                           )}
 
                           <p>
-                            Released on {convertFromUnix(media.nextReleaseDate)}
+                            Released on{" "}
+                            {media.nextReleaseDate
+                              ? convertFromUnix(media.nextReleaseDate)
+                              : "—"}
                           </p>
 
-                          <Link href={`/media/${media.mediaId}`}>SEE MORE</Link>
+                          <Link
+                            href={`/watch/${media.mediaId}?ep=${
+                              media.episodes[media.episodes.length - 1]?.number
+                            }`}
+                          >
+                            SEE MORE
+                          </Link>
                         </div>
                       </li>
                     ))}

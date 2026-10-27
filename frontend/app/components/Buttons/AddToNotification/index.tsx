@@ -6,29 +6,17 @@ import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
 import BellFillSvg from "@/public/assets/bell-fill.svg";
 import BellSvg from "@/public/assets/bell-slash.svg";
 import {
-  getFirestore,
-  doc,
-  updateDoc,
-  arrayUnion,
-  arrayRemove,
-  getDoc,
-  FieldPath,
-  setDoc,
-  collection,
-  deleteDoc,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import {
   MediaData,
   MediaDataFullInfo,
 } from "@/app/ts/interfaces/anilistMediaData";
 import { motion } from "framer-motion";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
+import {
+  isSubscribed,
+  subscribe,
+  unsubscribe,
+} from "@/app/lib/user-data/notifications";
 
 function AddToNotificationsButton({
   mediaInfo,
@@ -42,234 +30,49 @@ function AddToNotificationsButton({
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
   const dispatch = useAppDispatch();
 
-  const auth = getFirebaseAuth();
-
   const { user, loading } = useUser();
-
-  const db = getFirebaseDb();
 
   useEffect(() => {
     if (!loading) {
-      isUserAssignedToThisMediaNotications();
+      void isUserAssignedToThisMediaNotications();
     }
   }, [user, anilistUser, loading]);
 
   const isMediaStillReleasing = mediaInfo.nextAiringEpisode?.airingAt ?? false;
 
   async function handleMediaOnNotifications() {
+    // Guests have nothing to subscribe with: ask them to sign in first.
     if (!user && !anilistUser) return dispatch(toggleShowLoginModalValue());
+    if (!user) return dispatch(toggleShowLoginModalValue());
 
     setIsLoading(true);
 
-    const mediaNotificationDoc = await getDoc(
-      doc(db, "notifications", `${mediaInfo.id}`)
-    );
+    const wasAdded = wasAddedToNotifications;
 
-    // compare last Update with additional 30 minutes with the current time. If TRUE, fetchs Notifications again
-    function isCurrDateBiggerThanRelease(release: number) {
-      const dateNow = Number((new Date().getTime() / 1000).toFixed(0));
-      const releaseDate = release || 0;
+    // optimistic UI, rolled back when the write fails
+    setWasAddedToNotifications(!wasAdded);
 
-      return dateNow >= releaseDate;
-    }
+    const writeSucceeded = wasAdded
+      ? await unsubscribe(mediaInfo.id)
+      : await subscribe({
+          id: mediaInfo.id,
+          title: mediaInfo.title,
+          format: mediaInfo.format,
+          description: mediaInfo.description,
+          coverImage: mediaInfo.coverImage,
+        });
 
-    if (wasAddedToNotifications) {
-      // remove user from list to be notified
-      await deleteDoc(
-        doc(
-          db,
-          "notifications",
-          `${mediaInfo.id}`,
-          "usersAssigned",
-          user?.id || `${anilistUser?.id}`
-        )
-      );
-
-      // add Media Id to Notifications on User DOC
-      await updateDoc(
-        doc(db, "users", user?.id || `${anilistUser?.id}`),
-        {
-          notifications: arrayRemove(
-            ...[
-              {
-                lastEpisodeNotified:
-                  mediaInfo.nextAiringEpisode?.episode == 1
-                    ? mediaInfo.nextAiringEpisode?.episode
-                    : mediaInfo.nextAiringEpisode?.episode - 1,
-                mediaId: mediaInfo.id,
-                title: {
-                  romaji: mediaInfo.title.romaji,
-                  native: mediaInfo.title.native,
-                },
-              },
-            ]
-          ),
-        } as unknown as FieldPath,
-        { merge: true }
-      );
-
-      setWasAddedToNotifications(!wasAddedToNotifications ? true : false);
-
-      setIsLoading(false);
-
-      return;
-    }
-
-    if (mediaNotificationDoc.exists() == false) {
-      const mediaNotificationInfo = {
-        mediaId: `${mediaInfo.id}`,
-        lastUpdate: Number((new Date().getTime() / 1000).toFixed(0)),
-        coverImage: {
-          extraLarge: mediaInfo.coverImage.extraLarge,
-          large: mediaInfo.coverImage.large,
-        },
-        title: {
-          romaji: mediaInfo.title.romaji,
-          native: mediaInfo.title.native,
-        },
-        nextReleaseDate: mediaInfo.nextAiringEpisode?.airingAt || null,
-        status: mediaInfo.status,
-        isComplete: mediaInfo.status == "FINISHED",
-        episodes: [
-          {
-            releaseDate: mediaInfo.nextAiringEpisode?.airingAt || null,
-            number: mediaInfo.nextAiringEpisode?.episode,
-            wasReleased: isCurrDateBiggerThanRelease(
-              mediaInfo.nextAiringEpisode?.airingAt
-            ),
-          },
-        ],
-      };
-
-      // Add Media to Notifications Collection
-      await setDoc(
-        doc(db, "notifications", `${mediaInfo.id}`),
-        mediaNotificationInfo
-      );
-
-      // Assign User to This Media Notifications
-      await setDoc(
-        doc(
-          db,
-          "notifications",
-          `${mediaInfo.id}`,
-          "usersAssigned",
-          user?.id || `${anilistUser?.id}`
-        ),
-        {
-          userRef: user?.id || `${anilistUser?.id}`,
-        }
-      );
-    } else {
-      const mediaInfoDoc = mediaNotificationDoc.data();
-
-      const mediaEpisodes = mediaInfoDoc.episodes.sort(
-        (a: { number: number }, b: { number: number }) => a.number - b.number
-      );
-
-      if (
-        isCurrDateBiggerThanRelease(
-          mediaEpisodes[mediaEpisodes.length - 1].releaseDate
-        )
-      ) {
-        mediaEpisodes[mediaEpisodes.length - 1].wasReleased =
-          isCurrDateBiggerThanRelease(
-            mediaEpisodes[mediaEpisodes.length - 1].releaseDate
-          );
-
-        if (mediaInfo.status != "FINISHED") {
-          mediaEpisodes.push({
-            releaseDate: mediaInfo.nextAiringEpisode?.airingAt || null,
-            number: mediaInfo.nextAiringEpisode?.episode,
-            wasReleased: isCurrDateBiggerThanRelease(
-              mediaInfo.nextAiringEpisode?.airingAt
-            ),
-          });
-        }
-
-        mediaEpisodes.nextReleaseDate =
-          mediaInfo.nextAiringEpisode?.airingAt || null;
-        mediaEpisodes.episodes = mediaEpisodes;
-
-        // Add Media to Notifications Collection
-        await updateDoc(
-          doc(db, "notifications", `${mediaInfo.id}`),
-          mediaInfoDoc
-        );
-      }
-
-      // Assign User to This Media Notifications
-      await setDoc(
-        doc(
-          db,
-          "notifications",
-          `${mediaInfo.id}`,
-          "usersAssigned",
-          user?.id || `${anilistUser?.id}`
-        ),
-        {
-          userRef: user?.id || `${anilistUser?.id}`,
-        }
-      );
-    }
-
-    // Add Default Media Info to User Doc, so it keep track of which episode was last notified
-    await updateDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`),
-      {
-        notifications: arrayUnion(
-          ...[
-            {
-              lastEpisodeNotified:
-                mediaInfo.nextAiringEpisode?.episode == 1
-                  ? mediaInfo.nextAiringEpisode?.episode
-                  : mediaInfo.nextAiringEpisode?.episode - 1,
-              mediaId: mediaInfo.id,
-              title: {
-                romaji: mediaInfo.title.romaji,
-                native: mediaInfo.title.native,
-              },
-            },
-          ]
-        ),
-      } as unknown as FieldPath,
-      { merge: true }
-    );
-
-    setWasAddedToNotifications(!wasAddedToNotifications ? true : false);
+    if (!writeSucceeded) setWasAddedToNotifications(wasAdded);
 
     setIsLoading(false);
   }
 
   async function isUserAssignedToThisMediaNotications() {
-    if (!user && !anilistUser) return setWasAddedToNotifications(false);
+    if (!user) return setWasAddedToNotifications(false);
 
-    const userAssignedNoticationsList = await getDoc(
-      doc(db, "notifications", `${mediaInfo.id}`)
-    );
+    const subscribed = await isSubscribed(mediaInfo.id);
 
-    if (userAssignedNoticationsList.exists() == false)
-      return setWasAddedToNotifications(false);
-
-    setIsLoading(true);
-
-    const mediaOnUserNotifications = query(
-      collection(db, "notifications", `${mediaInfo.id}`, "usersAssigned"),
-      where("userRef", "==", `${user?.id}` || `${anilistUser?.id}`)
-    );
-
-    const mediaNotificationDoc = await getDocs(mediaOnUserNotifications);
-
-    if (mediaNotificationDoc.size == 1) {
-      // IF SIZE EQUALS 1, MEANS USER EXISTS AND IS ASSIGNED
-      setWasAddedToNotifications(true);
-    } else {
-      setWasAddedToNotifications(false);
-    }
-
-    setIsLoading(false);
-
-    return;
+    setWasAddedToNotifications(subscribed);
   }
 
   if (isMediaStillReleasing) {

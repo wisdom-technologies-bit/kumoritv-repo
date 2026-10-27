@@ -1,12 +1,10 @@
-import { initFirebase } from "@/app/firebaseApp";
-import {
-  arrayRemove,
-  arrayUnion,
-  doc,
-  FieldPath,
-  getFirestore,
-  updateDoc,
-} from "firebase/firestore";
+// Prompt 9: no Firestore here anymore. The AniList login flow (userLoginActions)
+// still calls these helpers, so they now write through the Supabase/local data
+// layer. An AniList-only user has no Supabase session, so writes land in the guest
+// store and merge into the account on the next sign-in.
+
+import { addFavourite, removeFavourite } from "@/app/lib/user-data/favourites";
+import { listEntries, removeFromList, setListStatus } from "@/app/lib/user-data/lists";
 
 type UpdateFavourites = {
   mediaData: {
@@ -27,70 +25,52 @@ type UpdateFavourites = {
 
 export async function updateUserFavouriteMedias({
   mediaData,
-  userId,
   isAddAction,
 }: UpdateFavourites) {
-  const db = getFirestore(initFirebase() as any);
-
-  await updateDoc(
-    doc(db, "users", userId),
-    {
-      bookmarks: isAddAction
-        ? arrayUnion(...[mediaData])
-        : arrayRemove(...[mediaData]),
-    } as unknown as FieldPath,
-    { merge: true }
-  )
-    .then(() => {
-      return true;
-    })
-    .catch(() => {
-      return false;
-    });
+  try {
+    return isAddAction
+      ? await addFavourite(mediaData)
+      : await removeFavourite(mediaData.id);
+  } catch {
+    return false;
+  }
 }
 
 export async function updateUserMediaListByStatus({
   status,
   mediaData,
-  userId,
 }: {
   status: string;
   mediaData: UpdateFavourites["mediaData"];
-  userId: string;
+  userId?: string;
 }) {
-  const db = getFirestore(initFirebase() as any);
-
-  await updateDoc(doc(db, "users", userId), {
-    [`mediaListSavedByStatus.${[status.toLowerCase()]}`]: arrayUnion(
-      ...[mediaData]
-    ),
-  })
-    .then(() => {
-      return true;
-    })
-    .catch(() => {
-      return false;
-    });
+  try {
+    return await setListStatus({ snapshot: mediaData, status });
+  } catch {
+    return false;
+  }
 }
 
+/** Kept for signature compatibility: removes every entry of `status` that is no
+ *  longer part of `newListFiltered`. */
 export async function removeMediaOnListByStatus({
   status,
   newListFiltered,
-  userId,
 }: {
   status: string;
-  newListFiltered: UpdateFavourites["mediaData"];
-  userId: string;
+  newListFiltered: UpdateFavourites["mediaData"] | UpdateFavourites["mediaData"][];
+  userId?: string;
 }) {
-  const db = getFirestore(initFirebase() as any);
-
-  await updateDoc(doc(db, "users", userId), {
-    [`mediaListSavedByStatus.${[status.toLowerCase()]}`]: newListFiltered,
-  })
-    .then(() => {
-      return true;
-    })
-    .catch(() => {
-      return false;
-    });
+  try {
+    const keep = Array.isArray(newListFiltered)
+      ? new Set(newListFiltered.map((media) => Number(media?.id)))
+      : new Set<number>();
+    const entries = (await listEntries()).filter(
+      (entry) => entry.status === status.toLowerCase() && !keep.has(Number(entry.id)),
+    );
+    for (const entry of entries) await removeFromList(entry.id);
+    return true;
+  } catch {
+    return false;
+  }
 }

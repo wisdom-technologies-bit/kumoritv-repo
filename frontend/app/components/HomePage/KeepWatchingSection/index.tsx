@@ -4,13 +4,11 @@ import React, { useEffect, useState } from "react";
 import SwiperCarouselContainer from "../../SwiperCarouselContainer";
 import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { doc, getDoc, getFirestore } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import KeepWatchingEpisodeInfo from "./components/KeepWatchingEpisodeInfo";
 import { SwiperSlide } from "swiper/react";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
+import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
 
 const framerMotionVariants = {
   initial: {
@@ -29,10 +27,7 @@ const framerMotionVariants = {
 function KeepWatchingSection() {
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
-  const auth = getFirebaseAuth();
   const { user } = useUser();
-
-  const db = getFirebaseDb();
 
   const [watchingList, setWatchingList] = useState<KeepWatchingMediaData[]>([]);
   const [deletedFromWatchingList, setDeletedFromWatchingList] = useState<
@@ -55,28 +50,11 @@ function KeepWatchingSection() {
   }, [user, anilistUser]);
 
   async function getWatchingList() {
-    const userDoc = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    );
+    // Signed-in: latest incomplete watch_progress row per anime, from Supabase.
+    // Guest / AniList-only: the local device copy.
+    const continueWatchingList = await listContinueWatchingFromServer();
 
-    const watchingList = userDoc.get("keepWatching");
-
-    if (!watchingList) return setWatchingList([]);
-
-    const changeWatchingListFromObjectToArray: KeepWatchingMediaData[] =
-      Object.keys(watchingList)
-        .map((key) => {
-          return watchingList[key];
-        })
-        .filter((item) => item.length != 0 && item);
-
-    const watchingListSortedByDate = changeWatchingListFromObjectToArray
-      .sort(function (x, y) {
-        return x.updatedAt - y.updatedAt;
-      })
-      .reverse();
-
-    setWatchingList(watchingListSortedByDate || []);
+    setWatchingList(continueWatchingList || []);
   }
 
   return (

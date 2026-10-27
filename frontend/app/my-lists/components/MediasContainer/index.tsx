@@ -2,9 +2,6 @@
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { doc, getDoc, getFirestore } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import SvgLoading from "@/public/assets/Eclipse-1s-200px.svg";
 import SvgCaretDown from "@/public/assets/chevron-down.svg";
@@ -16,6 +13,9 @@ import {
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
 import { AnimatePresence, motion } from "framer-motion";
+import { LIST_STATUSES, listByStatus, toAnilistStatus } from "@/app/lib/user-data/lists";
+import type { ListEntry } from "@/app/lib/user-data/types";
+import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
 
 type ComponentTypes = {
   mediaFetched:
@@ -52,7 +52,6 @@ export default function MediasContainer({
     (state) => state.UserInfo?.value as UserAnilist
   );
 
-  const auth = getFirebaseAuth();
   const { user, loading } = useUser();
 
   const dispatch = useAppDispatch();
@@ -66,34 +65,45 @@ export default function MediasContainer({
       dispatch(toggleShowLoginModalValue());
   }, [user, anilistUser, loading]);
 
+  function toListCard(entry: ListEntry): ListItemOnMediasSaved {
+    return {
+      id: entry.id,
+      title: {
+        ...entry.snapshot.title,
+        userPreferred:
+          entry.snapshot.title.userPreferred || entry.snapshot.title.romaji,
+      },
+      description: entry.snapshot.description,
+      format: entry.snapshot.format,
+      isFavourite: false,
+      mediaListEntry: {
+        id: 0,
+        mediaId: entry.id,
+        status: toAnilistStatus(entry.status),
+        progress: entry.progress,
+        media: { title: { romaji: entry.snapshot.title.romaji } },
+      },
+      coverImage: {
+        extraLarge: entry.snapshot.coverImage.extraLarge,
+        large: entry.snapshot.coverImage.large,
+      },
+    } as ListItemOnMediasSaved;
+  }
+
   async function getUserLists() {
-    const db = getFirebaseDb();
-    const userDoc = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    ).then((doc) => doc.data());
-
-    const keepWatchingListFromObjectToArray = Object.keys(
-      userDoc!.keepWatching as []
-    ).map((key) => {
-      return userDoc!.keepWatching[key];
-    });
-
-    const keepWatchingList = keepWatchingListFromObjectToArray.filter(
-      (item) => item.length != 0 && item
-    );
-
-    setKeepWatchingList(keepWatchingList);
+    // Keep Watching: latest incomplete progress per anime (Supabase or local).
+    setKeepWatchingList(await listContinueWatchingFromServer());
 
     if (!anilistUser) {
-      const activityLists: { name: string; medias: ListItemOnMediasSaved[] }[] =
-        [];
+      const lists = await listByStatus();
 
-      Object.keys(userDoc!.mediaListSavedByStatus)?.map((list) =>
-        activityLists.push({
-          name: list,
-          medias: userDoc!.mediaListSavedByStatus[list],
-        })
-      );
+      const activityLists: { name: string; medias: ListItemOnMediasSaved[] }[] =
+        LIST_STATUSES.filter((status) => lists[status].length > 0).map(
+          (status) => ({
+            name: status,
+            medias: lists[status].map(toListCard),
+          })
+        );
 
       setUserLists(activityLists);
     }

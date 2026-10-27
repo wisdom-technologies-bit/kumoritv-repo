@@ -19,11 +19,9 @@ import * as AddToFavourites from "../../Buttons/AddToFavourites";
 import parse from "html-react-parser";
 import ScoreRating from "../../DynamicAssets/ScoreRating";
 import MediaFormatIcon from "../../DynamicAssets/MediaFormatIcon";
-import { getFirebaseAuth } from "@/app/firebaseApp";
 import SwiperCarousel from "./swiperCarousel";
 import { SwiperSlide } from "swiper/react";
 import { convertToUnix } from "@/app/lib/formatDateUnix";
-import { getUserAdultContentPreference } from "@/app/lib/user/userDocFetchOptions";
 
 export const revalidate = 1800; // revalidate cached data every 30 min
 
@@ -80,34 +78,19 @@ function NavigationThroughMedias({
     else fetchMediaList();
   }, []);
 
-  const auth = getFirebaseAuth();
   const { user } = useUser();
-
-  async function getUserPreference() {
-    if (!user) return false;
-
-    if (isAdultContentSetToShow) return isAdultContentSetToShow;
-
-    const userAdultContentPreference: boolean =
-      await getUserAdultContentPreference(user.id);
-
-    setIsAdultContentSetToShow(userAdultContentPreference);
-
-    return userAdultContentPreference;
-  }
 
   async function fetchMediaListByDays(days: 0 | 7 | 30) {
     setIsLoading(true);
 
     let fetchedMedia: AiringMediaResult[] | MediaData[] = [];
 
-    const isAdultContentAllowed = await getUserPreference();
 
     fetchedMedia = (await anilist.getReleasingByDaysRange({
       type: mediaFormat || "ANIME",
       days: days!,
       perPage: 40,
-      showAdultContent: isAdultContentAllowed,
+      showAdultContent: true,
     })) as AiringMediaResult[];
 
     // Remove releases from "today" to show on other options
@@ -143,20 +126,15 @@ function NavigationThroughMedias({
 
     let fetchedMedia: AiringMediaResult[] | MediaData[] = [];
 
-    const isAdultContentAllowed = await getUserPreference();
 
     fetchedMedia = await anilist
       .getMediaForThisFormat({
         type: mediaFormat || "ANIME",
         sort: sortBy,
         pageNumber: 20,
-        showAdultContent: isAdultContentAllowed,
+        showAdultContent: true,
       })
-      .then((res) =>
-        (res as MediaData[]).filter(
-          (item) => item.isAdult == isAdultContentAllowed
-        )
-      );
+      .then((res) => res as MediaData[]);
 
     if (isResultsSortedByTrending)
       fetchedMedia = (fetchedMedia as MediaData[])

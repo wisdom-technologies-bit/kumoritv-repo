@@ -8,23 +8,19 @@ import UserSvg from "@/public/assets/person-circle.svg";
 import VideoSvg from "@/public/assets/play.svg";
 import SourceSvg from "@/public/assets/globe2.svg";
 import DeleteSvg from "@/public/assets/trash.svg";
-import {
-  deleteDoc,
-  deleteField,
-  doc,
-  getDoc,
-  updateDoc,
-} from "firebase/firestore";
 import Image from "next/image";
-import { getFirebaseDb } from "@/app/firebaseApp";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
-import type { Auth } from "firebase/auth";
 import * as contantOptions from "./contantOptions";
 import anilistUsersActions from "@/app/api/anilist/anilistUsers";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
 import { removeCookies } from "@/app/lib/user/anilistUserLoginOptions";
 import { sourcesAvailable } from "@/app/data/animeSourcesAvailable";
+import { getPrefs, setPref } from "@/app/lib/user-data/prefs";
+import { clearFavourites } from "@/app/lib/user-data/favourites";
+import { clearProgress } from "@/app/lib/user-data/progress";
+import { clearNotifications } from "@/app/lib/user-data/notifications";
+import { clearUserScopedCaches } from "@/app/lib/user-data/merge";
 
 type SettingsTypes = {
   onClick?:
@@ -33,7 +29,7 @@ type SettingsTypes = {
     | ((value: void) => void | PromiseLike<void>)
     | null
     | undefined;
-  auth: Auth;
+  auth?: unknown;
   anilistUser?: UserAnilist | null;
   newUser?: boolean;
 };
@@ -114,8 +110,6 @@ function UserSettingsModal({
     null
   );
 
-  const db = getFirebaseDb();
-
   async function handleUpdateUserInfoForm(
     e: React.FormEvent<HTMLFormElement> | HTMLFormElement
   ) {
@@ -144,15 +138,11 @@ function UserSettingsModal({
       if (error) throw error;
     }
 
-    if (userAnilist) await updateDoc(doc(db, "users", `${userAnilist.id}`), {
-      mediaTitlePreferredLang: form.mediaTitlePreferredLang.value,
-      videoSubtitleLanguage: form.language.value,
-      videoSource: form.source.value,
-      videoQuality: form.quality.value,
-      autoNextEpisode: form.autoNextEpisode.checked,
-      autoSkipIntroAndOutro: form.skipIntroAndOutro.checked,
-      playVideoWhenMediaAndVideoIdMismatch: form.playVideoWhenMismatch.checked,
-    });
+    // Playback preferences: profiles table when signed in, localStorage for guests
+    // (an AniList-only user has no Supabase session and behaves as a guest).
+    await setPref("autoNext", form.autoNextEpisode.checked);
+    await setPref("autoSkip", form.skipIntroAndOutro.checked);
+    await setPref("subtitle_language", form.language.value);
 
     await (onClick as ((value: void) => void | PromiseLike<void>) | null | undefined)?.();
 
@@ -198,13 +188,9 @@ function UserSettingsModal({
     setIsLoading(true);
     setWasSuccessfull(false);
 
-    const userId = user ? user.uid : `${userAnilist!.id}`;
-
     switch (option) {
       case "bookmarks":
-        await updateDoc(doc(db, "users", userId), {
-          bookmarks: deleteField(),
-        });
+        await clearFavourites();
 
         setIsLoading(false);
         setWasSuccessfull(true);
@@ -212,9 +198,7 @@ function UserSettingsModal({
         break;
 
       case "episodes":
-        await updateDoc(doc(db, "users", userId), {
-          episodesWatchedBySource: deleteField(),
-        });
+        await clearProgress();
 
         setIsLoading(false);
         setWasSuccessfull(true);
@@ -222,9 +206,7 @@ function UserSettingsModal({
         break;
 
       case "notifications":
-        await updateDoc(doc(db, "users", userId), {
-          notifications: deleteField(),
-        });
+        await clearNotifications();
 
         setIsLoading(false);
         setWasSuccessfull(true);
@@ -237,7 +219,7 @@ function UserSettingsModal({
           if (!response.ok) throw new Error("Unable to delete account");
           await client?.auth.signOut();
         } else {
-          await deleteDoc(doc(db, "users", userId));
+          clearUserScopedCaches();
           removeCookies();
         }
         window.location.href = "/";
@@ -251,32 +233,17 @@ function UserSettingsModal({
   (async function getUserSavedSettings() {
     if (!user && !userAnilist) return;
 
-    const userDoc = await getDoc(
-      doc(db, "users", user ? user.uid : `${userAnilist!.id}`)
-    );
+    const prefs = await getPrefs();
 
-    setCurrentLang(
-      ((await userDoc.get("videoSubtitleLanguage")) as string) || "English"
-    );
-    setCurrentSource(
-      ((await userDoc.get("videoSource")) as string) || "crunchyroll"
-    );
-    setCurrentTitleLang(
-      ((await userDoc.get("mediaTitlePreferredLang")) as string) || "romaji"
-    );
-    setCurrentQuality(
-      ((await userDoc.get("videoQuality")) as string) || "auto"
-    );
-    setCurrentShowAdultContent(
-      (await userDoc.get("showAdultContent")) || false
-    );
-    setCurrentSkipIntroAndOutro(
-      (await userDoc.get("autoSkipIntroAndOutro")) || false
-    );
-    setCurrentNextEpisode((await userDoc.get("autoNextEpisode")) || false);
-    setCurrentPlayWrongMediaEnabled(
-      (await userDoc.get("playVideoWhenMediaAndVideoIdMismatch")) || false
-    );
+    setCurrentLang(prefs.subtitle_language || "English");
+    setCurrentSource(currentSource || "crunchyroll");
+    setCurrentTitleLang(profile?.title_language || "romaji");
+    setCurrentQuality(profile?.video_quality || "auto");
+    // Adult-content preference is no longer read from the database anywhere.
+    setCurrentShowAdultContent(false);
+    setCurrentSkipIntroAndOutro(prefs.autoSkip);
+    setCurrentNextEpisode(prefs.autoNext);
+    setCurrentPlayWrongMediaEnabled(false);
   })();
 
   return (

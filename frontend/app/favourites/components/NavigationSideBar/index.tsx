@@ -3,11 +3,9 @@ import { useUser } from "@/app/lib/supabase/AuthProvider";
 import Link from "next/link";
 import React, { useLayoutEffect, useState } from "react";
 import styles from "./component.module.css";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { doc, getDoc, getFirestore } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import { BookmarkItem } from "@/app/ts/interfaces/firestoreData";
+import { listFavourites } from "@/app/lib/user-data/favourites";
 
 function NavigationSideBar({ params }: { params?: { format: string } }) {
   const [currParams, setCurrParams] = useState("");
@@ -16,10 +14,7 @@ function NavigationSideBar({ params }: { params?: { format: string } }) {
 
   const anilistUser = useAppSelector((state) => state.UserInfo.value);
 
-  const auth = getFirebaseAuth();
   const { user, loading } = useUser();
-
-  const db = getFirebaseDb();
 
   useLayoutEffect(() => {
     if (!loading && (user || anilistUser)) getUserBookmarks();
@@ -28,9 +23,7 @@ function NavigationSideBar({ params }: { params?: { format: string } }) {
   }, [loading, params]);
 
   async function getUserBookmarks() {
-    const bookmarksList: BookmarkItem[] = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    ).then((doc) => doc.get("bookmarks"));
+    const bookmarksList = (await listFavourites()) as BookmarkItem[];
 
     setBookmarksMediaTypesQuantity({
       all: bookmarksList.length,

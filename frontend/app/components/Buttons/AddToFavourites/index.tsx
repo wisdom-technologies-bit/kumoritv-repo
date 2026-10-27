@@ -5,12 +5,9 @@ import styles from "./component.module.css";
 import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
 import FavouriteSvg from "@/public/assets/heart.svg";
 import FavouriteFillSvg from "@/public/assets/heart-fill.svg";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { motion } from "framer-motion";
-import { updateUserFavouriteMedias } from "@/app/lib/user/userDocUpdateOptions";
+import { addFavourite, isFavourite, removeFavourite } from "@/app/lib/user-data/favourites";
 import { useAppDispatch, useAppSelector } from "@/app/lib/redux/hooks";
 import anilistUsers from "@/app/api/anilist/anilistUsers";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
@@ -39,19 +36,15 @@ export function Button({
 
   const dispatch = useAppDispatch();
 
-  const auth = getFirebaseAuth();
-
   const { user, loading } = useUser();
-
-  const db = getFirebaseDb();
 
   useEffect(() => {
     if (!loading) {
-      isMediaOnUserDoc();
+      void isMediaOnUserFavourites();
     }
   }, [user, anilistUser, loading]);
 
-  // WHEN BUTTON IS CLICKED, RUN FUNCTION TO ADD OR REMOVE MEDIA FROM FIRESTORE
+  // WHEN BUTTON IS CLICKED, ADD OR REMOVE MEDIA FROM FAVOURITES
   async function handleMediaOnFavourites() {
     // Opens Login Modal
     if (!user && !anilistUser) return dispatch(toggleShowLoginModalValue());
@@ -65,6 +58,8 @@ export function Button({
           typeof mediaInfo.title === "string"
             ? mediaInfo.title
             : mediaInfo.title.romaji,
+        english: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.english,
+        native: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.native,
       },
       format: mediaInfo.format,
       description: mediaInfo.description,
@@ -74,35 +69,36 @@ export function Button({
       },
     };
 
-    await updateUserFavouriteMedias({
-      userId: user?.id || `${anilistUser?.id}`,
-      mediaData: favouriteMediaData,
-      isAddAction: !wasAddedToFavourites,
-    });
+    const wasAdded = wasAddedToFavourites;
 
-    await anilistUsers.addOrRemoveFromAnilistFavourites({
-      format: mediaInfo.type.toLowerCase() as "anime" | "manga",
-      mediaId: mediaInfo.id,
-    });
+    // optimistic UI, rolled back when the write fails
+    setWasAddedToFavourites(!wasAdded);
 
-    setWasAddedToFavourites(!wasAddedToFavourites);
+    const writeSucceeded = wasAdded
+      ? await removeFavourite(mediaInfo.id)
+      : await addFavourite(favouriteMediaData);
+
+    if (!writeSucceeded) setWasAddedToFavourites(wasAdded);
+
+    try {
+      await anilistUsers.addOrRemoveFromAnilistFavourites({
+        format: mediaInfo.type.toLowerCase() as "anime" | "manga",
+        mediaId: mediaInfo.id,
+      });
+    } catch {
+      // AniList sync is best effort and must not break the local state
+    }
 
     setIsLoading(false);
   }
 
   // IF MEDIA ID MATCHS ANY RESULT ON DB, IT SETS THIS COMPONENT BUTTON AS ACTIVE
-  async function isMediaOnUserDoc() {
-    if (!user && !anilistUser) return;
+  async function isMediaOnUserFavourites() {
+    if (isActiveOnAnilist) return setWasAddedToFavourites(true);
 
-    const userDoc = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    );
+    const favouriteFound = await isFavourite(mediaInfo.id);
 
-    const wasMediaIdFoundOnDoc = userDoc
-      .get("bookmarks")
-      ?.find((item: { id: number }) => item.id == mediaInfo.id);
-
-    if (wasMediaIdFoundOnDoc) setWasAddedToFavourites(true);
+    setWasAddedToFavourites(favouriteFound);
   }
 
   return (

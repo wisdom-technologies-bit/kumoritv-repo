@@ -3,15 +3,14 @@ import { useUser } from "@/app/lib/supabase/AuthProvider";
 import Link from "next/link";
 import React, { useLayoutEffect, useState } from "react";
 import styles from "./component.module.css";
-import { getFirebaseAuth, getFirebaseDb } from "@/app/firebaseApp";
-import { doc, getDoc, getFirestore } from "firebase/firestore";
-import { initFirebase } from "@/app/firebaseApp";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import { ListItemOnMediasSaved } from "@/app/ts/interfaces/firestoreData";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { AnimatePresence, motion } from "framer-motion";
 import SvgFilter from "@/public/assets/funnel.svg";
 import SvgClose from "@/public/assets/x.svg";
+import { getListCounts } from "@/app/lib/user-data/lists";
+import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
 
 const showUpMotion = {
   hidden: {
@@ -64,10 +63,7 @@ function NavigationSideBar({
 
   const anilistUser = useAppSelector((state) => state.UserInfo?.value);
 
-  const auth = getFirebaseAuth();
   const { user, loading } = useUser();
-
-  const db = getFirebaseDb();
 
   useLayoutEffect(() => {
     if (!loading && (user || anilistUser)) getUserLists();
@@ -76,61 +72,21 @@ function NavigationSideBar({
   }, [loading, user, anilistUser, params]);
 
   async function getUserLists() {
-    const userDoc = await getDoc(
-      doc(db, "users", user?.id || `${anilistUser?.id}`)
-    ).then((doc) => doc.data());
+    // Counts come from the data layer: Supabase for signed-in users, the local
+    // device copy for guests (AniList-only users behave as guests).
+    const counts = await getListCounts();
+    const continueWatchingList = await listContinueWatchingFromServer();
 
-    const keepWatchingListFromObjectToArray = Object.keys(
-      userDoc!.keepWatching as []
-    ).map((key) => {
-      return userDoc!.keepWatching[key];
+    setMediasQuantity({
+      all: counts.all,
+      completed: counts.completed,
+      planning: counts.planning,
+      current: counts.watching,
+      dropped: counts.dropped,
+      paused: counts.paused,
+      repeating: counts.repeating,
+      keepWatching: continueWatchingList.length,
     });
-
-    const keepWatchingList = keepWatchingListFromObjectToArray.filter(
-      (item) => item.length != 0 && item
-    );
-    const activityLists: { name: string; medias: ListItemOnMediasSaved[] }[] =
-      [];
-
-    Object.keys(userDoc!.mediaListSavedByStatus)?.map((list) =>
-      activityLists.push({
-        name: list,
-        medias: userDoc!.mediaListSavedByStatus[list],
-      })
-    );
-
-    const mediasQuantityFiltered = {
-      all: 0,
-      completed:
-        activityLists?.find((list) => list.name == "completed")?.medias
-          .length || 0,
-      planning:
-        activityLists?.find((list) => list.name == "planning")?.medias.length ||
-        0,
-      current:
-        activityLists?.find((list) => list.name == "current")?.medias.length ||
-        0,
-      dropped:
-        activityLists?.find((list) => list.name == "dropped")?.medias.length ||
-        0,
-      paused:
-        activityLists?.find((list) => list.name == "paused")?.medias.length ||
-        0,
-      repeating:
-        activityLists?.find((list) => list.name == "repeating")?.medias
-          .length || 0,
-      keepWatching: keepWatchingList.length,
-    };
-
-    mediasQuantityFiltered.all =
-      mediasQuantityFiltered.completed +
-      mediasQuantityFiltered.current +
-      mediasQuantityFiltered.dropped +
-      mediasQuantityFiltered.paused +
-      mediasQuantityFiltered.planning +
-      mediasQuantityFiltered.repeating;
-
-    setMediasQuantity(mediasQuantityFiltered);
   }
 
   return (
