@@ -24,7 +24,7 @@ function collect(directory: string): string[] {
 
 const forbidden = /from\s+["'](firebase[^"']*|react-firebase-hooks[^"']*|@\/app\/firebaseApp)["']|require\(["'](firebase[^"']*|@\/app\/firebaseApp)["']\)/;
 
-test("only the deprecated comments component, firebaseApp and the AniList login flow import Firebase", () => {
+test("only firebaseApp and the AniList login flow import Firebase", () => {
   const files = [
     ...collect(join(frontendRoot, "app")),
     ...collect(join(frontendRoot, "lib")),
@@ -34,7 +34,6 @@ test("only the deprecated comments component, firebaseApp and the AniList login 
     .map((file) => ({ file, relative: relative(frontendRoot, file).replace(/\\/g, "/") }))
     .filter(({ relative: path }) => {
       if (allowed.includes(path)) return false;
-      if (path.startsWith("app/components/[DEPRECATED]CommentsSection/")) return false;
       return forbidden.test(readFileSync(join(frontendRoot, path), "utf8"));
     })
     .map(({ relative: path }) => path);

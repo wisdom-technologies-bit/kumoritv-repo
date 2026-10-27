@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "NEXT_SHARP_PATH=\"/tmp/node_modules/sharp\" next start",
     "lint": "next lint",
-    "test": "node --import tsx --test 'app/lib/**/*.test.ts'"
+    "test": "TSX_TSCONFIG_PATH=tsconfig.test.json node --import tsx --import ./test-harness/register-dom.mjs --test $(find app -name '*.test.ts' -o -name '*.test.tsx' | sort)"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.2.5",
@@ -17,7 +17,6 @@
     "@vercel/analytics": "^1.2.2",
     "@vercel/functions": "^3.10.3",
     "@vidstack/react": "^1.10.9",
-    "hls.js": "^1.5.7",
     "axios": "^1.6.6",
     "bad-words": "^3.0.4",
     "firebase": "^10.8.0",
@@ -41,12 +40,14 @@
     "@stylistic/eslint-plugin": "^2.8.0",
     "@svgr/webpack": "^8.1.0",
     "@types/bad-words": "^3.0.3",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "^14.2.13",
     "eslint-config-prettier": "^9.1.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.3.3",
     "tsx": "^4.23.15",
     "typescript": "^5"

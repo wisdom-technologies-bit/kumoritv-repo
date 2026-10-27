@@ -5,6 +5,7 @@ import React, { MouseEventHandler, useState } from "react";
 import styles from "./component.module.css";
 import GoogleSvg from "@/public/assets/google-fill.svg";
 import AnonymousSvg from "@/public/assets/person-fill.svg";
+import AnilistSvg from "@/public/assets/anilist.svg";
 import CloseSvg from "@/public/assets/x.svg";
 import LoadingSvg from "@/public/assets/Eclipse-1s-200px.svg";
 import ProfileFallbackImg from "@/public/profile_fallback.jpg";
@@ -47,6 +48,7 @@ export default function UserModal({ onClick, nextPath }: ModalTypes) {
     if (error) setLoginError({ code: error.code || "google", message: friendlyAuthError(error) });
     setIsLoading(false);
   };
+  const signWithAnilist = () => { window.location.href = `https://anilist.co/api/v2/oauth/authorize?client_id=${process.env.NEXT_PUBLIC_ANILIST_CLIENT_ID}&response_type=token`; };
   const signAnonymously = async () => {
     if (!client) return;
     setIsLoading(true);
@@ -64,7 +66,7 @@ export default function UserModal({ onClick, nextPath }: ModalTypes) {
   async function handleSignUpForm(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); if (!client) return; setIsLoading(true); const form = e.currentTarget;
     const username = form.username.value.trim(); const password = form.password.value.trim();
-    if (!/^[A-Za-z0-9_.-]{3,40}$/.test(username)) { setLoginError({ code: "username", message: "Username must be 3-40 characters using letters, numbers, underscore, dot, or dash." }); setIsLoading(false); return; }
+    if (!/^.{1,15}$/.test(username)) { setLoginError({ code: "username", message: "The limit is 15 characters." }); setIsLoading(false); return; }
     if (!/^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(password)) { setLoginError({ code: "password", message: "Password has to have at least 1 letter and 1 number. Min. 8 characters." }); setIsLoading(false); return; }
     if (password !== form.confirm_password.value.trim()) { setLoginError({ code: "password", message: "Passwords doesn't match." }); setIsLoading(false); return; }
     const { data: existing } = await client.from("public_profiles").select("id").ilike("username", username).limit(1);
@@ -76,10 +78,11 @@ export default function UserModal({ onClick, nextPath }: ModalTypes) {
   if (user && isSettingsMenuOpen) return <UserSettingsModal auth={undefined as never} onClick={onClick} newUser />;
   return !user ? <motion.div id={styles.backdrop} onClick={onClick} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.div data-disabled-scroll={true} onClick={(e) => e.stopPropagation()} id={styles.modal} variants={framerMotionDropIn} initial="hidden" animate="visible" exit="exit">
     <div id={styles.heading}><h5>Login with</h5><button aria-label="Close User Panel" onClick={onClick as unknown as MouseEventHandler<HTMLButtonElement>}><CloseSvg width={16} height={16} alt="Close icon" /></button></div>
-    <LoginAlternativesButtons anonymously={signAnonymously} withGoogle={signInGoogle} />
+    <p className={styles.loggin_advice}>Use <b>Anilist</b> for better experience</p>
+    <LoginAlternativesButtons anonymously={signAnonymously} withGoogle={signInGoogle} withAnilist={signWithAnilist} />
     <div id={styles.span_container}><span></span><span>or</span><span></span></div>
     <motion.form onSubmit={formType === "signup" ? handleSignUpForm : handleLoginForm} onChange={() => setLoginError(null)} data-error-occurred={!!loginError}>
-      <AnimatePresence>{formType === "signup" && <motion.label initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>Username<input type="text" name="username" minLength={3} maxLength={40} pattern="^[A-Za-z0-9_.-]{3,40}$" placeholder="Your Username" required /></motion.label>}</AnimatePresence>
+      <AnimatePresence>{formType === "signup" && <motion.label initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>Username<input type="text" name="username" minLength={1} maxLength={15} pattern="^.{1,15}$" title="The limit is 15 characters." placeholder="Your Username" required /></motion.label>}</AnimatePresence>
       <label>Email<input type="email" name="email" placeholder="Your Email" required /></label>
       <label>Password<input type="password" name="password" minLength={8} pattern="^(?=.*\d)(?=.*[a-zA-Z]).{8,}$" autoComplete={formType === "signup" ? "new-password" : "current-password"} placeholder="Your Password" required /></label>
       <AnimatePresence>{formType === "signup" && <motion.label initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>Confirm Password<input type="password" name="confirm_password" minLength={8} placeholder="Your Password Again" required /></motion.label>}</AnimatePresence>
@@ -89,4 +92,4 @@ export default function UserModal({ onClick, nextPath }: ModalTypes) {
     <motion.button id={styles.create_account_button} onClick={() => setFormType(formType === "signup" ? "login" : "signup")}>{formType === "signup" ? "Or Login in Your Account" : "Or Create Your Account"}</motion.button>
   </motion.div></motion.div> : null;
 }
-function LoginAlternativesButtons({ withGoogle, anonymously }: { withGoogle: () => void; anonymously: () => void }) { return <div id={styles.login_buttons_container}><div><button title="Google" id={styles.google_button} onClick={withGoogle}><GoogleSvg width={16} height={16} alt="Google icon" /></button><small>Google</small></div><div><button title="Anonymously" id={styles.anonymous_button} onClick={anonymously}><AnonymousSvg width={16} height={16} alt="Anonymous icon" /></button><small>Anonymously</small></div></div>; }
+function LoginAlternativesButtons({ withGoogle, anonymously, withAnilist }: { withGoogle: () => void; anonymously: () => void; withAnilist: () => void }) { return <div id={styles.login_buttons_container}><div><button title="Google" id={styles.google_button} onClick={withGoogle}><GoogleSvg width={16} height={16} alt="Google icon" /></button><small>Google</small></div><div><button title="Anonymously" id={styles.anonymous_button} onClick={anonymously}><AnonymousSvg width={16} height={16} alt="Anonymous icon" /></button><small>Anonymously</small></div><div><button title="Anilist" id={styles.anilist_button} onClick={() => withAnilist()}><AnilistSvg width={16} height={16} alt="Anilist icon" /></button><small>Anilist</small></div></div>; }

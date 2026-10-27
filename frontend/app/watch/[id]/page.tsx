@@ -6,6 +6,7 @@ import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import VideoPlayer from "./components/VideoPlayer";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
+import CommentsSection from "@/app/components/CommentsSection";
 import { WatchState } from "./components/WatchState";
 function clean(s: string | null | undefined) {
   return (s || "").replace(/<[^>]*>/g, "").trim();
@@ -107,6 +108,13 @@ export default async function WatchPage({
             activeEpisodeNumber={ep}
             audio={audio as "sub" | "dub"}
             nextAiringEpisodeInfo={media.nextAiringEpisode || undefined}
+          />
+          {/* COMMENTS FOR THIS EPISODE (keyed by episode so ?ep= reloads them) */}
+          <CommentsSection
+            key={`comments-${ep}`}
+            mediaInfo={{ id: media.id, title: media.title, format: media.format }}
+            isOnWatchPage
+            episodeNumber={ep}
           />
         </section>
       </main>

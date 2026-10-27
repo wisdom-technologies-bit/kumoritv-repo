@@ -16,6 +16,7 @@ import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
+import CommentsSection from "@/app/components/CommentsSection";
 
 export const maxDuration = 60;
 
@@ -241,6 +242,19 @@ export default async function MediaPage({
             {mediaInfo.reviews?.nodes.length > 0 && (
               <Reviews reviews={mediaInfo.reviews.nodes} />
             )}
+
+            {/* COMMENTS SECTION */}
+            <section>
+              <h2 className={styles.heading_style}>COMMENTS</h2>
+
+              <CommentsSection
+                mediaInfo={{
+                  id: mediaInfo.id,
+                  title: mediaInfo.title,
+                  format: mediaInfo.format,
+                }}
+              />
+            </section>
 
             {/* RECOMMENDATIONS ACCORDING TO THIS MEDIA */}
             {mediaInfo.recommendations.edges[0] && (
