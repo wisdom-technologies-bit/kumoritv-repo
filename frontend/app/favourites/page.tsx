@@ -6,8 +6,9 @@ import SelectSort from "../components/SelectSortInputs";
 
 export async function generateMetadata() {
   return {
-    title: `Favourites | KumoriTV`,
-    description: `User Watchlist.`,
+    title: `Favourites`,
+    description: `Your favourite anime, saved on KumoriTV.`,
+    robots: { index: false, follow: false },
   };
 }
 

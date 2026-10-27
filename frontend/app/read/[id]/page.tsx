@@ -29,11 +29,11 @@ export async function generateMetadata({
 
   return {
     title: !mediaInfo
-      ? "Error | KumoriTV"
-      : `Chapter ${searchParams.chapter} - ${mediaInfo.title.userPreferred} | KumoriTV`,
-    description: `Read ${mediaInfo.title.userPreferred} - Chapter ${
-      searchParams.chapter
-    }. ${mediaInfo.description && mediaInfo.description}`,
+      ? "Error"
+      : `Chapter ${searchParams.chapter} - ${mediaInfo.title.userPreferred}`,
+    description: mediaInfo
+      ? `Read ${mediaInfo.title.userPreferred} - Chapter ${searchParams.chapter}.`
+      : "This chapter could not be loaded.",
   };
 }
 

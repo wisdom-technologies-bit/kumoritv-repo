@@ -14,33 +14,42 @@ import { checkDeviceIsMobile } from "./lib/checkMobileOrDesktop";
 import { cookies, headers } from "next/headers";
 import KeepWatchingSection from "./components/HomePage/KeepWatchingSection";
 import PopularMediaSection from "./components/HomePage/PopularMediaSection";
+import JsonLd from "./lib/seo/JsonLd";
+import { buildHomeJsonLd } from "./lib/seo/jsonld";
+import { absoluteUrl } from "./lib/seo/text";
 
 export const metadata: Metadata = {
-  title: "Home | KumoriTV",
+  title: { absolute: "KumoriTV - Watch Anime Online" },
   description:
-    "A anime platform that showcases popular and trending animes, mangas and movies. Explore the latest releases, keep watching your favorites, and discover what's popular in the anime world.",
+    "Stream anime online free in HD on KumoriTV. Watch subbed and dubbed episodes, follow airing shows, build your watchlist and discover new series.",
+  alternates: { canonical: absoluteUrl("/") },
   keywords: [
-    "Aniproject",
-    "Ani project",
-    "Ani project github",
-    "Animes",
-    "Anime Reviews",
-    "Latest Anime Releases",
-    "Anime Genres",
-    "Popular Anime Series",
-    "Anime News",
-    "Anime Characters",
-    "Manga Recommendations",
-    "Anime Community",
-    "Anime Events",
-    "Subbed Anime",
-    "Dubbed Anime",
-    "Classic Anime",
-    "Anime Trailers",
-    "Anime Forums",
-    "Anime Art",
-    "Anime Culture",
+    "KumoriTV",
+    "watch anime online",
+    "anime streaming",
+    "subbed anime",
+    "dubbed anime",
+    "airing anime",
+    "anime episodes",
+    "anime movies",
   ],
+  openGraph: {
+    type: "website",
+    title: "KumoriTV - Watch Anime Online",
+    description:
+      "Stream anime online free in HD on KumoriTV. Watch subbed and dubbed episodes, follow airing shows, build your watchlist and discover new series.",
+    url: absoluteUrl("/"),
+    siteName: "KumoriTV",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "KumoriTV" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "KumoriTV - Watch Anime Online",
+    description:
+      "Stream anime online free in HD on KumoriTV. Watch subbed and dubbed episodes, follow airing shows and discover new series.",
+    images: ["/og-image.png"],
+  },
+  robots: { index: true, follow: true },
 };
 
 export default async function Home() {
@@ -104,8 +113,11 @@ export default async function Home() {
     )
     .then((res) => res.map((item) => item.media));
 
+  const homeJsonLd = buildHomeJsonLd();
+
   return (
     <main id={styles.container} className={styles.main}>
+      <JsonLd data={homeJsonLd} />
       {/* HERO */}
       <HeroCarousel
         animesList={listAnimesTrendingWithBackground}

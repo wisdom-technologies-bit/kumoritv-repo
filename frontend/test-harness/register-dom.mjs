@@ -17,6 +17,17 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
 });
 
+// jsdom's requestAnimationFrame runs a 16ms setInterval that keeps the node event
+// loop alive forever once a library schedules a frame (vidstack does this at
+// import time). An unref'd timer still fires but never blocks process exit.
+const rafTimer = (callback) => {
+  const handle = setTimeout(() => callback(Date.now()), 16);
+  handle.unref?.();
+  return handle;
+};
+dom.window.requestAnimationFrame = rafTimer;
+dom.window.cancelAnimationFrame = (handle) => clearTimeout(handle);
+
 // jsdom cannot navigate and its `location` is unforgeable, so the global `window`
 // is a thin proxy that hands out a plain location object instead. Everything else
 // is the real jsdom window (methods keep their own `this`).
@@ -70,7 +81,7 @@ const globals = {
   MouseEvent: dom.window.MouseEvent,
   KeyboardEvent: dom.window.KeyboardEvent,
   getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
-  requestAnimationFrame: (callback) => setTimeout(() => callback(Date.now()), 0),
+  requestAnimationFrame: rafTimer,
   cancelAnimationFrame: (handle) => clearTimeout(handle),
   localStorage: dom.window.localStorage,
   MutationObserver: dom.window.MutationObserver,
@@ -79,6 +90,12 @@ const globals = {
 
 for (const [key, value] of Object.entries(globals)) {
   Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
+}
+
+// React 18.3 does not ship `cache()` outside Next's react-server build, so the
+// server modules that call it at import time need a passthrough here.
+if (typeof React.cache !== "function") {
+  React.cache = (fn) => fn;
 }
 
 // --- asset modules ----------------------------------------------------------
@@ -107,6 +124,8 @@ for (const extension of [".jpg", ".jpeg", ".png", ".webp"]) {
 
 // --- module doubles ---------------------------------------------------------
 const stubs = {
+  "server-only": join(here, "stubs/server-only.ts"),
+  "next/cache": join(here, "stubs/next-cache.ts"),
   "next/image": join(here, "stubs/next-image.tsx"),
   "framer-motion": join(here, "stubs/framer-motion.tsx"),
   "@/app/lib/supabase/browser": join(here, "stubs/supabase-browser.ts"),

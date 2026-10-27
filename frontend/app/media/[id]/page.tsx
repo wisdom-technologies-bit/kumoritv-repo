@@ -13,6 +13,10 @@ import MediaRelatedContainer from "./components/MediaRelatedContainer";
 import PageHeading from "./components/PageHeading";
 import Reviews from "./components/Reviews";
 import { getMediaInfo } from "@/app/lib/anilist/medias.server";
+import { animeName, buildMediaCanonical, buildMediaDescription, buildMediaTitle } from "@/app/lib/seo/titles";
+import { absoluteUrl } from "@/app/lib/seo/text";
+import { anilistStartDateIso, buildMediaJsonLd } from "@/app/lib/seo/jsonld";
+import JsonLd from "@/app/lib/seo/JsonLd";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
@@ -21,24 +25,43 @@ import CommentsSection from "@/app/components/CommentsSection";
 export const maxDuration = 60;
 
 export async function generateMetadata({ params }: { params: { id: number } }) {
-  const mediaData = await getMediaInfo({ id: Number(params.id) });
-  if (!mediaData) return { title: "Not Found | KumoriTV" };
+  const id = Number(params.id);
+  const mediaData = await getMediaInfo({ id });
+  if (!mediaData) return { title: "Not Found", robots: { index: false, follow: false } };
+
+  const name = animeName(mediaData.title) || `Anime ${id}`;
+  const title = buildMediaTitle({
+    animeName: name,
+    year: mediaData.seasonYear || mediaData.startDate?.year,
+  });
+  const description = buildMediaDescription({ description: mediaData.description, animeName: name });
+  const canonical = buildMediaCanonical(id);
+  const image = { url: absoluteUrl(`/og/${id}`), width: 1200, height: 630, alt: title };
+  const keywords = [
+    mediaData.title.romaji,
+    mediaData.title.english,
+    mediaData.title.native,
+    `${mediaData.title.romaji} anime`,
+    `${mediaData.title.romaji} episodes`,
+    `${name} watch online`,
+    "anime info",
+  ].filter((keyword): keyword is string => typeof keyword === "string" && !!keyword.trim());
 
   return {
-    alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app"}/media/${params.id}` },
-    title: `${mediaData.title.english || mediaData.title.romaji || mediaData.title.native} | KumoriTV`,
-    description:
-      mediaData.description ||
-      `See more info about ${mediaData.title.romaji || mediaData.title.native}`,
-    keywords: [
-      mediaData.title.romaji,
-      mediaData.title.english,
-      mediaData.title.native,
-      `${mediaData.title.romaji} anime`,
-      `${mediaData.title.romaji} release`,
-      `${mediaData.title.english} release`,
-      "anime info",
-    ],
+    title,
+    description,
+    keywords,
+    alternates: { canonical },
+    openGraph: {
+      type: mediaData.format === "MOVIE" ? "video.movie" : "video.tv_show",
+      title,
+      description,
+      url: canonical,
+      siteName: "KumoriTV",
+      images: [image],
+    },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
+    robots: { index: true, follow: true },
   };
 }
 
@@ -80,8 +103,27 @@ export default async function MediaPage({
     }
   }
 
+  const canonical = buildMediaCanonical(params.id);
+  const structuredData = buildMediaJsonLd({
+    id: mediaInfo.id,
+    name: animeName(mediaInfo.title) || `Anime ${params.id}`,
+    alternateNames: [mediaInfo.title.romaji, mediaInfo.title.native, mediaInfo.title.english],
+    description: mediaInfo.description,
+    imageUrl:
+      (typeof mediaInfo.coverImage?.extraLarge === "string" && mediaInfo.coverImage.extraLarge) ||
+      (typeof mediaInfo.bannerImage === "string" && mediaInfo.bannerImage) ||
+      null,
+    url: canonical,
+    genres: mediaInfo.genres,
+    format: mediaInfo.format,
+    startDateISO: anilistStartDateIso(mediaInfo.startDate),
+    episodes: mediaInfo.episodes,
+    year: mediaInfo.seasonYear || mediaInfo.startDate?.year,
+  });
+
   return (
     <main id={styles.container}>
+      <JsonLd data={structuredData} />
       {/* BANNER or BACKGROUND COLOR*/}
       <div
         id={styles.banner_background_container}

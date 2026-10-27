@@ -5,7 +5,6 @@ import Header from "./layout/header";
 import Footer from "./layout/footer";
 import NextTopLoader from "nextjs-toploader";
 import { Analytics } from "@vercel/analytics/react";
-import Script from "next/script";
 import StoreProvider from "./lib/redux/StoreProvider";
 import LoadingPageContainer from "./components/LoadingContainer";
 import GoogleAnalytics from "./googleAnalytics";
@@ -53,7 +52,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <Script src="/register-sw.js" />
       <GoogleAnalytics /> {/* Google Analytics */}
       <body className={inter.className}>
         <Analytics /> {/* Vercel Analytics - Has use limit */}

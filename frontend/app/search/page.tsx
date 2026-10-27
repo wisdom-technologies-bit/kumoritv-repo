@@ -6,12 +6,27 @@ import { headers } from "next/headers";
 import { checkDeviceIsMobile } from "../lib/checkMobileOrDesktop";
 import { Metadata } from "next";
 import { searchCatalog } from "@/app/lib/anilist/medias.server";
+import { absoluteUrl } from "@/app/lib/seo/text";
 
-export const metadata: Metadata = {
-  title: "Search | KumoriTV",
-  description:
-    "Filter animes released on that year, or just discover a new one in a genre you didnt watched yet.",
-};
+const SEARCH_DESCRIPTION =
+  "Filter anime by genre, year, season or status, or just discover something new to watch on KumoriTV.";
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams?: SearchPageTypes;
+}): Promise<Metadata> {
+  const filtered = Object.values(searchParams || {}).some((value) =>
+    Array.isArray(value) ? value.some((item) => String(item ?? "").trim()) : String(value ?? "").trim() !== "",
+  );
+
+  return {
+    title: "Search",
+    description: SEARCH_DESCRIPTION,
+    alternates: { canonical: filtered ? undefined : absoluteUrl("/search") },
+    robots: filtered ? { index: false, follow: true } : { index: true, follow: true },
+  };
+}
 
 type SearchPageTypes = {
   type?: string;

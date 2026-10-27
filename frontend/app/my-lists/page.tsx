@@ -9,8 +9,9 @@ import { checkDeviceIsMobile } from "../lib/checkMobileOrDesktop";
 
 export async function generateMetadata() {
   return {
-    title: `My Lists | KumoriTV`,
-    description: `User's Medias Lists of Medias Watched, Planned to Watch and much more.`,
+    title: `My Lists`,
+    description: `Your anime watch lists: watching, planned, completed and more.`,
+    robots: { index: false, follow: false },
   };
 }
 
