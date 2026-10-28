@@ -7,6 +7,7 @@ import SvgFilter from "@/public/assets/funnel.svg";
 import SvgClose from "@/public/assets/x.svg";
 import * as SearchOptions from "./constants";
 import simulateRange from "@/app/lib/simulateRange";
+import { parseGenreSlugs, serializeGenreParam } from "@/app/lib/search/genres";
 
 const showUpMotion = {
   hidden: {
@@ -43,48 +44,24 @@ function NavigationSideBar({ isMobile }: { isMobile: boolean }) {
     setLoading(true);
 
     switch (queryType) {
-      case "genre":
-        if (currSearchParams.get("genre")?.includes(inputTarget.value)) {
-          const originalString = currSearchParams.get("genre");
+      case "genre": {
+        // Every format on the site ([adventure], [action-comedy], "slice of life"…)
+        // is read into canonical slugs, toggled, then written back as brackets.
+        const currentSlugs = parseGenreSlugs(currSearchParams.getAll("genre"));
+        const nextSlugs = currentSlugs.includes(inputTarget.value)
+          ? currentSlugs.filter((slug) => slug !== inputTarget.value)
+          : [...currentSlugs, inputTarget.value];
 
-          if (originalString == `[${inputTarget.value}]`) {
-            currSearchParams.delete("genre");
+        const nextGenreParam = serializeGenreParam(nextSlugs);
 
-            setSearchParamsState(currSearchParams);
-
-            const query = `?${currSearchParams}`;
-
-            router.push(`${pathname}${decodeURI(query)}`);
-
-            setLoading(false);
-            return;
-          }
-
-          const newString = originalString!.replace(
-            `-${inputTarget.value}`,
-            ""
-          );
-
-          currSearchParams.set("genre", newString);
-          const query = `?${currSearchParams}`;
-
-          setSearchParamsState(currSearchParams);
-
-          router.push(`${pathname}${decodeURI(query)}`);
-
-          setLoading(false);
-
-          return;
+        if (nextGenreParam) {
+          currSearchParams.set("genre", nextGenreParam);
+        } else {
+          currSearchParams.delete("genre");
         }
 
-        currSearchParams.set(
-          queryType,
-          currSearchParams.get("genre")
-            ? `[${currSearchParams.get("genre")?.slice(1, currSearchParams.get("genre")!.length - 1)}-${inputTarget.value}]`
-            : `[${inputTarget.value}]`
-        );
-
         break;
+      }
 
       default:
         if (queryType == "year" && inputTarget.value == "any") {
@@ -177,9 +154,9 @@ function NavigationSideBar({ isMobile }: { isMobile: boolean }) {
                           <input
                             type="checkbox"
                             value={item.value}
-                            defaultChecked={searchParamsState
-                              .get("genre")
-                              ?.includes(item.value)}
+                            defaultChecked={parseGenreSlugs(
+                              searchParamsState.getAll("genre")
+                            ).includes(item.value)}
                             onClick={(e) =>
                               fetchNewResultsByQueryType("genre", e.target)
                             }
