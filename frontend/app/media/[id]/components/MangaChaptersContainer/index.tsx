@@ -13,6 +13,7 @@ import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
 import { listRead, subscribeChapters } from "@/app/lib/user-data/chapters";
 import { useSearchParams } from "next/navigation";
 import ErrorPanel from "../ErrorPanel";
+import { displayTitle } from "@/app/lib/titles";
 
 const framerMotionLoadingChapters: Variants = {
   initial: {
@@ -200,7 +201,7 @@ function MangaChaptersContainer({
             currMangasList?.map((chapter, key) => (
               <motion.li
                 key={key}
-                title={`Chapter ${chapter.chapterNumber} - ${mediaInfo.title.romaji}`}
+                title={`Chapter ${chapter.chapterNumber} - ${displayTitle(mediaInfo.title)}`}
                 data-disabled={chapter.pages == 0}
                 variants={framerMotionShowUpChapters}
                 className={styles.chapter_container}

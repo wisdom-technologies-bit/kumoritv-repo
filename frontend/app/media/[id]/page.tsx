@@ -18,6 +18,7 @@ import { absoluteUrl } from "@/app/lib/seo/text";
 import { anilistStartDateIso, buildMediaJsonLd } from "@/app/lib/seo/jsonld";
 import JsonLd from "@/app/lib/seo/JsonLd";
 import { notFound } from "next/navigation";
+import { displayTitle } from "@/app/lib/titles";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
 import CommentsSection from "@/app/components/CommentsSection";
@@ -140,10 +141,7 @@ export default async function MediaPage({
     ...mediaInfo,
     title: {
       ...mediaInfo.title,
-      userPreferred:
-        mediaInfo.title.english?.trim() ||
-        mediaInfo.title.romaji?.trim() ||
-        mediaInfo.title.native,
+      userPreferred: displayTitle(mediaInfo.title),
     },
   }}
 />
@@ -268,7 +266,7 @@ export default async function MediaPage({
               <section id={styles.related_container}>
                 <div className="display_flex_row space_beetween align_items_center display_wrap">
                   <h2 className={styles.heading_style}>
-                    RELATED TO {mediaInfo.title.romaji.toUpperCase()}
+                    RELATED TO {displayTitle(mediaInfo.title).toUpperCase()}
                   </h2>
                 </div>
 
@@ -314,11 +312,9 @@ export default async function MediaPage({
                           <MediaCard.MediaImgLink
                             mediaInfo={media.node.mediaRecommendation}
                             mediaId={media.node.mediaRecommendation?.id}
-                            title={
+                            title={displayTitle(
                               media.node.mediaRecommendation?.title
-                                .userPreferred ||
-                              media.node.mediaRecommendation?.title.romaji
-                            }
+                            )}
                             formatOrType={
                               media.node.mediaRecommendation?.format
                             }
@@ -335,11 +331,9 @@ export default async function MediaPage({
                           />
 
                           <MediaCard.LinkTitle
-                            title={
+                            title={displayTitle(
                               media.node.mediaRecommendation?.title
-                                .userPreferred ||
-                              media.node.mediaRecommendation?.title.romaji
-                            }
+                            )}
                             id={media.node.mediaRecommendation?.id}
                           />
                         </MediaCard.Container>
@@ -402,7 +396,7 @@ export default async function MediaPage({
                   className="yt_embed_video"
                   src={`https://www.youtube.com/embed/${mediaInfo.trailer.id}`}
                   frameBorder={0}
-                  title={mediaInfo.title.romaji + " Trailer"}
+                  title={displayTitle(mediaInfo.title) + " Trailer"}
                   allow="accelerometer; autoplay; encrypted-media; gyroscope;"
                   allowFullScreen
                 />

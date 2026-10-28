@@ -17,6 +17,7 @@ import {
   subscribe,
   unsubscribe,
 } from "@/app/lib/user-data/notifications";
+import { displayTitle } from "@/app/lib/titles";
 
 function AddToNotificationsButton({
   mediaInfo,
@@ -85,8 +86,8 @@ function AddToNotificationsButton({
         data-added={wasAddedToNotifications}
         title={
           wasAddedToNotifications
-            ? `Remove ${mediaInfo.title && mediaInfo.title?.userPreferred} From Notifications`
-            : `Get Notified When ${mediaInfo.title && mediaInfo.title?.userPreferred} Get a New Episode`
+            ? `Remove ${displayTitle(mediaInfo.title)} From Notifications`
+            : `Get Notified When ${displayTitle(mediaInfo.title)} Get a New Episode`
         }
       >
         {isLoading && <LoadingSvg alt="Loading Icon" width={16} height={16} />}

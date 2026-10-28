@@ -17,6 +17,7 @@ import PopularMediaSection from "./components/HomePage/PopularMediaSection";
 import JsonLd from "./lib/seo/JsonLd";
 import { buildHomeJsonLd } from "./lib/seo/jsonld";
 import { absoluteUrl } from "./lib/seo/text";
+import { displayTitle } from "@/app/lib/titles";
 
 export const metadata: Metadata = {
   title: { absolute: "KumoriTV - Watch Anime Online" },
@@ -155,10 +156,7 @@ export default async function Home() {
                 <Link
                   href={`/media/${bannerMedia.id}`}
                 >
-                  {
-                    bannerMedia.title
-                      .romaji
-                  }
+                  {displayTitle(bannerMedia.title)}
                 </Link>
               </h3>
             )}
@@ -196,10 +194,7 @@ export default async function Home() {
                 className="yt_embed_video"
                 src={`https://www.youtube.com/embed/${bannerMedia.trailer.id}?controls=0&showinfo=0`}
                 frameBorder={0}
-                title={
-                  bannerMedia.title
-                    .romaji + " Trailer"
-                }
+                title={displayTitle(bannerMedia.title) + " Trailer"}
                 allow="accelerometer; autoplay; encrypted-media; gyroscope;"
                 allowFullScreen
               />

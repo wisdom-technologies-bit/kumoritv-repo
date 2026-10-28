@@ -4,6 +4,7 @@
 
 import { attempt, isSignedIn, resolveContext, unwrap, type UserDataContextInput } from "./context";
 import { normaliseSnapshot } from "./normalise";
+import { displayTitle } from "@/app/lib/titles";
 import type { FavouriteSnapshot, NotificationRow } from "./types";
 
 export type NotificationView = {
@@ -55,7 +56,7 @@ export function groupNotifications(rows: NotificationRow[]): NotificationView[] 
     views.push({
       id: latest.id,
       mediaId: `${anilistId}`,
-      title: { romaji: title, native: title, userPreferred: title },
+      title: { romaji: title, native: title, userPreferred: displayTitle(title) },
       coverImage: { large: latest.cover_url || "", extraLarge: latest.cover_url || "" },
       episodes: ordered.map((row) => ({
         number: Number(row.episode),

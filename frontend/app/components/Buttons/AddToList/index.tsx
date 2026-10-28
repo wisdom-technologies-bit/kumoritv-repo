@@ -15,6 +15,7 @@ import anilistUsers from "@/app/api/anilist/anilistUsers";
 import { ImdbEpisode } from "@/app/ts/interfaces/imdb";
 import { userMediaStatusEntries } from "@/app/lib/dataConstants/anilist";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
+import { displayTitle } from "@/app/lib/titles";
 
 export function Button({
   mediaInfo,
@@ -85,6 +86,9 @@ export function Button({
       id: mediaInfo.id,
       title: {
         romaji: mediaInfo.title.romaji,
+        english: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.english,
+        native: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.native,
+        userPreferred: displayTitle(mediaInfo.title),
       },
       format: mediaInfo.format,
       description: mediaInfo.description,

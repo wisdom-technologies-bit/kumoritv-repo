@@ -13,6 +13,7 @@ import anilistUsers from "@/app/api/anilist/anilistUsers";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
+import { displayTitle } from "@/app/lib/titles";
 
 export function Button({
   mediaInfo,
@@ -60,6 +61,7 @@ export function Button({
             : mediaInfo.title.romaji,
         english: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.english,
         native: typeof mediaInfo.title === "string" ? undefined : mediaInfo.title.native,
+        userPreferred: displayTitle(mediaInfo.title),
       },
       format: mediaInfo.format,
       description: mediaInfo.description,
@@ -117,16 +119,8 @@ export function Button({
       }
       title={
         wasAddedToFavourites
-          ? `Remove ${
-              typeof mediaInfo.title === "string"
-                ? mediaInfo.title
-                : mediaInfo.title?.userPreferred
-            } from Favourites`
-          : `Add ${
-              typeof mediaInfo.title === "string"
-                ? mediaInfo.title
-                : mediaInfo.title?.userPreferred
-            } To Favourites`
+          ? `Remove ${displayTitle(mediaInfo.title)} from Favourites`
+          : `Add ${displayTitle(mediaInfo.title)} To Favourites`
       }
     >
       {isLoading && <LoadingSvg alt="Loading Icon" width={16} height={16} />}

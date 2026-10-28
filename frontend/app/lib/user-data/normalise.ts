@@ -1,3 +1,4 @@
+import { displayTitle } from "@/app/lib/titles";
 import type { FavouriteSnapshot, MediaCover, MediaTitle, ProgressSnapshot } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
@@ -13,13 +14,22 @@ function asString(value: unknown, fallback = ""): string {
 export function normaliseTitle(title: unknown): MediaTitle {
   if (typeof title === "string") return { romaji: title, userPreferred: title };
   const record = asRecord(title);
+  const english = (record.english as string | null | undefined) ?? null;
+  const native = (record.native as string | null | undefined) ?? null;
   const romaji = asString(record.romaji) || asString(record.userPreferred) || asString(record.english);
   return {
     romaji,
-    english: (record.english as string | null | undefined) ?? null,
-    native: (record.native as string | null | undefined) ?? null,
-    userPreferred:
-      (record.userPreferred as string | null | undefined) ?? romaji ?? null,
+    english,
+    native,
+    // English-first: rows saved before this rule existed hold the romaji title in
+    // `userPreferred`, but the display side runs displayTitle() over all three
+    // fields, so old rows still render their english title when they have one.
+    userPreferred: displayTitle({
+      english,
+      romaji,
+      native,
+      userPreferred: (record.userPreferred as string | null | undefined) ?? null,
+    }),
   };
 }
 

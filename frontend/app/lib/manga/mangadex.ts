@@ -85,13 +85,15 @@ export async function mangadexGet<T>(
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    // `cache` and `next.revalidate` fight each other: pass only one. A caller that
+    // wants a cache window gets `revalidate`, everyone else gets `no-store`.
     const init: RequestInit & { next?: { revalidate: number } } = {
       method: "GET",
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
       signal: AbortSignal.timeout(timeoutMs),
-      cache: "no-store",
     };
     if (options.revalidate !== undefined) init.next = { revalidate: options.revalidate };
+    else init.cache = "no-store";
 
     let response: Response;
     try {
@@ -215,6 +217,9 @@ export async function resolveMangaDexId(
   const queries = [...new Set(titles.map((title) => (title ?? "").trim()).filter(Boolean))].slice(0, 4);
   const targetTitles = new Set(queries.map(normaliseTitle).filter(Boolean));
   const seen = new Map<string, MangaCandidate>();
+  // A failed search proves nothing about the manga existing: only a search that
+  // actually answered is allowed to record a not-found row (and its 24h block).
+  let searchSucceeded = false;
 
   for (const query of queries) {
     try {
@@ -225,6 +230,7 @@ export async function resolveMangaDexId(
         "includes[]": ["cover_art"],
         "contentRating[]": CONTENT_RATINGS,
       }, { revalidate: 3600 });
+      searchSucceeded = true;
       for (const candidate of payload.data ?? []) {
         if (candidate?.id && !seen.has(candidate.id)) seen.set(candidate.id, candidate);
       }
@@ -241,15 +247,31 @@ export async function resolveMangaDexId(
   );
   const match = byAniListLink ?? byTitle ?? null;
 
+  if (match) {
+    await writeSource({
+      anilist_id: anilistId,
+      mangadex_id: match.id,
+      title: Object.values(match.attributes?.title ?? {})[0] ?? queries[0] ?? null,
+      not_found: false,
+      checked_at: new Date().toISOString(),
+    });
+
+    return match.id;
+  }
+
+  // Every request failed (network, timeout, 429/5xx after the retry): leave the
+  // cache untouched so the next visit tries again instead of serving a 24h block.
+  if (!searchSucceeded) return null;
+
   await writeSource({
     anilist_id: anilistId,
-    mangadex_id: match?.id ?? null,
-    title: match ? (Object.values(match.attributes?.title ?? {})[0] ?? queries[0] ?? null) : (queries[0] ?? null),
-    not_found: !match,
+    mangadex_id: null,
+    title: queries[0] ?? null,
+    not_found: true,
     checked_at: new Date().toISOString(),
   });
 
-  return match?.id ?? null;
+  return null;
 }
 
 // ------------------------------------------------------------------- chapters

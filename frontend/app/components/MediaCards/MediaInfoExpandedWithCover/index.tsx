@@ -5,6 +5,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import parse from "html-react-parser";
+import { displayTitle } from "@/app/lib/titles";
 
 const AddToPlaylistButton = dynamic(
   () => import("../../Buttons/AddToFavourites").then((module) => module.Button),
@@ -25,7 +26,7 @@ export function Container({
       <Link id={styles.img_container} href={`/media/${mediaInfo.id}`}>
         <Image
           src={mediaInfo.coverImage && mediaInfo.coverImage.extraLarge}
-          alt={`Cover Art for ${mediaInfo.title.userPreferred}`}
+          alt={`Cover Art for ${displayTitle(mediaInfo.title)}`}
           fill
           sizes="(max-width: 580px) 25vw, (max-width: 820px) 15vw, 220px"
         ></Image>
@@ -38,7 +39,7 @@ export function Container({
 
         <h4>
           <Link href={`/media/${mediaInfo.id}`}>
-            {mediaInfo.title.userPreferred}
+            {displayTitle(mediaInfo.title)}
           </Link>
         </h4>
 

@@ -10,6 +10,13 @@ import { BookmarkItem } from "@/app/ts/interfaces/firestoreData";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
 import { listFavourites } from "@/app/lib/user-data/favourites";
+import { displayTitle } from "@/app/lib/titles";
+
+// Alphabetical sort uses the same title the cards show, compared case-insensitively
+// so "frieren" and "Frieren" land next to each other.
+function sortableTitle(title: BookmarkItem["title"]) {
+  return displayTitle(title).toLocaleLowerCase();
+}
 
 function PlaylistItemsResults({
   params,
@@ -62,13 +69,11 @@ function PlaylistItemsResults({
     if (params?.sort) {
       if (params.sort == "title_desc")
         filteredBookmarks = filteredBookmarks.sort((a, b) =>
-          a.title.userPreferred > b.title.userPreferred ? -1 : 1
+          sortableTitle(a.title) > sortableTitle(b.title) ? -1 : 1
         );
       else if (params.sort == "title_asc")
         filteredBookmarks = filteredBookmarks
-          .sort((a, b) =>
-            a.title.userPreferred > b.title.userPreferred ? -1 : 1
-          )
+          .sort((a, b) => (sortableTitle(a.title) > sortableTitle(b.title) ? -1 : 1))
           .reverse();
     }
 
@@ -95,11 +100,11 @@ function PlaylistItemsResults({
     if (params?.sort) {
       if (params.sort == "title_desc")
         filteredBookmarks = filteredBookmarks.sort((a, b) =>
-          a.title.romaji > b.title.romaji ? -1 : 1
+          sortableTitle(a.title) > sortableTitle(b.title) ? -1 : 1
         );
       else if (params.sort == "title_asc")
         filteredBookmarks = filteredBookmarks
-          .sort((a, b) => (a.title.romaji > b.title.romaji ? -1 : 1))
+          .sort((a, b) => (sortableTitle(a.title) > sortableTitle(b.title) ? -1 : 1))
           .reverse();
     }
 
@@ -132,13 +137,13 @@ function PlaylistItemsResults({
                         hideOptionsButton
                         mediaInfo={media as MediaData}
                         mediaId={media.id}
-                        title={media.title.userPreferred}
+                        title={displayTitle(media.title)}
                         formatOrType={media.format}
                         url={media.coverImage.extraLarge}
                       />
 
                       <MediaCard.LinkTitle
-                        title={media.title.userPreferred}
+                        title={displayTitle(media.title)}
                         id={media.id}
                       />
                     </MediaCard.Container>
@@ -151,13 +156,13 @@ function PlaylistItemsResults({
                       hideOptionsButton
                       mediaInfo={media as MediaData}
                       mediaId={media.id}
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       formatOrType={media.format}
                       url={media.coverImage.extraLarge}
                     />
 
                     <MediaCard.LinkTitle
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       id={media.id}
                     />
                   </MediaCard.Container>

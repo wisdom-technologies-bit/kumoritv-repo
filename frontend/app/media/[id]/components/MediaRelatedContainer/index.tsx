@@ -5,6 +5,7 @@ import { A11y, Navigation, Pagination } from "swiper/modules";
 import styles from "./component.module.css";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
+import { displayTitle } from "@/app/lib/titles";
 
 function MediaRelatedContainer({
   mediaList,
@@ -41,7 +42,7 @@ function MediaRelatedContainer({
               hideOptionsButton
               mediaId={media.id}
               mediaInfo={media}
-              title={media.title.userPreferred || media.title.romaji}
+              title={displayTitle(media.title)}
               formatOrType={media.format}
               url={media.coverImage.large}
             />
@@ -52,7 +53,7 @@ function MediaRelatedContainer({
             />
 
             <MediaCard.LinkTitle
-              title={media.title.userPreferred || media.title.romaji}
+              title={displayTitle(media.title)}
               id={media.id}
             />
           </MediaCard.Container>

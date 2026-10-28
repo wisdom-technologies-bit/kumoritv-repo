@@ -8,6 +8,7 @@ import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
 import animesGenres from "@/app/data/animeGenres.json";
 import ErrorPlaceholder from "../ErrorPlaceholder";
+import { displayTitle } from "@/app/lib/titles";
 
 function AnimeNavListHover() {
   const [animeData, setAnimeData] = useState<MediaData[] | null>([]);
@@ -77,7 +78,7 @@ function AnimeNavListHover() {
                 } `}
                 frameBorder={0}
                 title={
-                  animeData[animeData.length - 1].title.userPreferred + " Trailer"
+                  displayTitle(animeData[animeData.length - 1].title) + " Trailer"
                 }
                 allow="accelerometer; autoplay; encrypted-media; gyroscope;"
                 allowFullScreen

@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { LIST_STATUSES, listByStatus, toAnilistStatus } from "@/app/lib/user-data/lists";
 import type { ListEntry } from "@/app/lib/user-data/types";
 import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
+import { displayTitle } from "@/app/lib/titles";
 
 type ComponentTypes = {
   mediaFetched:
@@ -70,8 +71,7 @@ export default function MediasContainer({
       id: entry.id,
       title: {
         ...entry.snapshot.title,
-        userPreferred:
-          entry.snapshot.title.userPreferred || entry.snapshot.title.romaji,
+        userPreferred: displayTitle(entry.snapshot.title),
       },
       description: entry.snapshot.description,
       format: entry.snapshot.format,
@@ -168,13 +168,13 @@ function KeepWatchingListSection({
                     hideOptionsButton
                     mediaInfo={media}
                     mediaId={media.id}
-                    title={media.title.userPreferred}
+                    title={displayTitle(media.title)}
                     formatOrType={media.format}
                     url={media.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={media.title.romaji}
+                    title={displayTitle(media.title)}
                     id={media.id}
                   />
                 </MediaCard.Container>
@@ -211,13 +211,13 @@ function MediasListOnUserDoc({
                     hideOptionsButton
                     mediaInfo={entrie as MediaData}
                     mediaId={entrie.id}
-                    title={entrie.title.userPreferred}
+                    title={displayTitle(entrie.title)}
                     formatOrType={entrie.format}
                     url={entrie.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={entrie.title.romaji}
+                    title={displayTitle(entrie.title)}
                     id={entrie.id}
                   />
                 </MediaCard.Container>
@@ -270,13 +270,13 @@ function MediasListOnAnilist({
                   <MediaCard.MediaImgLink
                     mediaInfo={entrie.media as MediaData}
                     mediaId={entrie.media.id}
-                    title={entrie.media.title.userPreferred}
+                    title={displayTitle(entrie.media.title)}
                     formatOrType={entrie.media.format}
                     url={entrie.media.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={entrie.media.title.userPreferred}
+                    title={displayTitle(entrie.media.title)}
                     id={entrie.media.id}
                   />
                 </MediaCard.Container>

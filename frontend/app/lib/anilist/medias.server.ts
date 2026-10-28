@@ -5,6 +5,7 @@ import { anilistFetch } from './client';
 import { requestMediaById, requestMedias, requestMediasByDateRelease, requestMediasByTrendingSort } from './queries';
 import type { MediaDataFullInfo } from '@/app/ts/interfaces/anilistMediaData';
 import { parseGenreParam } from '@/app/lib/search/genres';
+import { displayTitle } from '@/app/lib/titles';
 
 const season = () => ['WINTER', 'SPRING', 'SUMMER', 'FALL'][Math.floor((new Date().getMonth() + 1) / 3) % 4] || 'WINTER';
 const timestamp = (daysAgo: number, firstHour: boolean) => {
@@ -122,7 +123,7 @@ export async function searchCatalog(options: { type?: string; title?: string; ge
   try {
     const pages = await Promise.all(Array.from({ length: page }, (_, index) => cached('catalog', { ...variables, page: index + 1 }, 600, () => anilistFetch<{ Page?: { media?: any[]; pageInfo?: { total?: number } } }>(requestMedias('$search: String, $genre_in: [String], $tag_in: [String]', ', search: $search, genre_in: $genre_in, tag_in: $tag_in'), { ...variables, page: index + 1 }))));
     const media = pages.flatMap((result) => result.Page?.media || []);
-    return { results: media.map((item) => ({ ...item, title: item.title?.userPreferred || item.title?.english || item.title?.romaji || item.title?.native || '', picture: item.coverImage?.large || '', thumbnail: item.coverImage?.large || '', coverImage: item.coverImage, tags: item.genres || [], animeSeason: { season: item.season, year: item.seasonYear }, anilistId: String(item.id), id: String(item.id) })), allResultsLength: pages[0]?.Page?.pageInfo?.total || 0 };
+    return { results: media.map((item) => ({ ...item, title: displayTitle(item.title), picture: item.coverImage?.large || '', thumbnail: item.coverImage?.large || '', coverImage: item.coverImage, tags: item.genres || [], animeSeason: { season: item.season, year: item.seasonYear }, anilistId: String(item.id), id: String(item.id) })), allResultsLength: pages[0]?.Page?.pageInfo?.total || 0 };
   } catch (error) {
     console.error('[searchCatalog] AniList request failed', error instanceof Error ? error.message : String(error));
     return { results: [], allResultsLength: 0 };

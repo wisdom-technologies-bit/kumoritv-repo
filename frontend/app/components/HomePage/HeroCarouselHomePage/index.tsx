@@ -12,6 +12,7 @@ import EyeSvg from "@/public/assets/eye-fill.svg";
 import EyeSlashSvg from "@/public/assets/eye-slash-fill.svg";
 import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { SwiperSlide } from "swiper/react";
+import { displayTitle } from "@/app/lib/titles";
 
 const framerMotionVariants = {
   enter: (direction: number) => {
@@ -86,10 +87,10 @@ function HeroCarousel({
   function handleBcgImgTransition(e: { target: { outerText: string } }) {
     setPage([
       animesList.findIndex(
-        (item) => item.title.userPreferred == e.target.outerText
+        (item) => displayTitle(item.title) == e.target.outerText
       ),
       animesList.findIndex(
-        (item) => item.title.userPreferred == e.target.outerText
+        (item) => displayTitle(item.title) == e.target.outerText
       ),
     ]);
   }
@@ -140,8 +141,9 @@ function HeroCarousel({
                       src={`https://www.youtube.com/embed/${animesList[currMediaOnScreenIndex].trailer.id}?controls=0&autoplay=1&mute=1&playsinline=1&loop=1&showinfo=0&playlist=${animesList[currMediaOnScreenIndex].trailer.id}`}
                       frameBorder={0}
                       title={
-                        animesList[currMediaOnScreenIndex].title
-                          .userPreferred + " Trailer"
+                        displayTitle(
+                          animesList[currMediaOnScreenIndex].title
+                        ) + " Trailer"
                       }
                     />
                   </motion.div>
@@ -154,7 +156,7 @@ function HeroCarousel({
                     <Link
                       href={`/media/${animesList[currMediaOnScreenIndex]?.id}`}
                     >
-                      {animesList[currMediaOnScreenIndex]?.title.userPreferred}
+                      {displayTitle(animesList[currMediaOnScreenIndex]?.title)}
                     </Link>
                   </h2>
 

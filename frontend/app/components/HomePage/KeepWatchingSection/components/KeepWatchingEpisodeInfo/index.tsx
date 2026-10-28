@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import fallbackImg from "@/public/photo-placeholder.jpg";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { deleteContinueWatching } from "@/app/lib/user-data/progress";
+import { displayTitle } from "@/app/lib/titles";
 
 type ComponentTypes = {
   animeInfo: KeepWatchingMediaData;
@@ -48,13 +49,11 @@ function KeepWatchingEpisodeInfo({
         >
           <div id={styles.img_container}>
             <Image
-              title={animeInfo.title.romaji}
+              title={displayTitle(animeInfo.title)}
               src={animeInfo.episodeImg || fallbackImg}
               placeholder="blur"
               blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
-              alt={
-                (animeInfo.title && animeInfo.title.romaji) || "Not Available"
-              }
+              alt={displayTitle(animeInfo.title)}
               fill
               sizes="(max-width: 324px) 100vw, (max-width: 495px) 50vw, (max-width: 1025px) 200px, (max-width: 1479px) 180px, 174px"
             ></Image>
@@ -98,12 +97,12 @@ function KeepWatchingEpisodeInfo({
 
           <div className={styles.info_bottom}>
             <Link href={`/media/${animeInfo.id}`}>
-              {animeInfo.title && animeInfo.title.romaji}
+              {displayTitle(animeInfo.title)}
             </Link>
 
             <button
               onClick={() => removeFromKeepWatching()}
-              title={`Remove ${animeInfo.title.romaji} from Keep Watching`}
+              title={`Remove ${displayTitle(animeInfo.title)} from Keep Watching`}
             >
               <DeleteSvg width={16} height={16} alt="Delete" />
             </button>
