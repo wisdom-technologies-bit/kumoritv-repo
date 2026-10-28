@@ -10,6 +10,7 @@ import SwiperCarouselContainer from "../../SwiperCarouselContainer";
 import { AnimatePresence, motion } from "framer-motion";
 import anilist from "@/app/api/anilist/anilistMedias";
 import { SwiperSlide } from "swiper/react";
+import { displayTitle } from "@/app/lib/titles";
 
 const framerMotionVariants = {
   initial: {
@@ -103,7 +104,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                     <MediaCard.MediaImgLink
                       mediaInfo={media}
                       mediaId={media.id}
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       formatOrType={media.format}
                       url={media.coverImage.large}
                     />
@@ -114,7 +115,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                     />
 
                     <MediaCard.LinkTitle
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       id={media.id}
                     />
                   </MediaCard.Container>
@@ -128,7 +129,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
               <MediaCard.MediaImgLink
                 mediaInfo={media}
                 mediaId={media.id}
-                title={media.title.userPreferred}
+                title={displayTitle(media.title)}
                 formatOrType={media.format}
                 url={media.coverImage.large}
               />
@@ -139,7 +140,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
               />
 
               <MediaCard.LinkTitle
-                title={media.title.userPreferred}
+                title={displayTitle(media.title)}
                 id={media.id}
               />
             </MediaCard.Container>
@@ -160,7 +161,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                 <MediaCard.MediaImgLink
                   mediaInfo={media}
                   mediaId={media.id}
-                  title={media.title.userPreferred}
+                  title={displayTitle(media.title)}
                   formatOrType={media.format}
                   url={media.coverImage.large}
                 />
@@ -171,7 +172,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                 />
 
                 <MediaCard.LinkTitle
-                  title={media.title.userPreferred}
+                  title={displayTitle(media.title)}
                   id={media.id}
                 />
               </MediaCard.Container>

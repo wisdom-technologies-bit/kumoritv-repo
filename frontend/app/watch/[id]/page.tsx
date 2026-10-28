@@ -20,6 +20,7 @@ import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
 import CommentsSection from "@/app/components/CommentsSection";
 import { WatchState } from "./components/WatchState";
+import { displayTitle } from "@/app/lib/titles";
 
 const plain = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -140,7 +141,7 @@ export default async function WatchPage({
               audio={audio as "sub" | "dub"}
               subtitleLanguage={lang}
               initialTime={Number(searchParams.t || 0)}
-              title={media.title.userPreferred}
+              title={displayTitle(media.title)}
             />
           </div>
         </section>
@@ -154,7 +155,7 @@ export default async function WatchPage({
             <h1>
               EP {ep} -{" "}
               {media.format === "MOVIE"
-                ? media.title.english || media.title.userPreferred
+                ? displayTitle(media.title)
                 : episodeTitle}
             </h1>
             <MediaCardExpanded.Container mediaInfo={media as any}>

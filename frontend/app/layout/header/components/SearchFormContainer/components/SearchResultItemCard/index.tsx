@@ -4,6 +4,7 @@ import Image from "next/image";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import Link from "next/link";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
+import { displayTitle } from "@/app/lib/titles";
 
 type SearchResultsTypes = {
   handleChoseResult?: MouseEventHandler<HTMLDivElement>;
@@ -40,17 +41,13 @@ function SearchResultItemCard({
     mediaFromOfflineDB?.picture ||
     mediaFromOfflineDB?.thumbnail;
 
-  const mediaTitle = mediaFromAnilist?.title.userPreferred
-    ? mediaFromAnilist.title.userPreferred
-    : mediaFromAnilist?.title?.romaji ||
-      mediaFromOfflineDB?.title ||
-      `No Title`;
+  const mediaTitle = mediaFromAnilist?.title
+    ? displayTitle(mediaFromAnilist.title)
+    : displayTitle(mediaFromOfflineDB?.title);
 
   const mediaType = mediaFromAnilist?.type
     ? mediaFromAnilist.type
     : mediaFromOfflineDB?.type || "No Type Defined";
-
-  console.log(mediaFromAnilist);
 
   return (
     <li
@@ -71,7 +68,7 @@ function SearchResultItemCard({
         >
           <Image
             src={imgSource}
-            alt={`Cover Art for ${mediaFromAnilist?.title.userPreferred}`}
+            alt={`Cover Art for ${mediaTitle}`}
             fill
             sizes="90px"
           ></Image>

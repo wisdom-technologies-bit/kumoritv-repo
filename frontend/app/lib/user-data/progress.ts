@@ -4,6 +4,7 @@
 
 import { attempt, getDefaultContext, isSignedIn, resolveContext, type UserDataContextInput } from "./context";
 import { normaliseProgressSnapshot } from "./normalise";
+import { displayTitle } from "@/app/lib/titles";
 import type { ServerProgressRow } from "./types";
 import type { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 
@@ -273,7 +274,9 @@ export function mergeServerRowsIntoLocal(rows: ServerProgressRow[]): number {
     const key = String(row.anilist_id);
     const rowUpdatedAt = Date.parse(row.updated_at) || 0;
     const snapshot = normaliseProgressSnapshot(row.snapshot);
-    const snapshotTitle = typeof snapshot.title === "string" ? snapshot.title : snapshot.title?.romaji ?? undefined;
+    // English-first, so continue-watching cards never fall back to romaji for rows
+    // whose snapshot predates the display rule.
+    const snapshotTitle = snapshot.title ? displayTitle(snapshot.title) : undefined;
     const existing = all[key];
     const watched = new Set(existing?.watched ?? []);
     if (row.completed) watched.add(Number(row.episode_number));
@@ -331,14 +334,14 @@ export function toKeepWatchingMediaData(row: ServerProgressRow): KeepWatchingMed
   const snapshot = normaliseProgressSnapshot(row.snapshot);
   const title =
     typeof snapshot.title === "string"
-      ? { romaji: snapshot.title, userPreferred: snapshot.title }
+      ? { romaji: snapshot.title, userPreferred: displayTitle(snapshot.title) }
       : snapshot.title || { romaji: "" };
   const cover = snapshot.cover || "";
   const updatedAt = Date.parse(row.updated_at) || Date.now();
 
   return {
     id: Number(row.anilist_id),
-    title: { ...title, userPreferred: title.userPreferred || title.romaji },
+    title: { ...title, userPreferred: displayTitle(title) },
     description: "",
     updatedAt,
     // legacy fields the original KeepWatching cards expect
@@ -366,7 +369,7 @@ export function listContinueWatchingAsMediaData(limit = CONTINUE_WATCHING_LIMIT)
     const cover = record.cover || "";
     return {
       id: item.id,
-      title: { romaji: title, userPreferred: title },
+      title: { romaji: title, userPreferred: displayTitle(title) },
       description: "",
       updatedAt: record.updatedAt,
       source: "gogoanime",

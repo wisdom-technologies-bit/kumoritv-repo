@@ -10,6 +10,7 @@ import PlayBtn from "../../WatchPlayBtn";
 import stringToOnlyAlphabetic from "@/app/lib/convertStrings";
 import { ImdbEpisode } from "@/app/ts/interfaces/imdb";
 import { getMediaReleaseDate } from "@/app/lib/formatDateUnix";
+import { displayTitle } from "@/app/lib/titles";
 
 export default function GridHeadingMediaInfo({
   mediaInfo,
@@ -31,21 +32,21 @@ export default function GridHeadingMediaInfo({
   function getEpisodesQuantity() {
     return imdbEpisodes?.length || mediaInfo.episodes || "Not Available";
   }
-  console.log(mediaInfo.startDate);
-  console.log(mediaInfo.endDate);
   return (
     <section id={styles.info_list_container}>
       <ul>
         {mediaInfo.type != "MANGA" && (
           <PlayBtn
             mediaId={mediaInfo.id}
-            mediaTitle={mediaInfo.title.romaji}
+            mediaTitle={displayTitle(mediaInfo.title)}
             mediaFormat={mediaInfo.format}
             anilistLastEpisodeWatched={
               mediaInfo.mediaListEntry?.status != "COMPLETED"
                 ? mediaInfo.mediaListEntry?.progress
                 : undefined
             }
+            mediaEpisodes={mediaInfo.episodes}
+            nextAiringEpisode={mediaInfo.nextAiringEpisode}
           />
         )}
 

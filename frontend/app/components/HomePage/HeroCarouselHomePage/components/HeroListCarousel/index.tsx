@@ -3,6 +3,7 @@ import Image from "next/image";
 import styles from "./component.module.css";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { AnimatePresence, motion } from "framer-motion";
+import { displayTitle } from "@/app/lib/titles";
 
 function ListItemHeroCarousel({
   animeInfo,
@@ -14,12 +15,12 @@ function ListItemHeroCarousel({
   return (
     <li className={styles.container}>
       <div
-        title={`Watch ${animeInfo.title.userPreferred}`}
+        title={`Watch ${displayTitle(animeInfo.title)}`}
         onClick={handleFunction}
       >
         <Image
           src={animeInfo.bannerImage}
-          alt={`Cover for ${animeInfo.title.userPreferred}`}
+          alt={`Cover for ${displayTitle(animeInfo.title)}`}
           fill
           sizes="(max-width: 1199px) 75vw, 25vw"
         />
@@ -30,7 +31,7 @@ function ListItemHeroCarousel({
             exit={{ height: 0 }}
           >
             <span className={styles.title}>
-              {animeInfo.title.userPreferred || "Not Available"}
+              {displayTitle(animeInfo.title)}
             </span>
           </motion.span>
         </AnimatePresence>

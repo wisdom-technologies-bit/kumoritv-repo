@@ -22,6 +22,7 @@ import MediaFormatIcon from "../../DynamicAssets/MediaFormatIcon";
 import SwiperCarousel from "./swiperCarousel";
 import { SwiperSlide } from "swiper/react";
 import { convertToUnix } from "@/app/lib/formatDateUnix";
+import { displayTitle } from "@/app/lib/titles";
 
 export const revalidate = 1800; // revalidate cached data every 30 min
 
@@ -231,7 +232,7 @@ function NavigationThroughMedias({
                   <MediaCard.MediaImg
                     hideOptionsButton
                     mediaInfo={media}
-                    title={media.title.userPreferred}
+                    title={displayTitle(media.title)}
                     formatOrType={media.format}
                     url={media.coverImage.large}
                   />
@@ -242,7 +243,7 @@ function NavigationThroughMedias({
                   />
 
                   <MediaCard.TitleLink
-                    title={media.title.userPreferred}
+                    title={displayTitle(media.title)}
                     id={media.id}
                   />
                 </MediaCardClientSide.FramerMotionContainer>
@@ -299,7 +300,7 @@ function NavigationThroughMedias({
                 <motion.div className={styles.img_container}>
                   <Image
                     src={mediaSelect.coverImage.large}
-                    alt={mediaSelect.title.userPreferred}
+                    alt={displayTitle(mediaSelect.title)}
                     fill
                     sizes="(max-width: 430px) 45vw, (max-width: 620px) 33vw, (max-width: 876px) 15vw, 10vw"
                   />
@@ -307,7 +308,7 @@ function NavigationThroughMedias({
 
                 <motion.div className={styles.info_container}>
                   <motion.h5>
-                    {mediaSelect.title.userPreferred}
+                    {displayTitle(mediaSelect.title)}
                     {mediaSelect.seasonYear && (
                       <span> ({mediaSelect.seasonYear})</span>
                     )}
@@ -358,7 +359,7 @@ function NavigationThroughMedias({
                     className="yt_embed_video"
                     src={`https://www.youtube.com/embed/${mediaSelect.trailer.id}`}
                     frameBorder={0}
-                    title={mediaSelect.title.userPreferred + " Trailer"}
+                    title={displayTitle(mediaSelect.title) + " Trailer"}
                     allow="accelerometer; autoplay; encrypted-media; gyroscope;"
                     allowFullScreen
                   ></iframe>

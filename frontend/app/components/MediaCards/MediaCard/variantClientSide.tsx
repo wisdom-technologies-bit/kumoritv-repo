@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, Variants } from "framer-motion";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
+import { displayTitle } from "@/app/lib/titles";
 
 type ComponentTypes = {
   children: React.ReactNode;
@@ -87,7 +88,7 @@ export function ListItemContainer({
           <Link href={`/media/${showCoverArt.mediaInfo.id}`}>
             <Image
               src={showCoverArt.mediaInfo.coverImage.large}
-              alt={`Cover Art For ${showCoverArt.mediaInfo.title.userPreferred}`}
+              alt={`Cover Art For ${displayTitle(showCoverArt.mediaInfo.title)}`}
               fill
               sizes="100%"
             />

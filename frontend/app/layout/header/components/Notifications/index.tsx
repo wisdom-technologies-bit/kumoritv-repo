@@ -14,6 +14,7 @@ import {
   markAllNotificationsRead,
   type NotificationView,
 } from "@/app/lib/user-data/notifications";
+import { displayTitle } from "@/app/lib/titles";
 
 function NotificationsContainer() {
   //
@@ -136,12 +137,12 @@ function NotificationsContainer() {
                       <li
                         key={key}
                         className={styles.notification_item_container}
-                        aria-label={`${media.title.romaji} new episode released`}
+                        aria-label={`${displayTitle(media.title)} new episode released`}
                       >
                         <div className={styles.img_container}>
                           <Image
                             src={media.coverImage.large}
-                            alt={media.title.romaji}
+                            alt={displayTitle(media.title)}
                             fill
                             sizes="100px"
                           />
@@ -154,7 +155,7 @@ function NotificationsContainer() {
                             Released!
                           </h5>
 
-                          <small>{media.title.romaji}</small>
+                          <small>{displayTitle(media.title)}</small>
 
                           {media.status != "RELEASING" && (
                             <p>

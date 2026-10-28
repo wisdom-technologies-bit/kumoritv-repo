@@ -8,6 +8,7 @@ import ChaptersPages from "./components/ChaptersPages/index.js";
 import ChaptersListContainer from "./components/ChaptersListContainer";
 import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import { getChaptersByAniListId, getChapterPages } from "@/app/lib/manga/mangadex";
+import { displayTitle } from "@/app/lib/titles";
 
 export const revalidate = 1800; // revalidate cached data every 30 minutes
 
@@ -33,7 +34,7 @@ export async function generateMetadata({
 }) {
   const mediaInfo = await getMediaInfo({ id: params.id });
   const chapter = searchParams?.chapter ?? "";
-  const title = mediaInfo?.title?.userPreferred || mediaInfo?.title?.romaji;
+  const title = displayTitle(mediaInfo?.title);
 
   if (!title) {
     return { title: "Chapter not found", description: "This chapter could not be loaded." };
@@ -143,7 +144,7 @@ async function ReadChapter({
     <main id={styles.container}>
       <div id={styles.heading_container}>
         <h1>
-          <span>{mediaInfo.title.userPreferred}: </span>
+          <span>{displayTitle(mediaInfo.title)}: </span>
           {currChapterInfo.title == currChapterInfo.chapterNumber
             ? `Chapter ${currChapterInfo.chapterNumber}`
             : currChapterInfo.title}

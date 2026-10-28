@@ -8,6 +8,7 @@ import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
 import ErrorPlaceholder from "../ErrorPlaceholder";
+import { displayTitle } from "@/app/lib/titles";
 
 function MangaNavListHover() {
   const [mangaList, setMangaList] = useState<MediaData[] | null>([]);
@@ -102,7 +103,7 @@ function MangaNavListHover() {
                     <MediaCard.MediaImgLink
                       mediaInfo={media}
                       mediaId={media.id}
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       formatOrType={media.format}
                       url={media.coverImage.large}
                       hideOptionsButton
@@ -114,7 +115,7 @@ function MangaNavListHover() {
                     />
 
                     <MediaCard.LinkTitle
-                      title={media.title.userPreferred}
+                      title={displayTitle(media.title)}
                       id={media.id}
                     />
                   </MediaCard.Container>
