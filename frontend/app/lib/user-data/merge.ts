@@ -2,6 +2,7 @@
 // One-time (per user, per device) merge of guest data into the new Supabase rows.
 
 import { attempt, isSignedIn, resolveContext, type StorageLike, type UserDataContextInput } from "./context";
+import { GUEST_CHAPTERS_KEY, LEGACY_GUEST_CHAPTERS_KEY } from "./chapters";
 import { GUEST_FAVOURITES_KEY } from "./favourites";
 import { GUEST_LISTS_KEY, toDbStatus } from "./lists";
 import { normaliseSnapshotList } from "./normalise";
@@ -37,6 +38,7 @@ export type MergeResult = {
   favourites: number;
   lists: number;
   progress: number;
+  chapters: number;
   prefs: boolean;
 };
 
@@ -69,7 +71,7 @@ export async function mergeGuestDataIntoAccount(
   userId: string,
   input?: UserDataContextInput,
 ): Promise<MergeResult> {
-  const result: MergeResult = { merged: false, reason: "", favourites: 0, lists: 0, progress: 0, prefs: false };
+  const result: MergeResult = { merged: false, reason: "", favourites: 0, lists: 0, progress: 0, chapters: 0, prefs: false };
 
   try {
     const ctx = await resolveContext({ ...(input ?? {}), userId });
@@ -144,6 +146,58 @@ export async function mergeGuestDataIntoAccount(
         const { error } = await ctx.client!.from("watchlist").upsert(rows, { onConflict: "user_id,anilist_id" });
         if (error) throw error;
         result.lists = rows.length;
+      }
+    }
+
+    // --- chapters read (union, newest read_at wins)
+    const guestChapters = readJson<Record<string, Record<string, { anilistId?: number; chapterNumber?: number; chapterId?: string | null; lastPage?: number | null; snapshot?: unknown; readAt?: number }>>>(
+      ctx.storage,
+      GUEST_CHAPTERS_KEY,
+      {},
+    );
+    const guestChapterRows = Object.entries(guestChapters ?? {}).flatMap(([mediaId, chapters]) =>
+      Object.entries(chapters ?? {}).map(([chapterNumber, record]) => ({
+        anilistId: Number(record?.anilistId ?? mediaId),
+        chapterNumber: Number(record?.chapterNumber ?? chapterNumber),
+        chapterId: record?.chapterId ?? null,
+        lastPage: record?.lastPage ?? null,
+        snapshot: record?.snapshot ?? null,
+        readAt: Number(record?.readAt) || Date.now(),
+      })),
+    ).filter((row) => Number.isFinite(row.anilistId) && Number.isFinite(row.chapterNumber));
+
+    if (guestChapterRows.length) {
+      const loaded = await attempt("merge.chapters", async () => {
+        const { data, error } = await ctx.client!.from("chapters_read")
+          .select("anilist_id, chapter_number, read_at")
+          .eq("user_id", userId);
+        if (error) throw error;
+        return (data ?? []) as { anilist_id: number; chapter_number: number; read_at: string }[];
+      });
+      if (!loaded.ok) throw loaded.error;
+
+      const serverReadAt = new Map(
+        loaded.data.map((row) => [`${Number(row.anilist_id)}:${Number(row.chapter_number)}`, Date.parse(row.read_at) || 0]),
+      );
+
+      const rows = guestChapterRows
+        .filter((row) => row.readAt > (serverReadAt.get(`${row.anilistId}:${row.chapterNumber}`) ?? -1))
+        .map((row) => ({
+          user_id: userId,
+          anilist_id: row.anilistId,
+          chapter_number: row.chapterNumber,
+          chapter_id: row.chapterId,
+          last_page: row.lastPage,
+          snapshot: row.snapshot,
+          read_at: new Date(row.readAt).toISOString(),
+        }));
+
+      if (rows.length) {
+        const { error } = await ctx.client!.from("chapters_read").upsert(rows, {
+          onConflict: "user_id,anilist_id,chapter_number",
+        });
+        if (error) throw error;
+        result.chapters = rows.length;
       }
     }
 
@@ -246,6 +300,8 @@ export async function mergeGuestDataIntoAccount(
     // Success: the guest favourites/lists keys are no longer needed on this device.
     removeKey(ctx.storage, GUEST_FAVOURITES_KEY);
     removeKey(ctx.storage, GUEST_LISTS_KEY);
+    removeKey(ctx.storage, GUEST_CHAPTERS_KEY);
+    removeKey(ctx.storage, LEGACY_GUEST_CHAPTERS_KEY);
     writeFlag(ctx.storage, mergeMarkerKey(userId), true);
 
     result.merged = true;

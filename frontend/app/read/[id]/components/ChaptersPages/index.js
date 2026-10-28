@@ -1,5 +1,4 @@
 "use client"
-import Image from 'next/image'
 import React, { useEffect, useRef, useState } from 'react'
 import HTMLFlipBook from 'react-pageflip'
 import { AnimatePresence, motion } from "framer-motion"
@@ -8,13 +7,14 @@ import FullScreenSvg from "@/public/assets/arrows-fullscreen.svg"
 import CloseSvg from "@/public/assets/x.svg"
 import MangaSvg from "@/public/assets/book.svg"
 import RectangleSvg from "@/public/assets/rectangle.svg"
+import { markRead, saveLastPage } from "@/app/lib/user-data/chapters"
 
 // This file is in JAVASCRIPT for a REASON
 // This Library doesnt support TypeScript.
 //
 // https://www.npmjs.com/package/page-flip
 
-export default function ChaptersPages({ chapters, initialPage }) {
+export default function ChaptersPages({ chapters, initialPage, mediaId, chapterNumber, chapterId }) {
 
   const [currPageNumber, setCurrPageNumber] = useState(initialPage || 0)
   const [showOnModal, setShowOnModal] = useState(false)
@@ -24,6 +24,8 @@ export default function ChaptersPages({ chapters, initialPage }) {
   const [format, setFormat] = useState("manga")
 
   const pagesComponentRef = useRef()
+
+  const markedChapterRef = useRef(null)
 
   useEffect(() => { setCurrPageNumber(0) }, [chapters, initialPage])
 
@@ -39,7 +41,31 @@ export default function ChaptersPages({ chapters, initialPage }) {
 
   }
 
-  function changeCurrPage(number) { setCurrPageNumber(number) }
+  function changeCurrPage(number) {
+
+    setCurrPageNumber(number)
+
+    // Remember where the reader stopped, and mark the chapter once its last page
+    // is reached. Every call is wrapped: reading must never break on a save.
+    if (mediaId && chapterNumber != null) {
+
+      try {
+
+        saveLastPage(mediaId, Number(chapterNumber), number + 1)
+
+        if (number + 1 >= chapters.length && markedChapterRef.current !== String(chapterNumber)) {
+
+          markedChapterRef.current = String(chapterNumber)
+
+          markRead(mediaId, Number(chapterNumber), { chapterId, page: chapters.length })
+
+        }
+
+      } catch { /* local marks are best effort */ }
+
+    }
+
+  }
 
   return (
     <section id={styles.container}>
@@ -121,12 +147,12 @@ function PagesContainer({ isLoading, chapters, format, initialPage, changePageFu
 
             {chapters.map((page, key) => (
               <div key={key}>
-                <Image
+                <img
                   src={page.img}
                   alt={`Page ${page.page}`}
-                  fill
-                  sizes='550px'
-                  quality={100}
+                  loading='lazy'
+                  referrerPolicy='no-referrer'
+                  className={styles.page_image}
                 />
               </div>
             ))}
@@ -187,12 +213,12 @@ function FullScreenPagesView({ isLoading, chapters, format, showOnModal, currPag
                 key={key}
                 onClick={(e) => e.stopPropagation()}
               >
-                <Image
+                <img
                   src={chapter.img}
                   alt={`Page ${chapter.page}`}
-                  fill
-                  sizes='550px'
-                  quality={100}
+                  loading='lazy'
+                  referrerPolicy='no-referrer'
+                  className={styles.page_image}
                 />
               </div>
             ))}

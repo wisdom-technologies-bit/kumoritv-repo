@@ -255,6 +255,27 @@
     font-weight: 500;
 }
 
+/* Same look as .title_variant, for the variants whose title is the media link */
+
+.media_item_container p.title_variant,
+.media_item_container a.title_variant_link {
+    margin-top: 4px;
+
+    color: var(--black-100);
+
+    font-size: var(--font-size--small-1);
+
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+
+.media_item_container.darkMode a.title_variant_link {
+    color: var(--white-100);
+    font-weight: 500;
+}
+
 /*  */
 li.item_list {
 

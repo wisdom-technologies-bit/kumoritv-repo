@@ -5,13 +5,12 @@ import Link from "next/link";
 import { MangadexMangaChapters } from "@/app/ts/interfaces/mangadex";
 import BookSvg from "@/public/assets/book.svg";
 import PaginationButtons from "@/app/media/[id]/components/PaginationButtons";
-import manga from "@/app/api/consumet/consumetManga";
+import { getMangaChaptersWithStatus } from "@/app/api/consumet/consumetManga";
 import { AnimatePresence, motion, Variants } from "framer-motion";
 import simulateRange from "@/app/lib/simulateRange";
 import MarkChapterAsReadButton from "@/app/components/Buttons/MarkChapterAsRead";
 import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
-import { getClosestMangaResultByTitle } from "@/app/lib/dataFetch/optimizedFetchMangaOptions";
-import { stringToUrlFriendly } from "@/app/lib/convertStrings";
+import { listRead, subscribeChapters } from "@/app/lib/user-data/chapters";
 import { useSearchParams } from "next/navigation";
 import ErrorPanel from "../ErrorPanel";
 
@@ -54,6 +53,10 @@ function MangaChaptersContainer({
 }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [chaptersList, setChaptersList] = useState<MangadexMangaChapters[]>([]);
+  const [sourceStatus, setSourceStatus] = useState<"ready" | "unavailable" | "error">(
+    "ready"
+  );
+  const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
 
   const [currMangasList, setCurrMangasList] = useState<
     MangadexMangaChapters[] | null
@@ -71,6 +74,32 @@ function MangaChaptersContainer({
   const currSearchParams = new URLSearchParams(
     Array.from(searchParams.entries())
   );
+
+  // READ MARKS (local for guests, Supabase for signed-in users)
+  useEffect(() => {
+    let active = true;
+
+    function loadReadMarks() {
+      listRead(mediaInfo.id)
+        .then((records) => {
+          if (active) {
+            setReadChapters(new Set(records.map((record) => Number(record.chapterNumber))));
+          }
+        })
+        .catch(() => {
+          /* read marks are optional */
+        });
+    }
+
+    loadReadMarks();
+
+    const unsubscribe = subscribeChapters(loadReadMarks);
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [mediaInfo.id]);
 
   useEffect(() => {
     if (chaptersList.length == 0) fetchMangaChapters();
@@ -121,48 +150,29 @@ function MangaChaptersContainer({
 
   async function fetchMangaChapters() {
     setIsLoading(true);
+    setSourceStatus("ready");
 
-    const mangaTitleUrlFrindly = stringToUrlFriendly(
-      mediaInfo.title.romaji
-    ).toLowerCase();
+    // The AniList id is all the server needs: matching happens there.
+    const result = await getMangaChaptersWithStatus(mediaInfo.id);
 
-    let mangaInfo = await manga.getMangaChapters({
-      id: mangaTitleUrlFrindly,
-    });
-
-    if (!mangaInfo) {
-      const mangaClosestResult = await getClosestMangaResultByTitle(
-        mangaTitleUrlFrindly,
-        mediaInfo
-      );
-
-      mangaInfo = await manga.getMangaChapters({
-        id: mangaClosestResult as string,
-      });
-
-      if (!mangaInfo) {
-        setIsLoading(false);
-
-        setCurrMangasList(null);
-
-        return;
-      }
+    if (!result || result.status !== "ready") {
+      setSourceStatus(result?.status == "unavailable" ? "unavailable" : "error");
+      setIsLoading(false);
+      setChaptersList([]);
+      setCurrMangasList(null);
+      setTotalNumberPages(0);
+      return;
     }
 
-    setChaptersList(mangaInfo.filter((item) => item.pages != 0));
+    const readableChapters = result.chapters.filter((item) => item.pages != 0);
+
+    setChaptersList(readableChapters);
 
     const endOffset = itemOffset + rangeChaptersPerPage;
 
-    setCurrMangasList(
-      mangaInfo.filter((item) => item.pages != 0).slice(itemOffset, endOffset)
-    );
+    setCurrMangasList(readableChapters.slice(itemOffset, endOffset));
 
-    setTotalNumberPages(
-      Math.ceil(
-        mangaInfo.filter((item) => item.pages != 0).length /
-          rangeChaptersPerPage
-      )
-    );
+    setTotalNumberPages(Math.ceil(readableChapters.length / rangeChaptersPerPage));
 
     setIsLoading(false);
   }
@@ -221,9 +231,11 @@ function MangaChaptersContainer({
                   chapterNumber={Number(chapter.chapterNumber)}
                   chapterTitle={chapter.title}
                   wasChapterReadOnAnilist={
-                    chaptersReadOnAnilist
-                      ? Number(chapter.chapterNumber) <= chaptersReadOnAnilist
-                      : undefined
+                    readChapters.has(Number(chapter.chapterNumber))
+                      ? true
+                      : chaptersReadOnAnilist
+                        ? Number(chapter.chapterNumber) <= chaptersReadOnAnilist
+                        : undefined
                   }
                   mediaId={mediaInfo.id}
                   showAdditionalText
@@ -231,8 +243,40 @@ function MangaChaptersContainer({
               </motion.li>
             ))}
 
+          {/* SOURCE UNAVAILABLE: NOT ON MANGADEX OR LICENSED-ONLY */}
+          {!isLoading &&
+            sourceStatus == "unavailable" && (
+              <ErrorPanel
+                errorText={
+                  <>
+                    No chapters available for this title (it may be licensed or
+                    not on MangaDex).
+                  </>
+                }
+              />
+            )}
+
+          {/* SOURCE ERROR: RETRY */}
+          {!isLoading && sourceStatus == "error" && (
+            <ErrorPanel
+              errorText={
+                <>
+                  Chapters could not be loaded right now.{" "}
+                  <button
+                    onClick={() => fetchMangaChapters()}
+                    className={styles.retry_btn}
+                    type="button"
+                  >
+                    Try again
+                  </button>
+                </>
+              }
+            />
+          )}
+
           {/* SHOWS WHEN THERES NO RESULTS  */}
           {!isLoading &&
+            sourceStatus == "ready" &&
             (chaptersList.length == 0 || currMangasList == null) && (
               <ErrorPanel errorText={<>No chapters available.</>} />
             )}

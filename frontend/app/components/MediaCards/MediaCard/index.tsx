@@ -170,3 +170,12 @@ export function LinkTitle({
 export function Title({ title }: { title: string }) {
   return <p className={styles.title_variant}>{title}</p>;
 }
+
+/** The same title, as the /media/{id} link the carousels need. */
+export function TitleLink({ title, id }: { title: string; id: number | string }) {
+  return (
+    <Link className={styles.title_variant_link} href={`/media/${id}`}>
+      {title}
+    </Link>
+  );
+}

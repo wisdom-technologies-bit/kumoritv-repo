@@ -1,10 +1,11 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import { MangadexMangaChapters } from "@/app/ts/interfaces/mangadex";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import MarkChapterAsReadButton from "@/app/components/Buttons/MarkChapterAsRead";
+import { listRead, subscribeChapters } from "@/app/lib/user-data/chapters";
 
 type ComponentTypes = {
   mediaId: number;
@@ -17,6 +18,34 @@ function ChaptersListContainer({
   currChapterId,
   chaptersList,
 }: ComponentTypes) {
+  const [readChapters, setReadChapters] = useState<Set<number>>(new Set());
+
+  // READ MARKS (local for guests, Supabase for signed-in users)
+  useEffect(() => {
+    let active = true;
+
+    function loadReadMarks() {
+      listRead(mediaId)
+        .then((records) => {
+          if (active) {
+            setReadChapters(new Set(records.map((record) => Number(record.chapterNumber))));
+          }
+        })
+        .catch(() => {
+          /* read marks are optional */
+        });
+    }
+
+    loadReadMarks();
+
+    const unsubscribe = subscribeChapters(loadReadMarks);
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [mediaId]);
+
   useEffect(() => {
     function centerActiveListItemEpisode() {
       const elementActive = document.querySelector("li[data-active=true]");
@@ -69,6 +98,9 @@ function ChaptersListContainer({
                 chapterTitle={chapter.title}
                 maxChaptersNumber={chaptersList.length}
                 mediaId={mediaId}
+                wasChapterReadOnAnilist={
+                  readChapters.has(Number(chapter.chapterNumber)) || undefined
+                }
                 showAdditionalText={true}
               />
             </div>

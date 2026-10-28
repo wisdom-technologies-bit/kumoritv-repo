@@ -7,62 +7,10 @@ import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import anilistUsers from "@/app/api/anilist/anilistUsers";
+import { isRead, markRead, subscribeChapters, unmarkRead } from "@/app/lib/user-data/chapters";
 
-// Manga comes in a later prompt: chapters stay on a local-only path for now.
-// No Firestore calls here anymore, and the button must never crash.
-const CHAPTERS_KEY = "kumori_chapters_read_v1";
-
-type ChapterRecord = {
-  mediaId: number;
-  chapterNumber: number;
-  chapterTitle: string;
-};
-
-function readAll(): Record<string, ChapterRecord[]> {
-  try {
-    if (typeof window === "undefined") return {};
-    const parsed = JSON.parse(window.localStorage.getItem(CHAPTERS_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeAll(value: Record<string, ChapterRecord[]>) {
-  try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(CHAPTERS_KEY, JSON.stringify(value));
-    window.dispatchEvent(new Event("kumori-chapters-change"));
-  } catch {
-    /* ignore */
-  }
-}
-
-export function isChapterRead(mediaId: number, chapterNumber: number): boolean {
-  return Boolean(
-    readAll()[String(mediaId)]?.find(
-      (item) => Number(item.chapterNumber) === Number(chapterNumber)
-    )
-  );
-}
-
-export function markChapterRead(
-  mediaId: number,
-  chapterNumber: number,
-  chapterTitle: string,
-  value = true
-): void {
-  const all = readAll();
-  const current = all[String(mediaId)] || [];
-  const withoutChapter = current.filter(
-    (item) => Number(item.chapterNumber) !== Number(chapterNumber)
-  );
-  all[String(mediaId)] = value
-    ? [...withoutChapter, { mediaId, chapterNumber, chapterTitle }]
-    : withoutChapter;
-  writeAll(all);
-}
-
+// Read marks live in app/lib/user-data/chapters.ts: localStorage for guests,
+// Supabase `chapters_read` for signed-in users. The button never crashes.
 type BtnTypes = {
   chapterNumber: number;
   chapterTitle: string;
@@ -88,10 +36,34 @@ export default function MarkChapterAsReadButton({
   const { user } = useUser();
 
   useEffect(() => {
-    if (wasChapterReadOnAnilist) return setWasChapterRead(true);
+    if (wasChapterReadOnAnilist) {
+      setWasChapterRead(true);
+      return;
+    }
 
-    setWasChapterRead(isChapterRead(mediaId, chapterNumber));
-  }, [user, anilistUser, chapterNumber, chapterNumber, mediaId]);
+    let active = true;
+
+    isRead(mediaId, chapterNumber)
+      .then((read) => {
+        if (active) setWasChapterRead(read);
+      })
+      .catch(() => {
+        /* a failed read just leaves the button unchecked */
+      });
+
+    const unsubscribe = subscribeChapters(() => {
+      isRead(mediaId, chapterNumber)
+        .then((read) => {
+          if (active) setWasChapterRead(read);
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [user, anilistUser, chapterNumber, mediaId, wasChapterReadOnAnilist]);
 
   async function handleChapterReadAction() {
     if (!user && !anilistUser) return;
@@ -104,7 +76,13 @@ export default function MarkChapterAsReadButton({
     setWasChapterRead(!wasRead);
 
     try {
-      markChapterRead(mediaId, chapterNumber, chapterTitle, !wasRead);
+      const saved = wasRead
+        ? await unmarkRead(mediaId, chapterNumber)
+        : await markRead(mediaId, chapterNumber, {
+            snapshot: chapterTitle ? { title: chapterTitle } : null,
+          });
+
+      if (!saved) setWasChapterRead(wasRead);
     } catch {
       setWasChapterRead(wasRead);
     }

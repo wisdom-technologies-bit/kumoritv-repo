@@ -48,13 +48,10 @@ function NavLinks() {
               <Link href="/">Home</Link>
             </li>
             <li>
-              <Link href="/search">Search Anime</Link>
+              <Link href="/search?type=tv">Search Anime</Link>
             </li>
             <li>
-              <Link href="/airing-schedule">Airing Schedule</Link>
-            </li>
-            <li>
-              <Link href="/genres">Genres</Link>
+              <Link href="/search?type=manga">Search Manga</Link>
             </li>
           </ul>
         </div>
