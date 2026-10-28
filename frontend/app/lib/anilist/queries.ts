@@ -57,8 +57,10 @@ const mediaListFields = `
   popularity
 `;
 
+// Adult titles are allowed everywhere on the site and are never filtered or
+// isolated, so the query never sends an `isAdult` argument to AniList.
 export function requestMedias(otherQueryFields = "", otherMediasFields = "") {
-  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $showAdultContent: Boolean, $status: MediaStatus${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, isAdult: $showAdultContent, status: $status${otherMediasFields}) { ${mediaListFields} } } }`;
+  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $status: MediaStatus${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, status: $status${otherMediasFields}) { ${mediaListFields} } } }`;
 }
 
 export function requestMediasByDateRelease() {
@@ -77,6 +79,6 @@ export const requestMediaById = () => `query($id: Int) { Media(id: $id) {
   studios(isMain: true) { edges { node { name id isAnimationStudio siteUrl } } }
   streamingEpisodes { title thumbnail url site }
   nextAiringEpisode { id episode airingAt }
-  startDate { year month day } endDate { year month day } season seasonYear episodes chapters volumes duration source countryOfOrigin
+  startDate { year month day } endDate { year month day } season seasonYear episodes chapters volumes duration source countryOfOrigin synonyms
   trailer { id site thumbnail } updatedAt favourites trending id ${queryCoverImage} bannerImage type hashtag format genres popularity averageScore
 } }`;

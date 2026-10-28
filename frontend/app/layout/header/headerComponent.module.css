@@ -23,7 +23,7 @@ header#background > div#container {
     box-sizing: border-box;
 }
 
-/* LEFT GROUP: MENU AND LOGO */
+/* LEFT GROUP: LOGO */
 
 #menu_and_logo_container {
     display: flex;
@@ -106,14 +106,6 @@ header#background button svg {
     fill: var(--white-100);
 }
 
-/* HIDE MENU BUTTON ON DESKTOP */
-
-@media (min-width: 1060px) {
-    header#background button#btn_open_menu {
-        display: none;
-    }
-}
-
 /* DESKTOP NAVIGATION: CLOSE TO LOGO */
 
 #navbar_container {
@@ -128,7 +120,8 @@ header#background button svg {
 
 #navbar_container > ul {
     display: grid;
-    grid-template-columns: max-content;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
     align-items: center;
     width: max-content;
     height: 100%;

@@ -43,7 +43,7 @@ function MediaRankingSection({
 
     const listMediaByFormat = (await anilist.getMediaForThisFormat({
       type: format,
-      showAdultContent: true,
+      format: format == "MANGA" ? "MANGA" : undefined,
     })) as MediaData[];
 
     setCurrFormat(format);
@@ -64,8 +64,8 @@ function MediaRankingSection({
           }
           currValue={currFormat}
           buttonOptions={[
-            { name: "Animes", value: "ANIME" },
-            { name: "Mangas", value: "MANGA" },
+            { isAvailable: true, name: "Animes", value: "ANIME" },
+            { isAvailable: true, name: "Mangas", value: "MANGA" },
           ]}
         />
       </div>

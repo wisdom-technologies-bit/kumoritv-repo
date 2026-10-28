@@ -260,3 +260,20 @@
     margin: 32px 0;
 
 }
+/* RETRY BUTTON INSIDE THE "COULD NOT LOAD" PANEL */
+.retry_btn {
+
+    background: none;
+    border: none;
+
+    color: var(--white-50);
+
+    font-family: inherit;
+    font-size: inherit;
+
+    text-decoration: underline;
+
+    cursor: pointer;
+
+}
+

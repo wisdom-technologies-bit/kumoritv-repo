@@ -19,6 +19,7 @@ function MangaNavListHover() {
   const fetchTrendingMangasList = async () => {
     const trendingMangas = (await anilist.getMediaForThisFormat({
       type: "MANGA",
+      format: "MANGA",
       sort: "TRENDING_DESC",
     })) as MediaData[];
 

@@ -90,7 +90,6 @@ function NavigationThroughMedias({
       type: mediaFormat || "ANIME",
       days: days!,
       perPage: 40,
-      showAdultContent: true,
     })) as AiringMediaResult[];
 
     // Remove releases from "today" to show on other options
@@ -130,9 +129,11 @@ function NavigationThroughMedias({
     fetchedMedia = await anilist
       .getMediaForThisFormat({
         type: mediaFormat || "ANIME",
+        // Mangas ask for the MANGA format so light novels stay out of the list.
+        format: mediaFormat == "MANGA" ? "MANGA" : undefined,
         sort: sortBy,
-        pageNumber: 20,
-        showAdultContent: true,
+        pageNumber: 1,
+        perPage: 20,
       })
       .then((res) => res as MediaData[]);
 
@@ -240,7 +241,10 @@ function NavigationThroughMedias({
                     tags={media.genres[0]}
                   />
 
-                  <MediaCard.Title title={media.title.userPreferred} />
+                  <MediaCard.TitleLink
+                    title={media.title.userPreferred}
+                    id={media.id}
+                  />
                 </MediaCardClientSide.FramerMotionContainer>
               </SwiperSlide>
             ))

@@ -67,6 +67,18 @@ const windowProxy = new Proxy(dom.window, {
   },
 });
 
+// jsdom ships no matchMedia, which a few client components call for breakpoints.
+dom.window.matchMedia = (query) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener() {},
+  removeListener() {},
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent: () => false,
+});
+
 const globals = {
   window: windowProxy,
   document: dom.window.document,
@@ -85,8 +97,13 @@ const globals = {
   cancelAnimationFrame: (handle) => clearTimeout(handle),
   localStorage: dom.window.localStorage,
   MutationObserver: dom.window.MutationObserver,
+  matchMedia: dom.window.matchMedia.bind(dom.window),
   IS_REACT_ACT_ENVIRONMENT: true,
 };
+
+// Next's client helpers reference `self` (e.g. requestIdleCallback in
+// use-intersection), which only exists in a worker/browser.
+globals.self = globalThis;
 
 for (const [key, value] of Object.entries(globals)) {
   Object.defineProperty(globalThis, key, { value, writable: true, configurable: true });
@@ -137,5 +154,16 @@ const stubs = {
 const originalResolveFilename = Module._resolveFilename;
 Module._resolveFilename = function patchedResolve(request, ...rest) {
   if (Object.prototype.hasOwnProperty.call(stubs, request)) return stubs[request];
-  return originalResolveFilename.call(this, request, ...rest);
+
+  // The footer's Airing This Week panel is an async server component that reads
+  // `cookies()`; a client render cannot await it, so it gets a static double.
+  const parent = rest[0];
+  if (
+    request === "./airingThisWeek" &&
+    String(parent?.filename ?? "").includes("footer/components/navLinks")
+  ) {
+    return join(here, "stubs/airing-this-week.tsx");
+  }
+
+  return originalResolveFilename.call(this, request, rest[0]);
 };

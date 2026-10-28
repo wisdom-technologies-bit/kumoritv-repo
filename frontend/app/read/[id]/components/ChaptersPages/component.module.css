@@ -8,6 +8,20 @@
 
 }
 
+/* MangaDex pages: plain <img>, so they need their own sizing */
+
+.page_image {
+
+    display: block;
+
+    width: 100%;
+
+    height: auto;
+
+    margin: 0 auto;
+
+}
+
 #pages_container {
 
     background-color: var(--background);

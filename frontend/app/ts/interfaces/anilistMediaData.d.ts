@@ -5,6 +5,7 @@ export interface MediaData {
     english: string;
     userPreferred: string;
   };
+  synonyms?: string[];
   startDate: {
     year: number;
     month: number;
