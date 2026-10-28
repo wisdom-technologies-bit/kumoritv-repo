@@ -126,6 +126,7 @@ for (const extension of [".jpg", ".jpeg", ".png", ".webp"]) {
 const stubs = {
   "server-only": join(here, "stubs/server-only.ts"),
   "next/cache": join(here, "stubs/next-cache.ts"),
+  "next/navigation": join(here, "stubs/next-navigation.ts"),
   "next/image": join(here, "stubs/next-image.tsx"),
   "framer-motion": join(here, "stubs/framer-motion.tsx"),
   "@/app/lib/supabase/browser": join(here, "stubs/supabase-browser.ts"),

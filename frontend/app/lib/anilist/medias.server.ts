@@ -4,6 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { anilistFetch } from './client';
 import { requestMediaById, requestMedias, requestMediasByDateRelease, requestMediasByTrendingSort } from './queries';
 import type { MediaDataFullInfo } from '@/app/ts/interfaces/anilistMediaData';
+import { parseGenreParam } from '@/app/lib/search/genres';
 
 const season = () => ['WINTER', 'SPRING', 'SUMMER', 'FALL'][Math.floor((new Date().getMonth() + 1) / 3) % 4] || 'WINTER';
 const timestamp = (daysAgo: number, firstHour: boolean) => {
@@ -82,14 +83,16 @@ export async function searchMedias({ query, showAdultContent = undefined, page =
 
 export async function searchCatalog(options: { type?: string; title?: string; genre?: string | string[]; year?: number; status?: string; page?: string; sort?: string; season?: string } = {}) {
   const page = Math.min(8, Math.max(1, Number(options.page) || 1));
-  const genres = (Array.isArray(options.genre) ? options.genre : options.genre ? [options.genre] : []).filter(Boolean);
-  const genreMap: Record<string, string> = { 'slice-of-life': 'Slice of Life', 'sci-fi': 'Sci-Fi', mahou: 'Mahou Shoujo' };
-  const variables = { search: options.title?.trim() || undefined, seasonYear: options.year, season: options.season?.toUpperCase(), format: options.type ? ({ tv: 'TV', movie: 'MOVIE', special: 'SPECIAL', ova: 'OVA', ona: 'ONA', music: 'MUSIC', tv_short: 'TV_SHORT' } as Record<string, string>)[options.type] : undefined, status: options.status ? ({ finished: 'FINISHED', ongoing: 'RELEASING', upcoming: 'NOT_YET_RELEASED', unknown: 'HIATUS' } as Record<string, string>)[options.status] : undefined, genre_in: genres.filter((g) => g.toLowerCase() !== 'shoujo').map((g) => genreMap[g.toLowerCase()] || g), tag_in: genres.some((g) => g.toLowerCase() === 'shoujo') ? ['Shoujo'] : undefined, sort: ({ releases_asc: 'START_DATE', title_desc: 'TITLE_ENGLISH_DESC', title_asc: 'TITLE_ENGLISH' } as Record<string, string>)[options.sort || ''] || 'START_DATE_DESC', type: 'ANIME', perPage: 12, showAdultContent: undefined };
+  const { genres, tags } = parseGenreParam(options.genre);
+  const variables = { search: options.title?.trim() || undefined, seasonYear: options.year, season: options.season?.toUpperCase(), format: options.type ? ({ tv: 'TV', movie: 'MOVIE', special: 'SPECIAL', ova: 'OVA', ona: 'ONA', music: 'MUSIC', tv_short: 'TV_SHORT' } as Record<string, string>)[options.type] : undefined, status: options.status ? ({ finished: 'FINISHED', ongoing: 'RELEASING', upcoming: 'NOT_YET_RELEASED', unknown: 'HIATUS' } as Record<string, string>)[options.status] : undefined, genre_in: genres.length ? genres : undefined, tag_in: tags.length ? tags : undefined, sort: ({ releases_asc: 'START_DATE', title_desc: 'TITLE_ENGLISH_DESC', title_asc: 'TITLE_ENGLISH' } as Record<string, string>)[options.sort || ''] || 'START_DATE_DESC', type: 'ANIME', perPage: 12, showAdultContent: undefined };
   try {
     const pages = await Promise.all(Array.from({ length: page }, (_, index) => cached('catalog', { ...variables, page: index + 1 }, 600, () => anilistFetch<{ Page?: { media?: any[]; pageInfo?: { total?: number } } }>(requestMedias('$search: String, $genre_in: [String], $tag_in: [String]', ', search: $search, genre_in: $genre_in, tag_in: $tag_in'), { ...variables, page: index + 1 }))));
     const media = pages.flatMap((result) => result.Page?.media || []);
     return { results: media.map((item) => ({ ...item, title: item.title?.userPreferred || item.title?.english || item.title?.romaji || item.title?.native || '', picture: item.coverImage?.large || '', thumbnail: item.coverImage?.large || '', coverImage: item.coverImage, tags: item.genres || [], animeSeason: { season: item.season, year: item.seasonYear }, anilistId: String(item.id), id: String(item.id) })), allResultsLength: pages[0]?.Page?.pageInfo?.total || 0 };
-  } catch { return { results: [], allResultsLength: 0 }; }
+  } catch (error) {
+    console.error('[searchCatalog] AniList request failed', error instanceof Error ? error.message : String(error));
+    return { results: [], allResultsLength: 0 };
+  }
 }
 
 export async function getMediaForThisFormat(options: MediaOptions & { pageNumber?: number } = {}) {

@@ -2,6 +2,7 @@
 
 export const allGenres = [
   { name: "Action", value: "action" },
+  { name: "Adventure", value: "adventure" },
   { name: "Comedy", value: "comedy" },
   { name: "Drama", value: "drama" },
   { name: "Ecchi", value: "ecchi" },
@@ -14,7 +15,7 @@ export const allGenres = [
   { name: "Music", value: "music" },
   { name: "Psychological", value: "psychological" },
   { name: "Romance", value: "romance" },
-  { name: "Slice of Life", value: "slice-of-Life" },
+  { name: "Slice of Life", value: "slice-of-life" },
   { name: "Sci-fi", value: "sci-fi" },
   { name: "Sports", value: "sports" },
   { name: "Supernatural", value: "supernatural" },
