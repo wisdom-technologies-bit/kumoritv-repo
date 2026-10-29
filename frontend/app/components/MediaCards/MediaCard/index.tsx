@@ -62,6 +62,16 @@ export function MediaInfo({ mediaInfo }: { mediaInfo: MediaData }) {
   );
 }
 
+// Never hand an empty string to <Image>: it renders a broken image plus its alt
+// text (what the Keep Watching cards used to show for rows without a cover).
+const FALLBACK_COVER =
+  "https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg";
+
+function coverSrc(url: string | null | undefined) {
+  const value = typeof url === "string" ? url.trim() : "";
+  return value || FALLBACK_COVER;
+}
+
 export function MediaImg({
   url,
   formatOrType,
@@ -79,7 +89,7 @@ export function MediaImg({
     <>
       <div id={styles.img_container}>
         <Image
-          src={url}
+          src={coverSrc(url)}
           placeholder="blur"
           blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
           alt={`Cover Art for ${title || "Not Available"}`}
@@ -115,7 +125,7 @@ export function MediaImgLink({
     <>
       <Link id={styles.img_container} href={`/media/${mediaId}`}>
         <Image
-          src={url}
+          src={coverSrc(url)}
           placeholder="blur"
           blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
           alt={`Cover Art for ${title || "Not Available"}`}

@@ -1,3 +1,35 @@
+/* Nothing on this page may widen the document. The player, the controls and the
+   episode list all sit in tracks that could otherwise be pushed wider than the
+   viewport by a long title or a wide control row, which showed up as a
+   horizontally scrollable page on phones. `clip` (not `hidden`) keeps the
+   sticky player and the fixed header working. */
+#container {
+
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+
+}
+
+/* Grid/flex children default to min-width: auto, so one wide child (the episode
+   list, the comments block) could stretch the whole layout past the screen. */
+#media_info_container>* {
+
+    min-width: 0;
+
+}
+
+/* Long unbroken tokens (URLs, romaji titles) wrap instead of pushing out. */
+#container p,
+#container h1,
+#container h2,
+#container h3,
+#container h4 {
+
+    overflow-wrap: break-word;
+
+}
+
 #container .background {
 
     z-index: 1;

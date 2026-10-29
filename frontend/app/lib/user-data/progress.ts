@@ -398,11 +398,59 @@ export function listContinueWatchingAsMediaData(limit = CONTINUE_WATCHING_LIMIT)
   });
 }
 
+/**
+ * Keep Watching cards need a real cover. Older rows (and rows saved without
+ * AniList metadata) carry an empty snapshot cover, which rendered as a broken
+ * image with just the alt text. The episode-images endpoint resolves, in order,
+ * the episode thumbnail -> the anime cover -> the AniList cover, one batched
+ * call for the whole list.
+ */
+export async function hydrateKeepWatchingImages(
+  cards: KeepWatchingMediaData[],
+): Promise<KeepWatchingMediaData[]> {
+  if (!cards.length || typeof fetch !== "function") return cards;
+  const needsArt = cards.filter(
+    (card) => !card.coverImage?.extraLarge?.trim() || !card.episodeImg?.trim(),
+  );
+  if (!needsArt.length) return cards;
+
+  try {
+    const response = await fetch("/api/anime/episode-images", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        items: needsArt.map((card) => ({
+          anilistId: card.id,
+          episode: Number(card.episode) || 1,
+        })),
+      }),
+    });
+    if (!response.ok) return cards;
+    const payload = await response.json();
+    const images: Record<string, string | null> = payload?.images ?? {};
+
+    return cards.map((card) => {
+      const key = `${card.id}-${Number(card.episode) || 1}`;
+      const found = images[key];
+      if (!found) return card;
+      const cover = card.coverImage?.extraLarge?.trim();
+      return {
+        ...card,
+        episodeImg: card.episodeImg?.trim() || found,
+        ...(cover ? {} : { coverImage: { extraLarge: found, large: found } }),
+      } as KeepWatchingMediaData;
+    });
+  } catch {
+    return cards;
+  }
+}
+
 export async function listContinueWatchingFromServer(
   input?: UserDataContextInput,
 ): Promise<KeepWatchingMediaData[]> {
   const ctx = await resolveContext(input);
-  if (!isSignedIn(ctx)) return listContinueWatchingAsMediaData();
+  if (!isSignedIn(ctx))
+    return hydrateKeepWatchingImages(listContinueWatchingAsMediaData());
 
   const result = await attempt("progress.continueWatching", async () => {
     const { data, error } = await ctx.client!.from("watch_progress")
@@ -414,8 +462,11 @@ export async function listContinueWatchingFromServer(
     return (data ?? []) as ServerProgressRow[];
   });
 
-  if (!result.ok) return listContinueWatchingAsMediaData();
-  return buildContinueWatchingMediaData(result.data);
+  if (!result.ok)
+    return hydrateKeepWatchingImages(listContinueWatchingAsMediaData());
+  return hydrateKeepWatchingImages(
+    buildContinueWatchingMediaData(result.data),
+  );
 }
 
 /** Removing a card deletes that anime's incomplete rows. */

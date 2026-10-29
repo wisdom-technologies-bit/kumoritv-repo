@@ -219,8 +219,12 @@
 }
 
 .dub_badge {
-  color: var(--black-100);
-  background: var(--white-100);
+  /* The media page's `#description_episodes_related_container span` rule paints
+     every span inside the episodes area white. That ID selector beats a module
+     class, which left the badge white-on-white (an empty white box next to the
+     episode number). `!important` keeps the badge legible in both pages. */
+  color: var(--black-100) !important;
+  background: var(--white-100) !important;
 }
 
 .tag {
