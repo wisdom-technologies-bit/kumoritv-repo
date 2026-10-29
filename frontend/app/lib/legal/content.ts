@@ -15,7 +15,7 @@ export const LEGAL_LAST_UPDATED = "29 October 2026";
 export const LEGAL_LAST_UPDATED_ISO = "2026-10-29";
 
 /** Where privacy requests, takedowns and legal notices go. */
-export const LEGAL_CONTACT_EMAIL = "support@kumoritv.app";
+export const LEGAL_CONTACT_EMAIL = "support@kumoritv.top";
 
 /** The community channel we also accept questions through. */
 export const LEGAL_DISCORD_INVITE = "https://discord.gg/J8CjhJWrnu";
