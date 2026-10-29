@@ -7,7 +7,15 @@ footer#footer .logo {
     object-fit: contain;
     margin-bottom: 0;
     position: relative;
-    top: 6px;
+    top: 0;
+    display: block;
+}
+
+/* The wordmark and the Discord mark share one baseline row on desktop. */
+@media (min-width: 769px) {
+    footer#footer .logo {
+        top: 2px;
+    }
 }
 
 /* RESPONSIVE WIDTHS */
@@ -68,10 +76,29 @@ footer#footer .logo {
     gap: 24px;
 }
 
+/* On phones the two rows used to sit at opposite ends of a 96%-wide box, so the
+   Discord mark drifted to the screen edge and did not line up with the wordmark.
+   Stack them on one left edge instead, with the same inset as the rest of the
+   footer. */
 @media (max-width: 768px) {
     #info_container #social_links_container {
-        flex-wrap: wrap;
-        gap: 32px 0;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: flex-start;
+        gap: 16px;
+        padding-top: 32px;
+        padding-bottom: 20px;
+    }
+
+    #info_container #social_links_container > div {
+        margin: 0;
+        width: 100%;
+    }
+
+    #info_container #social_links_container ul {
+        justify-content: flex-start;
+        gap: 16px;
     }
 }
 
@@ -221,36 +248,118 @@ div.list_container .grid_template {
     gap: 16px 0;
 }
 
-/* SECOND SECTION: COPYRIGHT */
+/* SECOND SECTION: COPYRIGHT + LEGAL */
 section#copyright_section {
-    padding: 16px 0;
+    padding: 20px 0 24px;
     background-color: var(--black-25);
+    border-top: 1px solid var(--white-05);
 }
 
-section#copyright_section > div {
+/* Copyright on the left, legal links on the right. */
+#copyright_row {
+    display: flex;
     flex-direction: column;
-    gap: 16px 0;
+    align-items: center;
+    gap: 12px;
+    width: 96%;
+    margin: 0 auto;
 }
 
 @media (min-width: 680px) {
-    section#copyright_section > div {
+    #copyright_row {
         flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
     }
 }
 
-section#copyright_section a,
-section#copyright_section small {
+.copyright_text {
     color: var(--white-75);
+    font-size: var(--font-size--small-1);
+    line-height: 1.5;
+    margin: 0;
+    text-align: center;
+}
+
+@media (min-width: 680px) {
+    .copyright_text {
+        text-align: left;
+    }
+}
+
+/* PRIVACY POLICY / TERMS OF SERVICE */
+.legal_links {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 12px;
 }
 
-section#copyright_section a:hover small {
+@media (min-width: 680px) {
+    .legal_links {
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+}
+
+.legal_link {
+    color: var(--white-75);
+    font-size: var(--font-size--small-1);
+    line-height: 1.5;
+    padding: 4px 2px;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 150ms ease, border-color 150ms ease;
+}
+
+.legal_link:hover,
+.legal_link:focus-visible {
     color: var(--white-100);
+    border-bottom-color: var(--brand-color);
 }
 
-section#copyright_section > div {
-    width: 96%;
-    justify-content: space-between;
+/* A thin separator between the two links, on wider screens only. */
+.legal_link + .legal_link {
+    border-left: 1px solid var(--white-25);
+    padding-left: 12px;
+}
+
+@media (max-width: 679px) {
+    .legal_link + .legal_link {
+        border-left: 0;
+        padding-left: 2px;
+    }
+}
+
+.disclaimer {
+    width: 92%;
+    max-width: var(--breakpoint-xl);
+    margin: 16px auto 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--white-05);
+    text-align: center;
+    font-size: var(--font-size--small-2);
+    line-height: 1.6;
+    color: var(--white-50);
+}
+
+.disclaimer strong {
+    color: var(--white-75);
+    font-weight: 600;
+}
+
+/* MOBILE FOOTER SPACING */
+@media (max-width: 768px) {
+    #info_container,
+    #copyright_row {
+        width: 90%;
+    }
+
+    .disclaimer {
+        width: 88%;
+    }
 }
 
 /* PLACEHOLDER WHILE LOADING */
@@ -284,35 +393,5 @@ div.list_container .grid_template li.list_item_placeholder {
 
     100% {
         opacity: 0.25;
-    }
-}
-
-/* COPYRIGHT AND DISCLAIMER */
-.copyright_text {
-    text-align: inherit;
-}
-
-.privacy_policy {
-    display: block;
-}
-
-.disclaimer {
-    text-align: center;
-    font-size: 11px;
-    margin-top: 8px;
-    padding: 0 12px;
-    opacity: 0.7;
-    color: #ffffff;
-}
-
-/* MOBILE VIEW */
-@media screen and (max-width: 768px) {
-    .privacy_policy {
-        display: none;
-    }
-
-    .copyright_text {
-        text-align: center;
-        width: 100%;
     }
 }
