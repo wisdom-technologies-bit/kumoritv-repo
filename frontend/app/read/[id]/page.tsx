@@ -32,7 +32,7 @@ export async function generateMetadata({
   params: { id: number };
   searchParams: ReadSearchParams;
 }) {
-  const mediaInfo = await getMediaInfo({ id: params.id });
+  const mediaInfo = await getMediaInfo({ id: Number(params.id) });
   const chapter = searchParams?.chapter ?? "";
   const title = displayTitle(mediaInfo?.title);
 
@@ -82,7 +82,7 @@ async function ReadChapter({
   params: { id: number }; // ANILIST MANGA ID
   searchParams: ReadSearchParams;
 }) {
-  const mediaInfo = await getMediaInfo({ id: params.id });
+  const mediaInfo = await getMediaInfo({ id: Number(params.id) });
 
   if (!mediaInfo) {
     return <ChapterUnavailable mediaId={params.id} message="This title could not be found." />;
