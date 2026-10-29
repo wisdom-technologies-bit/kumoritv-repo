@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { fetchAiringWindow } from "@/app/lib/discovery/anilist";
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app").replace(/\/$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top").replace(/\/$/, "");
 export const CHUNK_SIZE = 40000;
 export const xmlEscape = (value: unknown) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 export const watchUrl = (id: number, episode: number) => `${SITE_URL}/watch/${id}?ep=${episode}`;

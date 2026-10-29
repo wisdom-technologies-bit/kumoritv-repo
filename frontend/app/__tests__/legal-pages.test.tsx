@@ -8,9 +8,29 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "../../test-harness/render";
 import Footer from "@/app/layout/footer";
-import PrivacyPolicyPage, { metadata as privacyMetadata } from "@/app/privacy/page";
-import TermsOfServicePage, { metadata as termsMetadata } from "@/app/terms/page";
-import { LEGAL_LINKS, LEGAL_CONTACT_EMAIL, LEGAL_LAST_UPDATED } from "@/app/lib/legal/content";
+import {
+  PrivacyPolicyContent,
+  buildPrivacySections,
+} from "@/app/privacy/content";
+import { metadata as privacyMetadata } from "@/app/privacy/page";
+import {
+  TermsOfServiceContent,
+  buildTermsSections,
+} from "@/app/terms/content";
+import { metadata as termsMetadata } from "@/app/terms/page";
+import {
+  LEGAL_LINKS,
+  LEGAL_CONTACT_EMAIL,
+  LEGAL_LAST_UPDATED,
+  LEGAL_SITE_URL,
+} from "@/app/lib/legal/content";
+import {
+  adOptOutFor,
+  countryCodeFromHeaders,
+  countryNameFromCode,
+  privacyLawFor,
+  regionFromHeaders,
+} from "@/app/lib/legal/geo";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -21,7 +41,7 @@ const hrefsIn = (container: HTMLElement, selector = "a") =>
 // ------------------------------------------------------------- legal pages
 
 test("the privacy policy covers the sections a real policy needs", async () => {
-  const tree = await render(<PrivacyPolicyPage />);
+  const tree = await render(<PrivacyPolicyContent />);
 
   try {
     const text = tree.container.textContent ?? "";
@@ -40,14 +60,15 @@ test("the privacy policy covers the sections a real policy needs", async () => {
       assert.match(text, new RegExp(heading), `missing section: ${heading}`);
     }
 
-    // monetization is spelled out, including the opt-out paths
-    assert.match(text, /Google AdSense/);
-    assert.match(text, /Google Ads Settings/);
-    assert.match(text, /aboutads\.info/);
+    // monetization is described without naming the ad provider
+    assert.match(text, /funded by advertising/);
+    assert.match(text, /personalized advertising/i);
     assert.match(text, /do not sell your personal information/i);
+    assert.ok(!/monetag/i.test(text), "the ad provider is not named");
+    assert.ok(!/adsense/i.test(text), "no ad provider is named");
+    assert.ok(!/google ads settings/i.test(text));
     // GDPR + CCPA rights
-    assert.match(text, /GDPR/);
-    assert.match(text, /CCPA/);
+    assert.match(text, /GDPR|data protection law/);
     // age floor
     assert.match(text, /under 13/);
     // contact route
@@ -58,7 +79,7 @@ test("the privacy policy covers the sections a real policy needs", async () => {
 });
 
 test("the terms of service cover use, content, liability and law", async () => {
-  const tree = await render(<TermsOfServicePage />);
+  const tree = await render(<TermsOfServiceContent />);
 
   try {
     const text = tree.container.textContent ?? "";
@@ -81,7 +102,8 @@ test("the terms of service cover use, content, liability and law", async () => {
     }
 
     assert.match(text, /does not host, upload or store video files/i);
-    assert.match(text, /Federal Republic of Nigeria/);
+    assert.match(text, /governed by the laws of/);
+    assert.ok(!/Nigeria/.test(text), "no fixed country is hard-coded");
     assert.ok(
       hrefsIn(tree.container).includes("/privacy"),
       "the terms link to the privacy policy",
@@ -92,7 +114,7 @@ test("the terms of service cover use, content, liability and law", async () => {
 });
 
 test("both pages show the same last-updated date and a working table of contents", async () => {
-  for (const page of [<PrivacyPolicyPage key="p" />, <TermsOfServicePage key="t" />]) {
+  for (const page of [<PrivacyPolicyContent key="p" />, <TermsOfServiceContent key="t" />]) {
     const tree = await render(page);
 
     try {
@@ -121,8 +143,13 @@ test("each page carries its own metadata and canonical URL", () => {
   assert.equal(termsMetadata.alternates?.canonical, "/terms");
   assert.match(String(privacyMetadata.title), /Privacy Policy/);
   assert.match(String(termsMetadata.title), /Terms of Service/);
-  const robots = privacyMetadata.robots as { index?: boolean } | undefined;
-  assert.equal(robots?.index, true, "the policy is indexable");
+  const privacyRobots = privacyMetadata.robots as { index?: boolean; follow?: boolean } | undefined;
+  const termsRobots = termsMetadata.robots as { index?: boolean; follow?: boolean } | undefined;
+
+  assert.equal(privacyRobots?.index, false, "the policy must not be indexed");
+  assert.equal(privacyRobots?.follow, false);
+  assert.equal(termsRobots?.index, false, "the terms must not be indexed");
+  assert.equal(termsRobots?.follow, false);
 });
 
 // ---------------------------------------------------------------- footer
@@ -229,4 +256,150 @@ test("the manifest and the metadata agree on the icon files", () => {
     assert.ok(existsSync(join(root, "public", file)), `missing ${file}`);
     assert.match(manifest, new RegExp(file.replace(".", "\\.")));
   }
+});
+
+// ------------------------------------------------------- visitor country
+
+test("the visitor country is read from whichever geo header the host sends", () => {
+  const fromVercel = (headers: Record<string, string>) => (name: string) => headers[name];
+
+  assert.equal(countryCodeFromHeaders(fromVercel({ "x-vercel-ip-country": "ng" })), "NG");
+  assert.equal(countryCodeFromHeaders(fromVercel({ "cf-ipcountry": "DE" })), "DE");
+  assert.equal(countryCodeFromHeaders(fromVercel({ "x-country-code": "br" })), "BR");
+  // some proxies send a placeholder instead of a country
+  assert.equal(countryCodeFromHeaders(fromVercel({ "x-vercel-ip-country": "XX" })), null);
+  assert.equal(countryCodeFromHeaders(fromVercel({ "x-vercel-ip-country": "T1" })), null);
+  assert.equal(countryCodeFromHeaders(fromVercel({})), null);
+  // the first header that carries a real country wins
+  assert.equal(
+    countryCodeFromHeaders(
+      fromVercel({ "x-vercel-ip-country": "XX", "cf-ipcountry": "fr" }),
+    ),
+    "FR",
+  );
+});
+
+test("a country code becomes a readable country name, and junk stays unknown", () => {
+  assert.equal(countryNameFromCode("NG"), "Nigeria");
+  assert.equal(countryNameFromCode("gb"), "United Kingdom");
+  assert.equal(countryNameFromCode("JP"), "Japan");
+  assert.equal(countryNameFromCode("ZZ"), null);
+  assert.equal(countryNameFromCode("XX"), null);
+
+  assert.deepEqual(
+    regionFromHeaders((name: string) => (name === "x-vercel-ip-country" ? "DE" : null)),
+    { code: "DE", name: "Germany" },
+  );
+  assert.equal(regionFromHeaders(() => null), null);
+});
+
+test("each region gets the law and the ad opt-out that actually apply there", () => {
+  const de = { code: "DE", name: "Germany" };
+  const gb = { code: "GB", name: "United Kingdom" };
+  const us = { code: "US", name: "United States" };
+  const ng = { code: "NG", name: "Nigeria" };
+  const jp = { code: "JP", name: "Japan" };
+
+  assert.match(privacyLawFor(de), /GDPR/);
+  assert.match(privacyLawFor(gb), /UK General Data Protection Regulation/);
+  assert.match(privacyLawFor(us), /CCPA/);
+  assert.match(privacyLawFor(ng), /Nigeria Data Protection Act/);
+  assert.match(privacyLawFor(jp), /Act on the Protection of Personal Information/);
+  assert.match(privacyLawFor(null), /data protection law/);
+
+  assert.notEqual(adOptOutFor(de), adOptOutFor(us));
+  assert.match(adOptOutFor(null), /opt-out tools/);
+});
+
+test("the privacy policy names the visitor's country and its law", async () => {
+  const tree = await render(<PrivacyPolicyContent region={{ code: "DE", name: "Germany" }} />);
+
+  try {
+    const text = tree.container.textContent ?? "";
+
+    assert.match(text, /visiting from Germany/);
+    assert.match(text, /General Data Protection Regulation/);
+    assert.match(text, /data protection authority in Germany/);
+    assert.ok(!/Nigeria/.test(text), "Germany gets German wording");
+  } finally {
+    await tree.unmount();
+  }
+});
+
+test("an unknown country still produces usable, country-neutral wording", async () => {
+  const tree = await render(<PrivacyPolicyContent region={null} />);
+
+  try {
+    const text = tree.container.textContent ?? "";
+    assert.match(text, /could not tell which country/i);
+    assert.ok(!/undefined|null/.test(text), "no broken interpolation leaks into the page");
+    assert.match(text, /data protection law of the country you are visiting from/);
+  } finally {
+    await tree.unmount();
+  }
+});
+
+test("the governing law follows the visitor instead of a hard-coded country", async () => {
+  const gbTree = await render(<TermsOfServiceContent region={{ code: "GB", name: "United Kingdom" }} />);
+  try {
+    const text = gbTree.container.textContent ?? "";
+    assert.match(text, /governed by the laws of\s*the United Kingdom/);
+    assert.match(text, /jurisdiction over you in the United Kingdom/);
+  } finally {
+    await gbTree.unmount();
+  }
+
+  const unknown = buildTermsSections(null)
+    .find((section) => section.id === "governing-law");
+  assert.ok(unknown, "the governing law section exists without a region");
+});
+
+test("the region is visible on the page and exposed for styling", async () => {
+  const tree = await render(<PrivacyPolicyContent region={{ code: "JP", name: "Japan" }} />);
+
+  try {
+    const notice = tree.container.querySelector("[data-region]");
+    assert.ok(notice, "the page tells the visitor which country it detected");
+    assert.equal(notice?.getAttribute("data-region"), "JP");
+    assert.match(notice?.textContent ?? "", /visiting from/i);
+  } finally {
+    await tree.unmount();
+  }
+
+  const fallback = await render(<TermsOfServiceContent region={null} />);
+  try {
+    assert.equal(
+      fallback.container.querySelector("[data-region]")?.getAttribute("data-region"),
+      "unknown",
+    );
+  } finally {
+    await fallback.unmount();
+  }
+});
+
+test("the pages carry the production domain, not the preview host", () => {
+  assert.equal(LEGAL_SITE_URL, "https://kumoritv.top");
+  assert.ok(
+    buildPrivacySections(null).length > 0 &&
+      JSON.stringify(LEGAL_SITE_URL).includes("kumoritv.top"),
+  );
+});
+
+test("both legal routes opt out of indexing in their own file too", () => {
+  for (const file of ["app/privacy/page.tsx", "app/terms/page.tsx"]) {
+    const source = read(file);
+    assert.match(source, /index:\s*false/, `${file} sets noindex`);
+    assert.match(source, /follow:\s*false/, `${file} sets nofollow`);
+    assert.match(source, /force-dynamic/, `${file} renders per request`);
+  }
+});
+
+test("country names read correctly in a sentence", () => {
+  const { countryInProse } = require("@/app/lib/legal/geo") as typeof import("@/app/lib/legal/geo");
+
+  assert.equal(countryInProse("Germany"), "Germany");
+  assert.equal(countryInProse("Nigeria"), "Nigeria");
+  assert.equal(countryInProse("United States"), "the United States");
+  assert.equal(countryInProse("Netherlands"), "the Netherlands");
+  assert.equal(countryInProse("United Kingdom"), "the United Kingdom");
 });

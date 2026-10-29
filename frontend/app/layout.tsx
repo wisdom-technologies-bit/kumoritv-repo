@@ -16,7 +16,7 @@ export const viewport: Viewport = {
   themeColor: "#0B0B14",
 };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

@@ -86,15 +86,15 @@ test("canonical keeps only ?ep and normalises bad input", () => {
   delete process.env.NEXT_PUBLIC_SITE_URL;
   assert.equal(
     buildWatchCanonical(21, 5),
-    "https://kumoritv.vercel.app/watch/21?ep=5",
+    "https://kumoritv.top/watch/21?ep=5",
   );
   // audio/t/lang/dub never reach the canonical because only the episode is read
-  assert.equal(buildWatchCanonical("21", "5", "TV"), "https://kumoritv.vercel.app/watch/21?ep=5");
-  assert.equal(buildWatchCanonical(21, "abc"), "https://kumoritv.vercel.app/watch/21?ep=1");
-  assert.equal(buildWatchCanonical(21, 0), "https://kumoritv.vercel.app/watch/21?ep=1");
-  assert.equal(buildWatchCanonical(21, -3), "https://kumoritv.vercel.app/watch/21?ep=1");
-  assert.equal(buildWatchCanonical(21, undefined), "https://kumoritv.vercel.app/watch/21?ep=1");
-  assert.equal(buildWatchCanonical(21, 9, "MOVIE"), "https://kumoritv.vercel.app/watch/21?ep=1");
+  assert.equal(buildWatchCanonical("21", "5", "TV"), "https://kumoritv.top/watch/21?ep=5");
+  assert.equal(buildWatchCanonical(21, "abc"), "https://kumoritv.top/watch/21?ep=1");
+  assert.equal(buildWatchCanonical(21, 0), "https://kumoritv.top/watch/21?ep=1");
+  assert.equal(buildWatchCanonical(21, -3), "https://kumoritv.top/watch/21?ep=1");
+  assert.equal(buildWatchCanonical(21, undefined), "https://kumoritv.top/watch/21?ep=1");
+  assert.equal(buildWatchCanonical(21, 9, "MOVIE"), "https://kumoritv.top/watch/21?ep=1");
   if (previous !== undefined) process.env.NEXT_PUBLIC_SITE_URL = previous;
 });
 

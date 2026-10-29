@@ -1,7 +1,7 @@
 // Pure text helpers shared by the SEO metadata builders. No imports from Next,
 // React or the database, so they can be unit tested in isolation.
 
-export const SITE_URL_FALLBACK = "https://kumoritv.vercel.app";
+export const SITE_URL_FALLBACK = "https://kumoritv.top";
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",

@@ -7,6 +7,7 @@ import {
   LEGAL_LAST_UPDATED,
   LEGAL_LAST_UPDATED_ISO,
 } from "@/app/lib/legal/content";
+import { countryInProse, type VisitorRegion } from "@/app/lib/legal/geo";
 
 export type LegalSection = {
   /** Anchor id, also used by the table of contents. */
@@ -23,6 +24,8 @@ type LegalPageProps = {
   sections: LegalSection[];
   /** Shown above the contact block, e.g. what to include in a request. */
   contactNote?: React.ReactNode;
+  /** Country the request came from; decides which law the page cites. */
+  region?: VisitorRegion | null;
 };
 
 function slugToLabel(sections: LegalSection[]) {
@@ -38,8 +41,10 @@ export default function LegalPage({
   summary,
   sections,
   contactNote,
+  region = null,
 }: LegalPageProps) {
   const toc = slugToLabel(sections);
+  const place = region ? countryInProse(region.name) : null;
 
   return (
     <main id={styles.container}>
@@ -56,6 +61,22 @@ export default function LegalPage({
             •
           </span>
           <span>Applies to {LEGAL_BRAND} and every page under it</span>
+        </p>
+
+        <p id={styles.region} data-region={region?.code ?? "unknown"}>
+          {region ? (
+            <>
+              You are visiting from <strong>{place}</strong>. The law and rights
+              sections below are worded for {place}; if that is wrong, the rules
+              where you actually live still apply.
+            </>
+          ) : (
+            <>
+              We could not tell which country you are visiting from, so the law
+              and rights sections below stay general. The rules where you live
+              still apply.
+            </>
+          )}
         </p>
       </header>
 
