@@ -119,8 +119,13 @@ h2.heading_style {
 
 }
 
-#description_episodes_related_container p,
-#description_episodes_related_container span {
+/* Only the description/cast copy needs the plain white text colour. This used
+   to reach into the episode list too and repainted its badges (the DUB pill
+   turned into an empty white box). The list styles itself. */
+#description_episodes_related_container #description_container p,
+#description_episodes_related_container #description_container span,
+#description_episodes_related_container #cast_container p,
+#description_episodes_related_container #cast_container span {
 
     line-height: 1.4;
 
