@@ -18,6 +18,7 @@ import { absoluteUrl } from "@/app/lib/seo/text";
 import { anilistStartDateIso, buildMediaJsonLd } from "@/app/lib/seo/jsonld";
 import JsonLd from "@/app/lib/seo/JsonLd";
 import { notFound } from "next/navigation";
+import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 import { displayTitle } from "@/app/lib/titles";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
@@ -83,6 +84,15 @@ export default async function MediaPage({
 
   // External episode providers are intentionally disabled until task 7a.
   const imdbMediaInfo = undefined;
+
+  // Adult titles stay out of the "similar" and "related" lists while hidden.
+  const showAdultContent = await readShowAdultContent();
+  const recommendationEdges = (mediaInfo.recommendations?.edges || []).filter(
+    (edge: any) => showAdultContent || edge?.node?.mediaRecommendation?.isAdult !== true,
+  );
+  const relatedNodes = (mediaInfo.relations?.nodes || []).filter(
+    (item: any) => showAdultContent || item?.isAdult !== true,
+  );
 
   function randomizeBcgImg() {
     const backgroundImgs: { url: string }[] = [];
@@ -262,7 +272,7 @@ export default async function MediaPage({
             )}
 
             {/* RELATIONED TO THIS MEDIA */}
-            {mediaInfo.relations.nodes[0] && (
+            {relatedNodes[0] && (
               <section id={styles.related_container}>
                 <div className="display_flex_row space_beetween align_items_center display_wrap">
                   <h2 className={styles.heading_style}>
@@ -272,7 +282,7 @@ export default async function MediaPage({
 
                 <ul>
                   <MediaRelatedContainer
-                    mediaList={mediaInfo.relations.nodes}
+                    mediaList={relatedNodes}
                   />
                 </ul>
               </section>
@@ -297,14 +307,14 @@ export default async function MediaPage({
             </section>
 
             {/* RECOMMENDATIONS ACCORDING TO THIS MEDIA */}
-            {mediaInfo.recommendations.edges[0] && (
+            {recommendationEdges[0] && (
               <section id={styles.similar_container}>
                 <h2 className={styles.heading_style}>
                   SIMILAR {mediaInfo.type.toUpperCase()}S YOU MAY LIKE
                 </h2>
 
                 <ul>
-                  {mediaInfo?.recommendations.edges
+                  {recommendationEdges
                     .slice(0, 12)
                     .map((media, key) => (
                       <li key={key}>

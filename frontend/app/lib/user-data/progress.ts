@@ -16,6 +16,8 @@ export type ProgressRecord = {
   updatedAt: number;
   title?: string;
   cover?: string;
+  /** Episode thumbnail for Keep Watching (falls back to `cover`). */
+  episodeImage?: string;
   watched: number[];
 };
 
@@ -182,7 +184,11 @@ async function writeServer(
           duration_seconds: record.duration ? Math.round(record.duration) : null,
           audio: record.audio === "dub" ? "dub" : "sub",
           completed,
-          snapshot: { title: record.title ?? null, cover: record.cover ?? null },
+          snapshot: {
+            title: record.title ?? null,
+            cover: record.cover ?? null,
+            episodeImage: record.episodeImage ?? null,
+          },
           updated_at: new Date(nowMs).toISOString(),
         },
         { onConflict: "user_id,anilist_id,episode_number" },
@@ -293,6 +299,8 @@ export function mergeServerRowsIntoLocal(rows: ServerProgressRow[]): number {
       updatedAt: serverNewer ? rowUpdatedAt : existing!.updatedAt,
       title: existing?.title || snapshotTitle,
       cover: existing?.cover || snapshot.cover || undefined,
+      episodeImage:
+        existing?.episodeImage || snapshot.episodeImage || undefined,
       watched: Array.from(watched).sort((a, b) => a - b),
     };
     changed++;
@@ -351,7 +359,8 @@ export function toKeepWatchingMediaData(row: ServerProgressRow): KeepWatchingMed
     episodes: 0,
     episode: `${row.episode_number}`,
     episodeId: "",
-    episodeImg: cover,
+    // the episode thumbnail first; the anime cover is the fallback the card uses
+    episodeImg: snapshot.episodeImage || cover,
     episodeTimeLastStop: Number(row.position_seconds) || 0,
     episodeDuration: Number(row.duration_seconds) || 0,
     dub: row.audio === "dub",
@@ -378,7 +387,7 @@ export function listContinueWatchingAsMediaData(limit = CONTINUE_WATCHING_LIMIT)
       episodes: 0,
       episode: `${record.episode}`,
       episodeId: "",
-      episodeImg: cover,
+      episodeImg: record.episodeImage || cover,
       episodeTimeLastStop: record.time,
       episodeDuration: record.duration,
       dub: record.audio === "dub",

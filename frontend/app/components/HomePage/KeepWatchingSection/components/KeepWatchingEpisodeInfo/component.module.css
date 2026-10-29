@@ -243,6 +243,14 @@
 }
 
 /*  */
+.media_item_container small.remaining {
+
+    font-size: var(--font-size--small-2);
+    color: var(--white-50);
+    font-weight: 500;
+
+}
+
 .media_item_container small {
 
     font-size: var(--font-size--small-2);

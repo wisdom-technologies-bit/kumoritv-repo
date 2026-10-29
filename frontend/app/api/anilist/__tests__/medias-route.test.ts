@@ -36,25 +36,27 @@ test.afterEach(() => {
   console.error = originalConsoleError;
 });
 
-test("getMediaForThisFormat: showAdultContent=true still sends no isAdult", async () => {
+test("getMediaForThisFormat: adult titles are hidden by default", async () => {
+  const response = await GET(request("fn=getMediaForThisFormat&type=ANIME"));
+
+  assert.equal(response.status, 200);
+  assert.equal(lastVariables().isAdult, false);
+});
+
+test("getMediaForThisFormat: showAdultContent=true omits isAdult entirely", async () => {
   const response = await GET(request("fn=getMediaForThisFormat&type=ANIME&showAdultContent=true"));
 
   assert.equal(response.status, 200);
   const variables = lastVariables();
+  // `isAdult: true` would return adult titles ONLY, so the argument is omitted.
   assert.ok(!("isAdult" in variables), `isAdult leaked: ${JSON.stringify(variables)}`);
   assert.equal(variables.isAdult, undefined);
 });
 
-test("getMediaForThisFormat: the variables are identical with and without showAdultContent", async () => {
-  await GET(request("fn=getMediaForThisFormat&type=ANIME&showAdultContent=true"));
-  const withFlag = lastVariables();
+test("getMediaForThisFormat: showAdultContent=false keeps them hidden", async () => {
+  await GET(request("fn=getMediaForThisFormat&type=ANIME&showAdultContent=false"));
 
-  calls.length = 0;
-  await GET(request("fn=getMediaForThisFormat&type=ANIME"));
-  const withoutFlag = lastVariables();
-
-  assert.deepEqual(withFlag, withoutFlag);
-  assert.ok(!("isAdult" in withoutFlag));
+  assert.equal(lastVariables().isAdult, false);
 });
 
 test("getMediaForThisFormat: type=MANGA without a format sends no TV", async () => {
@@ -87,17 +89,21 @@ test("getMediaForThisFormat: the page parameter reaches the server function as p
   assert.equal(lastVariables().page, 3);
 });
 
-test("fn=search no longer forces isAdult:false", async () => {
+test("fn=search hides adult results by default", async () => {
   const response = await GET(request("fn=search&query=monster&perPage=5"));
 
   assert.equal(response.status, 200);
-  const variables = lastVariables();
-  assert.ok(!("isAdult" in variables), `isAdult leaked: ${JSON.stringify(variables)}`);
-  assert.notEqual(variables.isAdult, false);
+  assert.equal(lastVariables().isAdult, false);
 });
 
-test("fn=search ignores showAdultContent=true as well", async () => {
+test("fn=search omits isAdult when showAdultContent=true", async () => {
   await GET(request("fn=search&query=monster&showAdultContent=true"));
 
   assert.ok(!("isAdult" in lastVariables()));
+});
+
+test("fn=search still hides adult titles when showAdultContent=false", async () => {
+  await GET(request("fn=search&query=monster&showAdultContent=false"));
+
+  assert.equal(lastVariables().isAdult, false);
 });

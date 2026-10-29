@@ -1,37 +1,55 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { motion } from "framer-motion";
-import { useSearchParams } from "next/navigation";
+// Watch page episode list: same component as the media page, plus the current
+// episode marker (and auto-scroll to it).
+import { useEffect, useState } from "react";
 import styles from "./component.module.css";
-import MarkEpisodeAsWatchedButton from "@/app/components/Buttons/MarkEpisodeAsWatched";
+import EpisodeList from "@/app/components/EpisodeList";
 import { convertFromUnix } from "@/app/lib/formatDateUnix";
+import {
+  getProgress,
+  subscribe,
+  markWatched,
+} from "@/app/lib/user-data/progress";
+import type { EpisodeItem } from "@/app/lib/episodes/items";
 
 type Props = {
   mediaId: number;
   activeEpisodeNumber: number;
   audio: "sub" | "dub";
   nextAiringEpisodeInfo?: { episode: number; airingAt?: number };
+  format?: string | null;
 };
+
 export default function EpisodesListContainer({
   mediaId,
   activeEpisodeNumber,
   audio,
   nextAiringEpisodeInfo,
+  format,
 }: Props) {
   const [state, setState] = useState<any>(null);
   const [retry, setRetry] = useState(0);
-  const [order, setOrder] = useState<"asc" | "desc">("desc");
-  const active = useRef<HTMLLIElement>(null);
-  const list = useRef<HTMLOListElement>(null);
-  const searchParams = useSearchParams();
+  const [watched, setWatched] = useState<number[]>([]);
+
+  useEffect(() => {
+    const sync = () => {
+      const record = getProgress(mediaId);
+      const list = [...(record?.watched || [])];
+      // An episode past the playhead counts as watched in the list too.
+      if (record?.episode) list.push(record.episode);
+      setWatched([...new Set(list)].sort((a, b) => a - b));
+    };
+    sync();
+    return subscribe(sync);
+  }, [mediaId]);
+
   useEffect(() => {
     let live = true;
     const load = () =>
       fetch(`/api/anime/${mediaId}/episodes`)
         .then((r) => r.json())
-        .then((x) => {
-          if (live) setState(x);
+        .then((payload) => {
+          if (live) setState(payload);
         })
         .catch(() => {});
     load();
@@ -43,41 +61,28 @@ export default function EpisodesListContainer({
       clearInterval(timer);
     };
   }, [mediaId, retry, state?.status]);
-  useEffect(() => {
-    const saved = window.localStorage.getItem("kumori_episode_order_v1");
-    if (saved === "asc" || saved === "desc") setOrder(saved);
-  }, []);
-  useEffect(() => {
-    const item = active.current;
-    const container = list.current;
-    if (!item || !container) return;
-    const itemTop = item.offsetTop;
-    const itemBottom = itemTop + item.offsetHeight;
-    if (itemTop < container.scrollTop) container.scrollTop = itemTop;
-    else if (itemBottom > container.scrollTop + container.clientHeight) {
-      container.scrollTop = itemBottom - container.clientHeight;
-    }
-  }, [state, activeEpisodeNumber, order]);
-  const toggleOrder = () => {
-    const nextOrder = order === "desc" ? "asc" : "desc";
-    setOrder(nextOrder);
-    window.localStorage.setItem("kumori_episode_order_v1", nextOrder);
-  };
+
+  const episodes: EpisodeItem[] = state?.episodes || [];
   const loading = !state || state.status === "syncing";
-  const episodes = state?.episodes
-    ? [...state.episodes].sort((a: any, b: any) =>
-        order === "desc" ? b.number - a.number : a.number - b.number,
-      )
-    : [];
+
+  // The played episode is marked watched once it is in the list.
+  useEffect(() => {
+    if (!episodes.length) return;
+    if (episodes.some((item) => item.number === activeEpisodeNumber))
+      markWatched(mediaId, activeEpisodeNumber, true);
+  }, [episodes.length, activeEpisodeNumber, mediaId]);
+
   return (
     <div id={styles.episodes_list_container}>
-      <div className={styles.heading_container}>
-        <h3>EPISODES {audio === "dub" ? "(DUB)" : ""}</h3>
-        <p>on KUMORITV</p>
-        <button type="button" onClick={toggleOrder}>
-          {order === "desc" ? "Oldest first" : "Newest first"}
-        </button>
-      </div>
+      {nextAiringEpisodeInfo && (
+        <p className={styles.next_episode}>
+          Next episode {nextAiringEpisodeInfo.episode}
+          {nextAiringEpisodeInfo.airingAt
+            ? ` · ${convertFromUnix(nextAiringEpisodeInfo.airingAt)}`
+            : ""}
+        </p>
+      )}
+
       {state?.status === "unavailable" ? (
         <div className={styles.filler_alert_text}>
           No episodes available yet{" "}
@@ -85,74 +90,18 @@ export default function EpisodesListContainer({
             Retry
           </button>
         </div>
+      ) : loading && !episodes.length ? (
+        <div className={styles.loading} aria-hidden />
       ) : (
-        <motion.ol ref={list} id={styles.list_container} data-loading={loading}>
-          {nextAiringEpisodeInfo && order === "desc" && (
-            <li className={styles.next_episode_container}>
-              <div className={styles.img_container}>
-                <span>{nextAiringEpisodeInfo.episode}</span>
-              </div>
-              <div className={styles.episode_info_container}>
-                <small>Next episode</small>
-                {nextAiringEpisodeInfo.airingAt && (
-                  <small>
-                    {convertFromUnix(nextAiringEpisodeInfo.airingAt)}
-                  </small>
-                )}
-              </div>
-            </li>
-          )}
-          {loading
-            ? Array.from({ length: 5 }, (_, i) => (
-                <li className="item_placeholder" key={i} />
-              ))
-            : episodes.map((ep: any) => (
-                <motion.li
-                  key={ep.number}
-                  ref={ep.number === activeEpisodeNumber ? active : null}
-                  data-active={ep.number === activeEpisodeNumber}
-                >
-                  <Link
-                    href={`/watch/${mediaId}?ep=${ep.number}&audio=${audio}`}
-                    title={`Episode ${ep.number}`}
-                  >
-                    <div className={styles.img_container}>
-                      <span>{ep.number}</span>
-                    </div>
-                  </Link>
-                  <div className={styles.episode_info_container}>
-                    <Link
-                      href={`/watch/${mediaId}?ep=${ep.number}&audio=${audio}`}
-                    >
-                      <h4>{ep.title || `Episode ${ep.number}`}</h4>
-                    </Link>
-                    <MarkEpisodeAsWatchedButton
-                      episodeNumber={ep.number}
-                      episodeTitle={ep.title || `Episode ${ep.number}`}
-                      mediaId={mediaId}
-                      maxEpisodesNumber={state.episodes.length}
-                      wasWatched={false}
-                      showAdditionalText={false}
-                    />
-                  </div>
-                </motion.li>
-              ))}
-          {nextAiringEpisodeInfo && order === "asc" && (
-            <li className={styles.next_episode_container}>
-              <div className={styles.img_container}>
-                <span>{nextAiringEpisodeInfo.episode}</span>
-              </div>
-              <div className={styles.episode_info_container}>
-                <small>Next episode</small>
-                {nextAiringEpisodeInfo.airingAt && (
-                  <small>
-                    {convertFromUnix(nextAiringEpisodeInfo.airingAt)}
-                  </small>
-                )}
-              </div>
-            </li>
-          )}
-        </motion.ol>
+        <EpisodeList
+          episodes={episodes}
+          anilistId={mediaId}
+          audio={audio}
+          activeEpisode={activeEpisodeNumber}
+          watched={watched}
+          format={format}
+          title={audio === "dub" ? "Episodes (DUB)" : "Episodes"}
+        />
       )}
     </div>
   );

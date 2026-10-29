@@ -11,6 +11,7 @@ import fallbackImg from "@/public/photo-placeholder.jpg";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { deleteContinueWatching } from "@/app/lib/user-data/progress";
 import { displayTitle } from "@/app/lib/titles";
+import { remainingLabel } from "@/app/lib/episodes/items";
 
 type ComponentTypes = {
   animeInfo: KeepWatchingMediaData;
@@ -18,12 +19,25 @@ type ComponentTypes = {
   darkMode?: boolean;
 };
 
+/** /watch/{id}?ep=N&t={seconds}&audio={sub|dub} (legacy params dropped). */
+export function watchHref(animeInfo: KeepWatchingMediaData) {
+  const episode = Number(animeInfo.episode) || 1;
+  const time = Math.floor(Number(animeInfo.episodeTimeLastStop) || 0);
+  return `/watch/${animeInfo.id}?ep=${episode}${time > 0 ? `&t=${time}` : ""}&audio=${
+    animeInfo.dub ? "dub" : "sub"
+  }`;
+}
+
 function KeepWatchingEpisodeInfo({
   animeInfo,
   darkMode,
   deleteFromListHook,
 }: ComponentTypes) {
   const [wasDeleted, setWasDeleted] = useState<boolean>(false);
+  const remaining = remainingLabel(
+    animeInfo.episodeTimeLastStop,
+    animeInfo.episodeDuration,
+  );
 
   const { user } = useUser();
 
@@ -67,16 +81,14 @@ function KeepWatchingEpisodeInfo({
             </span>
 
             <div className={styles.overlay_info_container}>
-              <Link
-                href={`/watch/${animeInfo.id}?source=${animeInfo.source}&episode=${animeInfo.episode}&q=${animeInfo.episodeId}&t=${animeInfo.episodeTimeLastStop || 0}${animeInfo.dub ? "&dub=true" : ""}`}
-              >
+              <Link href={watchHref(animeInfo)}>
                 {animeInfo.format != "MOVIE" ? "CONTINUE EPISODE" : "CONTINUE"}
               </Link>
             </div>
 
             {animeInfo.format != "MOVIE" && (
               <span className={styles.episode_name_span}>
-                Episode {animeInfo.episode}
+                Ep. {animeInfo.episode}
               </span>
             )}
 
@@ -99,6 +111,10 @@ function KeepWatchingEpisodeInfo({
             <Link href={`/media/${animeInfo.id}`}>
               {displayTitle(animeInfo.title)}
             </Link>
+
+            {remaining ? (
+              <small className={styles.remaining}>{remaining}</small>
+            ) : null}
 
             <button
               onClick={() => removeFromKeepWatching()}

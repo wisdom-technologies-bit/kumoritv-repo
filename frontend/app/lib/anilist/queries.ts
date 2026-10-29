@@ -57,10 +57,11 @@ const mediaListFields = `
   popularity
 `;
 
-// Adult titles are allowed everywhere on the site and are never filtered or
-// isolated, so the query never sends an `isAdult` argument to AniList.
+// Adult titles are hidden by default. `$isAdult: Boolean` is nullable, so when
+// the user enabled adult content the variable is simply omitted and AniList
+// applies no filter (sending `isAdult: true` would return adult titles ONLY).
 export function requestMedias(otherQueryFields = "", otherMediasFields = "") {
-  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $status: MediaStatus${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, status: $status${otherMediasFields}) { ${mediaListFields} } } }`;
+  return `query($type: MediaType, $format: MediaFormat, $sort: [MediaSort], $season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int, $status: MediaStatus, $isAdult: Boolean${otherQueryFields}) { Page(page: $page, perPage: $perPage) { media(season: $season, seasonYear: $seasonYear, sort: $sort, type: $type, format: $format, status: $status, isAdult: $isAdult${otherMediasFields}) { ${mediaListFields} } } }`;
 }
 
 export function requestMediasByDateRelease() {

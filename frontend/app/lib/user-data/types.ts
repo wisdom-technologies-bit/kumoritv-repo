@@ -44,6 +44,8 @@ export type ListEntry = {
 export type ProgressSnapshot = {
   title: MediaTitle | string | null;
   cover: string | null;
+  /** Episode thumbnail, so Keep Watching never falls back to a placeholder. */
+  episodeImage?: string | null;
 };
 
 export type ServerProgressRow = {

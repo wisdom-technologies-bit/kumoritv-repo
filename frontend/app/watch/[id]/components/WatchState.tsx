@@ -10,27 +10,38 @@ import {
   useState,
 } from "react";
 
+// The UI only ever talks about SERVER names. `provider` stays internal (it is
+// never rendered); it is what the route uses to exclude a dead source.
 type Server = {
   id: string;
   label?: string;
-  type?: string;
+  active?: boolean;
   healthy?: boolean;
-  hardsub?: boolean;
 };
 type WatchData = {
   servers?: Server[];
   provider?: string;
+  server?: string;
+  serverId?: string;
+  hasBackup?: boolean;
   stream?: any;
   source?: any;
   subtitles?: any[];
   hardsub?: boolean;
   thumbnails?: any;
-  availableAudio?: { sub?: boolean; dub?: boolean };
+  availableAudio?: string[] | { sub?: boolean; dub?: boolean };
+};
+type LoadOptions = {
+  provider?: string | null;
+  server?: string | null;
+  exclude?: string[];
 };
 type State = {
   audio: "sub" | "dub";
-  selectedServer: string;
   servers: Server[];
+  activeServerId: string;
+  selectedServer: string;
+  hasBackup: boolean;
   activeProvider: string;
   availableAudio: { sub?: boolean; dub?: boolean };
   status: "loading" | "ready" | "error";
@@ -44,6 +55,7 @@ type State = {
   offset: number;
   setAudio: (audio: "sub" | "dub") => void;
   selectServer: (id: string) => void;
+  backupServer: () => void;
   tryNextServer: (reason?: string) => void;
   retry: () => void;
   failover: (reason?: string) => void;
@@ -51,6 +63,42 @@ type State = {
   setOffset: (value: number) => void;
 };
 const Context = createContext<State | null>(null);
+
+type ServerPref = { server: string; provider: string };
+
+const prefKey = (anilistId: number, audio: string) =>
+  `kumori_server_pref_v1:${anilistId}:${audio}`;
+
+/** Stored as { server label, internal provider key }; older plain values reset. */
+export function readServerPref(
+  anilistId: number,
+  audio: string,
+): ServerPref | null {
+  try {
+    const raw = localStorage.getItem(prefKey(anilistId, audio));
+    if (!raw || raw === "auto") return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const server = typeof parsed.server === "string" ? parsed.server : "";
+    const provider = typeof parsed.provider === "string" ? parsed.provider : "";
+    return server || provider ? { server, provider } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeServerPref(
+  anilistId: number,
+  audio: string,
+  value: ServerPref | null,
+) {
+  try {
+    const key = prefKey(anilistId, audio);
+    if (!value) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
 export function WatchState({
   anilistId,
   episode,
@@ -65,23 +113,26 @@ export function WatchState({
   children: React.ReactNode;
 }) {
   const [audio, setAudio] = useState(initialAudio);
-  const [selectedServer, setSelectedServer] = useState("auto");
   const [data, setData] = useState<WatchData | null>(null);
   const [status, setStatus] = useState<State["status"]>("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [tried, setTried] = useState<string[]>([]);
+  const [selectedServer, setSelectedServer] = useState("");
   const [subtitleLanguage, setSubtitleLanguageState] = useState(
     initialSubtitleLanguage,
   );
   const [offset, setOffsetState] = useState(0);
   const [nonce, setNonce] = useState(0);
-  const dead = useRef(new Set<string>());
+  const requestRef = useRef<LoadOptions>({});
+
   const load = useCallback(
-    async (provider = selectedServer, exclude: string[] = []) => {
+    async (options: LoadOptions = requestRef.current) => {
+      requestRef.current = options;
       setStatus("loading");
       const query = new URLSearchParams({ audio, sublang: subtitleLanguage });
-      if (provider !== "auto") query.set("provider", provider);
-      if (exclude.length) query.set("exclude", exclude.join(","));
+      if (options.provider) query.set("provider", options.provider);
+      if (options.server) query.set("server", options.server);
+      if (options.exclude?.length) query.set("exclude", options.exclude.join(","));
       try {
         const response = await fetch(
           `/api/watch/${anilistId}/${episode}?${query}`,
@@ -90,8 +141,6 @@ export function WatchState({
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || "stream_error");
         setData(body);
-        for (const s of body.servers || [])
-          if (s.healthy === false) dead.current.add(s.id);
         setStatus("ready");
         setErrorMessage("");
       } catch (error) {
@@ -101,66 +150,73 @@ export function WatchState({
         );
       }
     },
-    [anilistId, episode, audio, subtitleLanguage, selectedServer],
+    [anilistId, episode, audio, subtitleLanguage],
   );
+
   useEffect(() => {
+    const saved = readServerPref(anilistId, audio);
+    setSelectedServer(saved?.server || "");
+    // The first request replays the remembered choice (label + provider key).
+    requestRef.current = saved
+      ? { provider: saved.provider || null, server: saved.server || null }
+      : {};
     try {
-      setSelectedServer(
-        localStorage.getItem(`kumori_server_pref_v1:${anilistId}:${audio}`) ||
-          "auto",
-      );
       setOffsetState(
         Number(localStorage.getItem(`kumori_sub_offset_v1:${anilistId}`) || 0),
       );
     } catch {}
   }, [anilistId, audio]);
+
   useEffect(() => {
     void load();
   }, [load, nonce]);
+
+  /** Picking a server keeps the active provider and asks for that label. */
   const selectServer = (id: string) => {
+    const server = (data?.servers || []).find((item) => item.id === id);
+    if (!server) return;
+    const label = server.label || server.id;
     setSelectedServer(id);
-    try {
-      const key = `kumori_server_pref_v1:${anilistId}:${audio}`;
-      id === "auto"
-        ? localStorage.removeItem(key)
-        : localStorage.setItem(key, id);
-    } catch {}
-  };
-  const tryNextServer = (reason = "network") => {
-    const current = data?.provider;
-    const next = (data?.servers || []).find(
-      (server) => server.id !== current && server.healthy !== false,
+    // Remember the choice with the internal provider key it belonged to.
+    writeServerPref(
+      anilistId,
+      audio,
+      data?.provider ? { server: label, provider: data.provider } : null,
     );
-    if (!next) return;
-    if (current)
-      void fetch("/api/watch/report", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          anilistId,
-          episode,
-          audio,
-          provider: current,
-          reason,
-        }),
-      });
-    setTried((value) => [...value, current || ""]);
-    selectServer(next.id);
+    void load({ provider: data?.provider || null, server: label });
   };
-  const latest = useRef({ data, tried });
-  latest.current = { data, tried };
-  const failover = (reason = "network") => {
-    const current = latest.current.data?.provider;
-    if (!current) return;
+
+  const reportDead = (provider: string | undefined, reason: string) => {
+    if (!provider) return;
     void fetch("/api/watch/report", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ anilistId, episode, audio, provider: current, reason }),
+      body: JSON.stringify({ anilistId, episode, audio, provider, reason }),
     }).catch(() => undefined);
-    const next = [...latest.current.tried, current];
-    setTried(next);
-    void load("auto", next);
   };
+
+  /** "Backup server": ask the route for the next provider, silently. */
+  const backupServer = () => {
+    const current = data?.provider;
+    if (!current) return;
+    const exclude = [...new Set([...(requestRef.current.exclude || []), current])];
+    reportDead(current, "manual_backup");
+    setSelectedServer("");
+    writeServerPref(anilistId, audio, null);
+    setTried(exclude);
+    void load({ provider: null, server: null, exclude });
+  };
+
+  const failover = (reason = "network") => {
+    const current = data?.provider;
+    if (!current) return;
+    reportDead(current, reason);
+    const exclude = [...new Set([...(requestRef.current.exclude || []), current])];
+    setSelectedServer("");
+    setTried(exclude);
+    void load({ provider: null, server: null, exclude });
+  };
+
   const setSubtitleLanguage = (value: string) => {
     setSubtitleLanguageState(value);
     try {
@@ -174,15 +230,24 @@ export function WatchState({
       localStorage.setItem(`kumori_sub_offset_v1:${anilistId}`, String(value));
     } catch {}
   };
+
+  const servers = (data?.servers || []).map((server) => ({
+    ...server,
+    active: server.id === (data?.serverId || ""),
+  }));
+  const activeServerId =
+    data?.serverId ||
+    servers.find((server) => server.active)?.id ||
+    servers[0]?.id ||
+    "";
+
   const value = useMemo(
     () => ({
       audio,
+      servers,
+      activeServerId,
       selectedServer,
-      servers: (data?.servers || []).map((s) =>
-        dead.current.has(s.id) || tried.includes(s.id)
-          ? { ...s, healthy: false }
-          : s,
-      ),
+      hasBackup: Boolean(data?.hasBackup),
       activeProvider: data?.provider || "",
       availableAudio: (() => {
         const raw: any = data?.availableAudio;
@@ -202,7 +267,8 @@ export function WatchState({
       offset,
       setAudio,
       selectServer,
-      tryNextServer,
+      backupServer,
+      tryNextServer: backupServer,
       failover,
       retry: () => setNonce((value) => value + 1),
       setSubtitleLanguage,
@@ -210,6 +276,8 @@ export function WatchState({
     }),
     [
       audio,
+      servers,
+      activeServerId,
       selectedServer,
       data,
       status,
@@ -221,6 +289,7 @@ export function WatchState({
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
+
 export function useWatchState() {
   const value = useContext(Context);
   if (!value) throw new Error("useWatchState must be used inside WatchState");

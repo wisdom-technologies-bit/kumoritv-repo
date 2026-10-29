@@ -311,3 +311,52 @@
     margin-bottom: 24px;
 
 }
+/* Current episode synopsis panel, directly under the player */
+.episode_panel {
+
+    width: 96%;
+    max-width: var(--breakpoint-sm);
+    margin: 12px auto 0;
+
+    background: var(--white-05);
+    border-radius: 6px;
+    padding: 12px 16px;
+
+}
+
+.episode_panel h2 {
+
+    font-size: var(--font-size--body-2);
+    color: var(--white-100);
+    margin-bottom: 6px;
+
+}
+
+.episode_panel p {
+
+    font-size: var(--font-size--small-1);
+    color: var(--white-75);
+    line-height: 1.5;
+
+}
+
+.episode_panel small {
+
+    display: block;
+    margin-top: 8px;
+    font-size: var(--font-size--small-2);
+    color: var(--white-50);
+
+}
+
+@media (min-width: 768px) {
+    .episode_panel {
+        max-width: var(--breakpoint-md);
+    }
+}
+
+@media (min-width: 980px) {
+    .episode_panel {
+        max-width: var(--breakpoint-xl);
+    }
+}

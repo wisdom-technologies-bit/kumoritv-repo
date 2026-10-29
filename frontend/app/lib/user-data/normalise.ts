@@ -62,7 +62,8 @@ export function normaliseSnapshotList(list: unknown): FavouriteSnapshot[] {
 }
 
 export function normaliseProgressSnapshot(snapshot: unknown): ProgressSnapshot {
-  if (typeof snapshot === "string") return { title: snapshot, cover: null };
+  if (typeof snapshot === "string")
+    return { title: snapshot, cover: null, episodeImage: null };
   const record = asRecord(snapshot);
   const title = record.title;
   return {
@@ -73,5 +74,6 @@ export function normaliseProgressSnapshot(snapshot: unknown): ProgressSnapshot {
           ? normaliseTitle(title)
           : null,
     cover: (asString(record.cover) || null) as string | null,
+    episodeImage: (asString(record.episodeImage) || null) as string | null,
   };
 }

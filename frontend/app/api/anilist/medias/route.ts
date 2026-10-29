@@ -20,18 +20,23 @@ export async function GET(request: NextRequest) {
   if (fn === 'search') {
     const query = (p.get('query') ?? p.get('q'))?.trim() || '';
     if (query.length < 2 || query.length > 80) return NextResponse.json({ error: 'Invalid query' }, { status: 400 });
-    // `showAdultContent` is ignored on purpose: no `isAdult` argument is ever sent.
-    return NextResponse.json({ results: await searchMedias({ query, page: integer(p.get('page'), 1, 100, 1) || 1, perPage: integer(p.get('perPage'), 1, 50, 15) || 15 }) });
+    const showAdult = bool(p.get('showAdultContent')) ?? undefined;
+    return NextResponse.json({ results: await searchMedias({ query, page: integer(p.get('page'), 1, 100, 1) || 1, perPage: integer(p.get('perPage'), 1, 50, 15) || 15, showAdultContent: showAdult }) });
   }
-  if (fn === 'searchCatalog') return NextResponse.json(await searchCatalog(Object.fromEntries(p.entries())));
+  if (fn === 'searchCatalog') {
+    const entries: Record<string, string> = Object.fromEntries(p.entries());
+    // The server resolves the setting (profile -> cookie) when it is not explicit.
+    return NextResponse.json(await searchCatalog(entries));
+  }
   if (!['getNewReleases', 'getReleasingThisWeek', 'getReleasingByDaysRange', 'getTrendingMedia', 'getMediaForThisFormat'].includes(fn || '')) return NextResponse.json({ error: 'Invalid fn' }, { status: 400 });
   const pick = <K extends keyof typeof enums>(key: K) => { const value = p.get(key); return value === null ? undefined : (enums[key] as readonly string[]).includes(value) ? value : null; };
   const type = pick('type'); const format = pick('format'); const sort = pick('sort'); const status = pick('status'); const season = pick('season');
   const page = integer(p.get('page'), 1, 100, 1); const perPage = integer(p.get('perPage'), 1, 50, 20); const seasonYear = integer(p.get('seasonYear'), 1960, 2100); const days = integer(p.get('releasedOnLastXDays'), 0, 30);
   const showOnlyReleasesOnThisDate = bool(p.get('showOnlyReleasesOnThisDate'));
+  const showAdultContent = bool(p.get('showAdultContent')) ?? undefined;
   if ([type, format, sort, status, season, page, perPage, seasonYear, days, showOnlyReleasesOnThisDate].some((value) => value === null)) return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
   // The server functions read the page as `pageNumber`; the other ones read `page`.
-  const common = { type: type || 'ANIME', format: format || undefined, sort: sort || undefined, status: status || undefined, page: page || undefined, pageNumber: page || undefined, perPage: perPage || undefined, season: season || undefined, seasonYear: seasonYear || undefined, releasedOnLastXDays: days || undefined, showOnlyReleasesOnThisDate: showOnlyReleasesOnThisDate ?? undefined };
+  const common = { type: type || 'ANIME', format: format || undefined, sort: sort || undefined, status: status || undefined, page: page || undefined, pageNumber: page || undefined, perPage: perPage || undefined, season: season || undefined, seasonYear: seasonYear || undefined, releasedOnLastXDays: days || undefined, showOnlyReleasesOnThisDate: showOnlyReleasesOnThisDate ?? undefined, showAdultContent };
   try {
     let results: unknown[];
     if (fn === 'getNewReleases') results = await getNewReleases(common);

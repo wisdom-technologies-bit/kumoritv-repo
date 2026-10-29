@@ -1,5 +1,5 @@
-import "server-only";
 import { getAnimeWithEpisodes, importAnime, needsImport } from "@/app/lib/anime-db/import";
+import { mapEpisodeRows } from "@/app/lib/episodes/items";
 import EpisodesList from "./EpisodesList";
 export default async function EpisodesSection({ anilistId, format, cover }: { anilistId:number; format:string|null; cover:string }) {
   if (format === "MANGA") return null;
@@ -10,5 +10,7 @@ export default async function EpisodesSection({ anilistId, format, cover }: { an
   }
   if (!stored || !stored.episodes?.length) return <p>Episodes are being prepared. Check back soon.</p>;
   if (stored.anime.not_found_on_anivexa || !stored.anime.has_streams) return <p>No streams available yet. We check again regularly.</p>;
-  return <EpisodesList anilistId={anilistId} format={format} cover={cover} episodes={stored.episodes} />;
+  // Paged query + synopsis/thumbnail/duration metadata for every episode.
+  const episodes = mapEpisodeRows(stored.episodes);
+  return <EpisodesList anilistId={anilistId} format={format} cover={cover} episodes={episodes} />;
 }
