@@ -1,0 +1,241 @@
+/* Legal pages (Privacy Policy, Terms of Service). Same dark surface, card
+   treatment and violet accents as the rest of the site so the pages do not
+   look bolted on. */
+
+#container {
+    width: 96%;
+    max-width: var(--breakpoint-sm);
+    margin: 32px auto 64px;
+}
+
+@media (min-width: 768px) {
+    #container {
+        max-width: var(--breakpoint-md);
+        margin-top: 48px;
+    }
+}
+
+@media (min-width: 1020px) {
+    #container {
+        max-width: var(--breakpoint-xl);
+    }
+}
+
+@media (min-width: 1480px) {
+    #container {
+        max-width: var(--breakpoint-xxl);
+    }
+}
+
+/* HEADER */
+#header {
+    border-bottom: 1px solid var(--white-25);
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+}
+
+#eyebrow {
+    display: inline-block;
+    margin-bottom: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--brand-color);
+    border-radius: 999px;
+    color: var(--brand-color);
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+#header h1 {
+    color: var(--white-100);
+    font-size: var(--font-size--h3);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 12px;
+}
+
+#summary {
+    color: var(--white-75);
+    font-size: var(--font-size--p);
+    line-height: 1.6;
+    max-width: 78ch;
+}
+
+#updated {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 16px;
+    color: var(--white-50);
+    font-size: var(--font-size--small-1);
+}
+
+#dot {
+    color: var(--white-25);
+}
+
+/* Which country's rules the page is worded for */
+#region {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-left: 2px solid var(--brand-color);
+    background-color: var(--white-05);
+    border-radius: 0 6px 6px 0;
+    color: var(--white-75);
+    font-size: var(--font-size--small-1);
+    line-height: 1.6;
+    max-width: 78ch;
+}
+
+#region strong {
+    color: var(--white-100);
+    font-weight: 600;
+}
+
+/* LAYOUT */
+#body_grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 32px;
+    align-items: start;
+}
+
+@media (min-width: 1020px) {
+    #body_grid {
+        grid-template-columns: 240px 1fr;
+        gap: 48px;
+    }
+}
+
+/* TABLE OF CONTENTS */
+#toc {
+    background-color: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+@media (min-width: 1020px) {
+    #toc {
+        position: sticky;
+        top: 96px;
+    }
+}
+
+#toc_heading {
+    color: var(--white-100);
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+
+#toc ol {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: none;
+}
+
+#toc a {
+    color: var(--white-75);
+    font-size: var(--font-size--small-1);
+    line-height: 1.5;
+    text-decoration: none;
+    display: block;
+    overflow-wrap: break-word;
+}
+
+#toc a:hover,
+#toc a:focus-visible {
+    color: var(--brand-color);
+}
+
+/* On phones the list would push the actual policy below the fold; the sections
+   themselves are the navigation. */
+@media (max-width: 767px) {
+    #toc {
+        display: none;
+    }
+}
+
+/* ARTICLE */
+#article {
+    color: var(--white-75);
+    font-size: var(--font-size--p);
+    line-height: 1.7;
+    min-width: 0;
+}
+
+#article section {
+    margin-bottom: 32px;
+    scroll-margin-top: 96px;
+}
+
+#article h2 {
+    color: var(--white-100);
+    font-size: var(--font-size--h5);
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 12px;
+}
+
+#article h2 > span {
+    color: var(--brand-color);
+}
+
+#article p {
+    margin-bottom: 12px;
+    overflow-wrap: break-word;
+}
+
+#article ul,
+#article ol {
+    margin: 0 0 12px 20px;
+    padding: 0;
+}
+
+#article li {
+    margin-bottom: 8px;
+    overflow-wrap: break-word;
+}
+
+#article strong {
+    color: var(--white-100);
+    font-weight: 600;
+}
+
+#article a {
+    color: var(--brand-color);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+#article a:hover {
+    color: var(--white-100);
+}
+
+/* CONTACT + CROSS LINKS */
+.contact_block {
+    background-color: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 8px;
+    padding: 20px;
+}
+
+#footer_note {
+    border-top: 1px solid var(--white-25);
+    padding-top: 16px;
+    font-size: var(--font-size--small-1);
+    color: var(--white-50);
+}
+
+#footer_note p {
+    margin: 0;
+}

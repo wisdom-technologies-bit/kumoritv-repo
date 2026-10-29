@@ -54,9 +54,9 @@ test("isGenericEpisodeTitle spots placeholders", () => {
 test("absoluteUrl builds URLs on the configured origin", () => {
   const previous = process.env.NEXT_PUBLIC_SITE_URL;
   delete process.env.NEXT_PUBLIC_SITE_URL;
-  assert.equal(siteUrl(), "https://kumoritv.vercel.app");
-  assert.equal(absoluteUrl("/watch/21"), "https://kumoritv.vercel.app/watch/21");
-  assert.equal(absoluteUrl("og/21"), "https://kumoritv.vercel.app/og/21");
+  assert.equal(siteUrl(), "https://kumoritv.top");
+  assert.equal(absoluteUrl("/watch/21"), "https://kumoritv.top/watch/21");
+  assert.equal(absoluteUrl("og/21"), "https://kumoritv.top/og/21");
   assert.equal(absoluteUrl("https://cdn.example/a.png"), "https://cdn.example/a.png");
   process.env.NEXT_PUBLIC_SITE_URL = "https://staging.example/";
   assert.equal(siteUrl(), "https://staging.example");

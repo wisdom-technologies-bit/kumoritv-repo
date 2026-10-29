@@ -112,9 +112,9 @@ test("series card uses the banner and only needs an id", async () => {
 test("ogImageUrl always points at an absolute non-/api path", () => {
   const previous = process.env.NEXT_PUBLIC_SITE_URL;
   delete process.env.NEXT_PUBLIC_SITE_URL;
-  assert.equal(ogImageUrl(21), "https://kumoritv.vercel.app/og/21");
-  assert.equal(ogImageUrl(21, 5), "https://kumoritv.vercel.app/og/21/5");
-  assert.equal(ogImageUrl(21, "abc"), "https://kumoritv.vercel.app/og/21/1");
+  assert.equal(ogImageUrl(21), "https://kumoritv.top/og/21");
+  assert.equal(ogImageUrl(21, 5), "https://kumoritv.top/og/21/5");
+  assert.equal(ogImageUrl(21, "abc"), "https://kumoritv.top/og/21/1");
   assert.ok(!ogImageUrl(21, 2).includes("/api/"));
   if (previous !== undefined) process.env.NEXT_PUBLIC_SITE_URL = previous;
 });
@@ -154,15 +154,15 @@ test("the real route handlers answer with a PNG when fetch is stubbed", async ()
   }) as typeof fetch;
 
   try {
-    const episodeResponse = await episodeRoute(new Request("https://kumoritv.vercel.app/og/21/2"), {
+    const episodeResponse = await episodeRoute(new Request("https://kumoritv.top/og/21/2"), {
       params: { id: "21", ep: "2" },
     });
     await readPng(episodeResponse);
-    const seriesResponse = await seriesRoute(new Request("https://kumoritv.vercel.app/og/21"), {
+    const seriesResponse = await seriesRoute(new Request("https://kumoritv.top/og/21"), {
       params: { id: "21" },
     });
     await readPng(seriesResponse);
-    const invalid = await seriesRoute(new Request("https://kumoritv.vercel.app/og/abc"), {
+    const invalid = await seriesRoute(new Request("https://kumoritv.top/og/abc"), {
       params: { id: "abc" },
     });
     await readPng(invalid);

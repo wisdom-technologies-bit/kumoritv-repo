@@ -9,7 +9,7 @@ import {
   serializeJsonLd,
 } from "../jsonld";
 
-const SITE = "https://kumoritv.vercel.app";
+const SITE = "https://kumoritv.top";
 
 const media = () =>
   buildMediaJsonLd({

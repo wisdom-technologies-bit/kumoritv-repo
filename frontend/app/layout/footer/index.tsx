@@ -3,6 +3,7 @@ import styles from "./footerComponent.module.css";
 import Link from "next/link";
 import FooterHeading from "./components/footerHeading";
 import NavLinks from "./components/navLinks";
+import { LEGAL_LINKS } from "@/app/lib/legal/content";
 
 function Footer() {
   const currYear = new Date().getFullYear();
@@ -17,24 +18,25 @@ function Footer() {
         <NavLinks />
       </section>
 
-      <section id={styles.copyright_section} className="">
-        <div className="center display_flex_row">
-          <div className={styles.copyright_text}>
-            <small>
-              Copyright © {currYear}, KumoriTV. All Rights Reserved
-            </small>
-          </div>
+      <section id={styles.copyright_section}>
+        <div id={styles.copyright_row}>
+          <p className={styles.copyright_text}>
+            Copyright © {currYear}, KumoriTV. All Rights Reserved.
+          </p>
 
-          <div className={styles.privacy_policy}>
-            <Link href="#">
-              <small>Privacy Policy</small>
-            </Link>
-          </div>
+          <nav className={styles.legal_links} aria-label="Legal">
+            {LEGAL_LINKS.map((link) => (
+              <Link key={link.href} href={link.href} className={styles.legal_link}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         <p className={styles.disclaimer}>
-          Disclaimer: This site KumoriTV does not store any files on its server.
-          All contents are provided by non-affiliated third parties.
+          <strong>Disclaimer:</strong> KumoriTV does not store any files on its
+          server. All contents are provided by non-affiliated third parties, and
+          KumoriTV is not responsible for their availability, quality or legality.
         </p>
       </section>
     </footer>

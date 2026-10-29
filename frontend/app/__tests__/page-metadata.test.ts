@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const SITE = "https://kumoritv.vercel.app";
+const SITE = "https://kumoritv.top";
 
 function mediaPayload(overrides: Record<string, unknown> = {}) {
   return {

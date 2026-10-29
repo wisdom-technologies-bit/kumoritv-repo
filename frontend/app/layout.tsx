@@ -16,7 +16,7 @@ export const viewport: Viewport = {
   themeColor: "#0B0B14",
 };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.vercel.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -27,9 +27,18 @@ export const metadata: Metadata = {
   },
   description: "Watch anime on KumoriTV.",
   manifest: "/manifest.webmanifest",
+  // Explicit set so every browser lands on something it can render: SVG for
+  // modern browsers, ICO for older Safari/IE-era tab strips and anything that
+  // asks for /favicon.ico directly, PNG for Android home screens.
   icons: {
-    icon: "/favicon.svg",
-    apple: "/apple-touch-icon.png",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/android-chrome-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/android-chrome-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
   openGraph: {
     title: "KumoriTV",
