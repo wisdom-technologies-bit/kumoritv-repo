@@ -205,17 +205,40 @@ test("the footer hides no legal link on small screens", () => {
   assert.ok(!/\.legal_links\s*\{[^}]*display:\s*none/.test(css));
 });
 
-test("mobile footer stacks the logo and Discord on one left edge", () => {
+test("mobile footer keeps the logo and Discord on one row, centre-aligned", () => {
   const css = read("app/layout/footer/footerComponent.module.css");
   const mobileBlock = css.slice(
     css.indexOf("@media (max-width: 768px) {\n    #info_container #social_links_container"),
   );
   const block = mobileBlock.slice(0, mobileBlock.indexOf("\n}"));
 
-  assert.match(block, /flex-direction:\s*column/);
-  assert.match(block, /align-items:\s*flex-start/);
-  assert.match(block, /justify-content:\s*flex-start/);
-  assert.match(block, /ul\s*\{[^}]*justify-content:\s*flex-start/);
+  assert.match(block, /flex-direction:\s*row/, "they share one line on phones");
+  assert.match(block, /align-items:\s*center/, "both sit on the same centre line");
+  assert.match(block, /justify-content:\s*space-between/, "logo left, Discord right");
+  assert.ok(!/flex-direction:\s*column/.test(block), "no more stacking");
+  assert.match(block, /ul\s*\{[^}]*justify-content:\s*flex-end/);
+});
+
+test("the Discord link is a tappable pill on phones, not a bare glyph", () => {
+  const css = read("app/layout/footer/footerComponent.module.css");
+
+  assert.match(css, /border-radius:\s*999px/);
+  assert.match(css, /#info_container #social_links_container ul li a span\s*\{\s*display:\s*inline/);
+  assert.match(css, /min-height|padding:\s*7px 14px/);
+});
+
+test("mobile footer groups are separated like the copyright and disclaimer", () => {
+  const css = read("app/layout/footer/footerComponent.module.css");
+
+  assert.match(css, /#nav_links_container > div \{[^}]*border-top:\s*1px solid var\(--white-05\)/);
+  assert.match(css, /#nav_links_container > div:first-child \{[^}]*border-top:\s*0/);
+  assert.match(css, /#nav_links_container h5 \{[^}]*text-transform:\s*uppercase/);
+});
+
+test("the legal pages use the live domain in the contact address", () => {
+  const content = read("app/lib/legal/content.ts");
+  assert.match(content, /support@kumoritv\.top/);
+  assert.ok(!/kumoritv\.app/.test(content), "the old .app address is gone");
 });
 
 test("the footer uses more inset than 2% on phones so nothing hugs the edge", () => {
