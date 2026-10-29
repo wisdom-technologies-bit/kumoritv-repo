@@ -21,6 +21,7 @@ import { clearFavourites } from "@/app/lib/user-data/favourites";
 import { clearProgress } from "@/app/lib/user-data/progress";
 import { clearNotifications } from "@/app/lib/user-data/notifications";
 import { clearUserScopedCaches } from "@/app/lib/user-data/merge";
+import { useRouter } from "next/navigation";
 
 type SettingsTypes = {
   onClick?:
@@ -68,6 +69,7 @@ function UserSettingsModal({
   newUser,
 }: SettingsTypes) {
   const { user: supabaseUser, profile } = useUser();
+  const router = useRouter();
   const client = createBrowserSupabaseClient();
   const user = supabaseUser ? {
     uid: supabaseUser.id,
@@ -143,6 +145,19 @@ function UserSettingsModal({
     await setPref("autoNext", form.autoNextEpisode.checked);
     await setPref("autoSkip", form.skipIntroAndOutro.checked);
     await setPref("subtitle_language", form.language.value);
+
+    // Profile when signed in, cookie for guests; the server reads it on every
+    // AniList request, so lists update on the next router refresh.
+    try {
+      await fetch("/api/adult-content", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: form.showAdultContent.checked === true }),
+      });
+      router.refresh();
+    } catch {
+      /* keep the rest of the settings saving */
+    }
 
     await (onClick as ((value: void) => void | PromiseLike<void>) | null | undefined)?.();
 
@@ -230,6 +245,19 @@ function UserSettingsModal({
     }
   }
 
+  // Adult content is hidden by default; the server knows the profile/cookie value
+  // for signed-in users and guests alike.
+  (async function getAdultContentPreference() {
+    try {
+      const response = await fetch("/api/adult-content", { cache: "no-store" });
+      if (!response.ok) throw new Error("unavailable");
+      const state = await response.json();
+      setCurrentShowAdultContent(state?.show === true);
+    } catch {
+      setCurrentShowAdultContent(false);
+    }
+  })();
+
   (async function getUserSavedSettings() {
     if (!user && !userAnilist) return;
 
@@ -239,8 +267,6 @@ function UserSettingsModal({
     setCurrentSource(currentSource || "crunchyroll");
     setCurrentTitleLang(profile?.title_language || "romaji");
     setCurrentQuality(profile?.video_quality || "auto");
-    // Adult-content preference is no longer read from the database anywhere.
-    setCurrentShowAdultContent(false);
     setCurrentSkipIntroAndOutro(prefs.autoSkip);
     setCurrentNextEpisode(prefs.autoNext);
     setCurrentPlayWrongMediaEnabled(false);

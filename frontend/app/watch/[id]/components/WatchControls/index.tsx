@@ -17,14 +17,8 @@ export default function WatchControls({
   const state = useWatchState();
   const hasSub = state.availableAudio.sub !== false;
   const hasDub = state.availableAudio.dub !== false;
-  const all: any[] = state.servers.length
-    ? state.servers
-    : state.activeProvider
-      ? [{ id: state.activeProvider, label: state.activeProvider }]
-      : [];
-  const servers = all.filter(
-    (s) => s.healthy !== false || s.id === state.activeProvider,
-  );
+  // Server buttons carry server names only, never a provider name.
+  const servers = state.servers;
 
   return (
     <div className={styles.wrapper} data-testid="watch-controls">
@@ -78,24 +72,35 @@ export default function WatchControls({
         </button>
       </div>
 
-      <div
-        className={`${styles.segment} ${styles.serverSegment}`}
-        role="group"
-        aria-label="Servers"
-      >
-        {servers.map((server) => (
-          <button
-            key={server.id}
-            className={`${styles.button} ${
-              server.id === state.activeProvider ? styles.selected : ""
-            }`}
-            aria-pressed={server.id === state.activeProvider}
-            onClick={() => state.selectServer(server.id)}
-          >
-            {server.label || server.id}
-          </button>
-        ))}
-      </div>
+      {(servers.length > 0 || state.hasBackup) && (
+        <div
+          className={`${styles.segment} ${styles.serverSegment}`}
+          role="group"
+          aria-label="Servers"
+        >
+          {servers.map((server) => (
+            <button
+              key={server.id}
+              className={`${styles.button} ${
+                server.id === state.activeServerId ? styles.selected : ""
+              }`}
+              aria-pressed={server.id === state.activeServerId}
+              onClick={() => state.selectServer(server.id)}
+            >
+              {server.label || server.id}
+            </button>
+          ))}
+          {state.hasBackup && (
+            <button
+              className={`${styles.button} ${styles.backup_button}`}
+              onClick={state.backupServer}
+              data-testid="backup-server"
+            >
+              Backup server
+            </button>
+          )}
+        </div>
+      )}
 
       {state.status === "error" && (
         <button className={styles.button} onClick={state.retry}>

@@ -157,6 +157,8 @@ test("the other filters are still sent untouched", async () => {
     type: "ANIME",
     perPage: 12,
     page: 1,
+    // adult titles are hidden unless the user opted in
+    isAdult: false,
   });
 });
 

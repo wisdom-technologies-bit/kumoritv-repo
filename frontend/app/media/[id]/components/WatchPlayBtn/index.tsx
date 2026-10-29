@@ -99,8 +99,10 @@ export function decidePlayTarget({
   const highest = Math.max(highestLocal, anilistLastEpisodeWatched || 0);
 
   if (highest > 0) {
+    // For a currently-airing show only the aired episodes exist: cap at the
+    // aired number (AniList nextAiringEpisode - 1), never at the announced total.
     const aired = nextAiringEpisode?.episode ? nextAiringEpisode.episode - 1 : 0;
-    const lastAvailable = mediaEpisodes || aired || 0;
+    const lastAvailable = aired || mediaEpisodes || 0;
     const nextEpisode = highest + 1;
     // When the highest watched episode is already the last one there is nothing
     // after it, so the button stays on that episode.

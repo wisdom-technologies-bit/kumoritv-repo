@@ -21,6 +21,7 @@ import EpisodesListContainer from "./components/EpisodesListContainer";
 import CommentsSection from "@/app/components/CommentsSection";
 import { WatchState } from "./components/WatchState";
 import { displayTitle } from "@/app/lib/titles";
+import { nextEpisodeNumber } from "@/app/lib/episodes/items";
 
 const plain = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -99,6 +100,19 @@ export default async function WatchPage({
   const audio =
     searchParams.audio || (searchParams.dub === "true" ? "dub" : "sub");
   const lang = cookies().get("subtitle_language")?.value || "English";
+  const cover =
+    plain(media.coverImage?.extraLarge as unknown) ||
+    plain(media.coverImage?.large as unknown) ||
+    "";
+  // Only the episodes that have actually aired count as "next".
+  const airedEpisodes = media.nextAiringEpisode?.episode
+    ? media.nextAiringEpisode.episode - 1
+    : media.episodes || null;
+  const nextEpisode = nextEpisodeNumber({
+    episode: ep,
+    airedEpisodes,
+    format: media.format,
+  });
 
   // One cached lookup feeds the heading, the metadata and the structured data.
   const episodeSeo = media.format === "MOVIE" ? null : await getEpisodeSeo(id, ep);
@@ -142,6 +156,9 @@ export default async function WatchPage({
               subtitleLanguage={lang}
               initialTime={Number(searchParams.t || 0)}
               title={displayTitle(media.title)}
+              episodeImage={episodeSeo?.thumbnailUrl || undefined}
+              cover={cover || undefined}
+              nextEpisode={nextEpisode}
             />
           </div>
         </section>
@@ -149,7 +166,21 @@ export default async function WatchPage({
           anilistId={id}
           episode={ep}
           audio={audio as "sub" | "dub"}
+          episodeCount={airedEpisodes}
         />
+
+        {/* The current episode's own synopsis, under the player. */}
+        {episodeSeo && (episodeSeo.episodeTitle || episodeSeo.synopsis) && (
+          <section className={styles.episode_panel}>
+            <h2>{episodeSeo.episodeTitle || `Episode ${ep}`}</h2>
+            {episodeSeo.synopsis ? <p>{episodeSeo.synopsis}</p> : null}
+            {episodeSeo.airedAtISO ? (
+              <small>
+                Aired {new Date(episodeSeo.airedAtISO).toLocaleDateString("en-GB")}
+              </small>
+            ) : null}
+          </section>
+        )}
         <section id={styles.media_info_container}>
           <div id={styles.heading_info_container}>
             <h1>

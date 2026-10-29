@@ -7,6 +7,12 @@ import { proxyUrl, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
 import { normalizeSubtitles } from "@/app/lib/watch/subtitles";
 import { normalizeIntroOutro } from "@/app/lib/watch/intro";
 import { qualifyStream } from "@/app/lib/watch/qualify";
+import {
+  normalizeProviderStreams,
+  buildServerButtons,
+  activeServerId,
+  toServerList,
+} from "@/app/lib/watch/streams";
 import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
@@ -66,7 +72,10 @@ async function resolveProvider(
     });
     if (!response.ok) throw Error(`upstream_${response.status}`);
     const upstream = await response.json();
-    const streams = Array.isArray(upstream.streams) ? upstream.streams : [];
+    // One normaliser for every provider shape (streams[], streams+embeds,
+    // mkissa sources[]). An unknown shape yields no candidates instead of a
+    // crash.
+    const streams = normalizeProviderStreams(upstream);
     const qualified = streams.filter(
       (s: any) => qualifyStream(s, { audio, provider, exclude }).ok,
     );
@@ -80,8 +89,9 @@ async function resolveProvider(
     );
     const seen = new Set<string>();
     for (const stream of candidates) {
-      if (seen.has(stream.server)) continue;
-      seen.add(stream.server);
+      const key = String(stream.server || "").toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
       const headers = streamRequestHeaders(stream);
       const probe = await probeStream(stream, headers);
       trace.push({
@@ -275,26 +285,24 @@ export async function GET(
       (a) =>
         Array.isArray(row[`${a}_providers`]) && row[`${a}_providers`].length,
     );
-  const servers = [...allProviders]
-    .sort(
-      (a: any, b: any) => providerRank(a.provider) - providerRank(b.provider),
-    )
-    .map((p: any) => ({
-      id: p.provider,
-      label: p.provider.charAt(0).toUpperCase() + p.provider.slice(1),
-      active: p.provider === winner.provider,
-      ...(trace.some(
-        (t: any) => t.provider === p.provider && t.outcome === "failed",
-      )
-        ? { healthy: false }
-        : {}),
-    }));
+  // The UI only ever shows SERVER names, one button per distinct name, from
+  // the provider that actually resolved. Other providers stay silent backups.
+  const winnerStreams = normalizeProviderStreams(winner.json);
+  const buttons = buildServerButtons(winnerStreams, { requestedServer });
+  const activeId = activeServerId(buttons, stream) || buttons[0]?.id || "";
+  const servers = toServerList(buttons, activeId);
+  // A backup exists while another provider for this audio has not been tried.
+  const hasBackup = allProviders.some(
+    (p: any) => p.provider !== winner.provider && !exclude.includes(p.provider),
+  );
   let result: any = {
     anilistId: id,
     episode,
     audio,
     provider: winner.provider,
     server: winner.server,
+    serverId: activeId,
+    hasBackup,
     type: stream.type,
     url: null,
     subtitles: [],
@@ -303,9 +311,6 @@ export async function GET(
     outro: intro.outro,
     availableAudio,
     servers,
-    alternatives: providers
-      .filter((p: any) => p.provider !== winner.provider)
-      .map((p: any) => ({ provider: p.provider, server: p.server || null })),
     resolvedAt: new Date().toISOString(),
   };
   try {

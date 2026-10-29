@@ -83,6 +83,12 @@
 .selected {
   background: var(--brand-color);
 }
+/* Sits after the server buttons: another source, same provider-agnostic look. */
+.backup_button {
+  background: transparent;
+  border-style: dashed;
+  color: var(--white-75);
+}
 .label {
   display: inline-flex;
   align-items: center;

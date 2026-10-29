@@ -9,6 +9,9 @@ export const PROVIDER_PRIORITY = [
   "senshi",
   "mkissa",
   "reanime",
+  // Probed later: kept after the known-good providers on purpose.
+  "animenosub",
+  "anizone",
 ];
 
 type Health = { fail_count: number; window_started_at: string };

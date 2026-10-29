@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { MediaPlayer, MediaProvider, Track } from "@vidstack/react";
 import {
   DefaultVideoLayout,
@@ -14,7 +15,13 @@ import {
   saveProgress,
   shouldResume,
 } from "@/app/lib/local-store/progress";
-import { isSkipVisible } from "@/app/lib/watch/skip";
+import {
+  mergeSkipRanges,
+  shouldAutoSkip,
+  visibleSkipRange,
+  skipLabel,
+} from "@/app/lib/watch/skip";
+import { usePrefs } from "@/app/lib/user-data/prefs";
 import { useWatchState } from "../WatchState";
 
 const HLS_CONFIG = {
@@ -64,6 +71,12 @@ type Props = {
   initialTime: number;
   title: string;
   provider?: string;
+  /** Episode thumbnail (episodes table / getEpisodeSeo) for Keep Watching. */
+  episodeImage?: string;
+  /** Anime cover, stored with the progress as the second fallback. */
+  cover?: string;
+  /** Next episode number, when one actually exists (auto-next). */
+  nextEpisode?: number | null;
   onResolved?: (data: any) => void;
 };
 
@@ -75,6 +88,9 @@ export default function VideoPlayer({
   initialTime,
   title,
   provider,
+  episodeImage,
+  cover,
+  nextEpisode,
   onResolved,
 }: Props) {
   const playerRef = useRef<any>(null);
@@ -135,9 +151,13 @@ export default function VideoPlayer({
   const [playbackError, setPlaybackError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [skipRanges, setSkipRanges] = useState<any>(null);
+  const [aniskipRanges, setAniskipRanges] = useState<any>(null);
+  const [duration, setDuration] = useState(0);
   const [visibleSkip, setVisibleSkip] = useState<any>(null);
   const visibleSkipKeyRef = useRef<string | null>(null);
+  const skippedRanges = useRef(new Set<string>());
+  const router = useRouter();
+  const { prefs } = usePrefs();
   const data: any = watch.status === "ready" ? watch.data : null;
   let error = watch.status === "error" ? watch.errorMessage : playbackError;
 
@@ -146,7 +166,7 @@ export default function VideoPlayer({
     fetch(`/api/skip/${anilistId}/${episode}`, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
       .then((body) => {
-        if (!controller.signal.aborted) setSkipRanges(body);
+        if (!controller.signal.aborted) setAniskipRanges(body);
       })
       .catch(() => undefined);
     return () => controller.abort();
@@ -155,6 +175,22 @@ export default function VideoPlayer({
   useEffect(() => {
     if (data) onResolved?.(data);
   }, [data]);
+
+  // Provider ranges (per stream, seconds) win over AniSkip; invalid ranges
+  // (end <= start, senshi's {0,0}) are dropped by mergeSkipRanges.
+  const skipRanges = useMemo(
+    () =>
+      mergeSkipRanges(
+        { intro: data?.intro ?? null, outro: data?.outro ?? null },
+        {
+          intro: aniskipRanges?.intro ?? null,
+          outro: aniskipRanges?.outro ?? null,
+          recap: aniskipRanges?.recap ?? null,
+        },
+        duration || null,
+      ),
+    [data?.intro, data?.outro, aniskipRanges, duration],
+  );
 
   const stream = data?.stream || data?.source || data;
   const streamType = String(stream?.type || "")
@@ -258,6 +294,14 @@ export default function VideoPlayer({
     [subtitleOptions, defaultSubtitleIndex],
   );
 
+  const seekTo = (time: number) => {
+    const player: any = playerRef.current;
+    if (!player) return;
+    if (typeof player.remoteControl?.seek === "function")
+      player.remoteControl.seek(time);
+    else player.currentTime = time;
+  };
+
   const persist = () => {
     const value = progressRef.current;
     if (value.time > 0)
@@ -267,6 +311,10 @@ export default function VideoPlayer({
         duration: value.duration,
         audio,
         title,
+        // Keep Watching needs the real episode thumbnail; the anime cover is
+        // the fallback and is stored alongside it.
+        ...(episodeImage ? { episodeImage } : {}),
+        ...(cover ? { cover } : {}),
       });
   };
   useEffect(() => {
@@ -441,36 +489,58 @@ export default function VideoPlayer({
                   media?.currentTime ??
                   0,
               );
-              const duration = Number(
+              const currentDuration = Number(
                 event?.currentTarget?.duration ?? media?.duration ?? 0,
               );
               progressRef.current.time = current;
-              progressRef.current.duration = Number.isFinite(duration)
-                ? duration
+              progressRef.current.duration = Number.isFinite(currentDuration)
+                ? currentDuration
                 : 0;
-              const rangeKey =
-                ["intro", "recap", "outro"].find((key) =>
-                  isSkipVisible(current, skipRanges?.[key]),
-                ) ?? null;
-              if (visibleSkipKeyRef.current !== rangeKey) {
-                visibleSkipKeyRef.current = rangeKey;
-                setVisibleSkip(
-                  rangeKey
-                    ? { key: rangeKey, range: skipRanges?.[rangeKey] }
-                    : null,
-                );
+
+              const next = visibleSkipRange(current, skipRanges);
+              const nextKey = next?.key ?? null;
+              if (visibleSkipKeyRef.current !== nextKey) {
+                visibleSkipKeyRef.current = nextKey;
+                setVisibleSkip(next);
+              }
+
+              // Auto-skip: seek once per range, never twice.
+              if (prefs.autoSkip && next) {
+                if (
+                  shouldAutoSkip(
+                    next.key,
+                    skippedRanges.current,
+                    next.range,
+                    current,
+                  )
+                ) {
+                  skippedRanges.current.add(next.key);
+                  seekTo(next.range.end);
+                  visibleSkipKeyRef.current = null;
+                  setVisibleSkip(null);
+                }
               }
             }}
             onDurationChange={(event: any) => {
-              const duration = Number(
+              const value = Number(
                 event?.detail ??
                   event?.currentTarget?.duration ??
                   document.querySelector("video")?.duration ??
                   0,
               );
-              progressRef.current.duration = Number.isFinite(duration)
-                ? duration
+              progressRef.current.duration = Number.isFinite(value)
+                ? value
                 : 0;
+              if (Number.isFinite(value) && value > 0) setDuration(value);
+            }}
+            onEnded={() => {
+              setPlaying(false);
+              persist();
+              if (prefs.autoNext && nextEpisode) {
+                router.push(
+                  `/watch/${anilistId}?ep=${nextEpisode}&audio=${audio}`,
+                );
+              }
             }}
             onPlay={() => {
               setPlaying(true);
@@ -493,6 +563,25 @@ export default function VideoPlayer({
               icons={defaultLayoutIcons}
               thumbnails={data?.thumbnails?.url}
             />
+            {/* Inside the player tree: visible in fullscreen too. */}
+            {visibleSkip && (
+              <button
+                id={styles.skip_btn}
+                type="button"
+                data-testid="skip-button"
+                aria-label={skipLabel(visibleSkip.key)}
+                onClick={() => {
+                  skippedRanges.current.add(visibleSkip.key);
+                  seekTo(visibleSkip.range.end);
+                  visibleSkipKeyRef.current = null;
+                  setVisibleSkip(null);
+                }}
+              >
+                <span className={styles.btn_text}>
+                  {skipLabel(visibleSkip.key)}
+                </span>
+              </button>
+            )}
           </MediaPlayer>
         )}
         {error && (
@@ -520,24 +609,6 @@ export default function VideoPlayer({
               </button>
             </div>
           </div>
-        )}
-        {visibleSkip && source && (
-          <button
-            type="button"
-            onClick={() => {
-              if (playerRef.current && visibleSkip.range)
-                playerRef.current.currentTime = visibleSkip.range.end;
-              setVisibleSkip(null);
-            }}
-            style={{ position: "absolute", right: 16, bottom: 64, zIndex: 2 }}
-          >
-            Skip{" "}
-            {visibleSkip.key === "intro"
-              ? "Intro"
-              : visibleSkip.key === "recap"
-                ? "Recap"
-                : "Ending"}
-          </button>
         )}
         {waiting && source && (
           <span className="sr-only" role="status">

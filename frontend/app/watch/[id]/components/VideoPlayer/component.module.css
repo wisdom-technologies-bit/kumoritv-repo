@@ -27,28 +27,43 @@
   transform: scale(1.4);
 }
 
+/* Rendered INSIDE <media-player>, so it also shows in fullscreen.
+   Pill: semi-transparent dark, white text, bottom-right above the controls. */
 .container #skip_btn {
   transition: all ease-in-out 100ms;
 
   position: absolute;
-  z-index: 2;
-  bottom: 25%;
-  right: 5%;
+  z-index: 5;
+  bottom: 64px;
+  right: 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   background-color: var(--black-75);
   border: 2px solid var(--white-50);
+  backdrop-filter: blur(4px);
 
-  border-radius: 4px;
+  padding: 8px 24px;
+
+  border-radius: 999px;
 
   font-family: var(--font-family-sans-serif);
   font-weight: 600;
   color: var(--white-100);
+  cursor: pointer;
+
+  /* larger tap target on mobile */
+  min-height: 44px;
+  touch-action: manipulation;
 }
 
 @media (min-width: 620px) {
   .container #skip_btn {
+    bottom: 72px;
+    right: 24px;
     max-width: 220px;
-    width: 38%;
   }
 }
 

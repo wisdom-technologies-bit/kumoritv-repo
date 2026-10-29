@@ -9,6 +9,36 @@ import { SwiperSlide } from "swiper/react";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
+import { imageKey } from "@/app/lib/episodes/images";
+
+// Old entries have no episode thumbnail: resolve them in ONE batched request
+// (episodes.image_url -> anime cover -> placeholder) instead of one call a card.
+async function fillEpisodeImages(list: KeepWatchingMediaData[]) {
+  const missing = list.filter((media) => !media.episodeImg);
+  if (!missing.length) return list;
+  try {
+    const response = await fetch("/api/anime/episode-images", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        items: missing.map((media) => ({
+          anilistId: Number(media.id),
+          episode: Number(media.episode),
+        })),
+      }),
+    });
+    if (!response.ok) return list;
+    const body = (await response.json()) as { images?: Record<string, string | null> };
+    const images = body.images || {};
+    return list.map((media) => {
+      if (media.episodeImg) return media;
+      const url = images[imageKey(Number(media.id), Number(media.episode))];
+      return url ? { ...media, episodeImg: url } : media;
+    });
+  } catch {
+    return list;
+  }
+}
 
 const framerMotionVariants = {
   initial: {
@@ -53,8 +83,9 @@ function KeepWatchingSection() {
     // Signed-in: latest incomplete watch_progress row per anime, from Supabase.
     // Guest / AniList-only: the local device copy.
     const continueWatchingList = await listContinueWatchingFromServer();
+    const withImages = await fillEpisodeImages(continueWatchingList || []);
 
-    setWatchingList(continueWatchingList || []);
+    setWatchingList(withImages);
   }
 
   return (
