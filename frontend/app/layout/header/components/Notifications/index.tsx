@@ -278,6 +278,7 @@ function NotificationsContainer() {
         >
           <button
             id={styles.notification_btn}
+            className="header-icon-btn"
             ref={bellRef}
             onClick={() => toggleOpenNotificationsPanel()}
             title={isPanelOpen ? "Close Notifications" : "Open Notifications"}

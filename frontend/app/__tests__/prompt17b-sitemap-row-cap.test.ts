@@ -140,10 +140,13 @@ class CappedQuery implements PromiseLike<{ data: any; error: any; count: number 
   }
 }
 
-const episodeRow = (anilistId: number, episode: number, updatedAt = "2026-10-30T00:00:00.000Z"): Row => ({
+// Prompt 18: new.xml keys its window on air_date. These tests are about paging and
+// limits, so the row counts as "just aired" at the same instant it was updated.
+const episodeRow = (anilistId: number, episode: number, at = "2026-10-30T00:00:00.000Z"): Row => ({
   anilist_id: anilistId,
   episode_number: episode,
-  updated_at: updatedAt,
+  updated_at: at,
+  air_date: at,
 });
 
 /** 10000 playable episodes: 2 per anime across 5000 anime. */
@@ -238,7 +241,7 @@ test("new.xml reads more than one page of recent episodes", async () => {
     ),
   });
 
-  const rows = await fetchRecentEpisodes(db as never, 48);
+  const rows = await fetchRecentEpisodes(db as never, 72);
 
   assert.ok(rows.length > 1000, `expected more than 1000 rows, got ${rows.length}`);
   assert.equal(rows.length, 1500, "all recent rows are returned, not just the first page");
@@ -252,23 +255,24 @@ test("new.xml stops at RECENT_EPISODE_LIMIT even when more rows exist", async ()
     ),
   });
 
-  const rows = await fetchRecentEpisodes(db as never, 48);
+  const rows = await fetchRecentEpisodes(db as never, 72);
 
   assert.equal(rows.length, RECENT_EPISODE_LIMIT, "the cap still holds");
   assert.ok(db.requests.length <= Math.ceil(RECENT_EPISODE_LIMIT / ROW_PAGE_SIZE));
 });
 
-test("new.xml only keeps rows inside the 48h window", async () => {
+// Prompt 18: the window is 72h and keyed on air_date, not updated_at.
+test("new.xml only keeps rows inside the 72h air_date window", async () => {
   const now = Date.now();
   const db = new CappedDb({
     sitemap_episodes: [
       episodeRow(1, 1, new Date(now - 3600000).toISOString()),
-      episodeRow(2, 1, new Date(now - 47 * 3600000).toISOString()),
-      episodeRow(3, 1, new Date(now - 49 * 3600000).toISOString()),
+      episodeRow(2, 1, new Date(now - 71 * 3600000).toISOString()),
+      episodeRow(3, 1, new Date(now - 73 * 3600000).toISOString()),
     ],
   });
 
-  const rows = await fetchRecentEpisodes(db as never, 48);
+  const rows = await fetchRecentEpisodes(db as never, 72);
 
   assert.deepEqual(
     rows.map((row) => row.anilist_id).sort((a, b) => a - b),

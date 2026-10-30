@@ -27,15 +27,17 @@ const read = (relative: string) => fs.readFileSync(path.join(process.cwd(), rela
 
 // ------------------------------------------------------------------ PART 2
 
-test("header sizing tokens: 40px icon buttons, 36px avatar, 64px bar (44px on phones)", () => {
+// Prompt 18 raised the tokens: 44px controls on desktop, 48px on phones, with a
+// 40px avatar and a 64px bar. See prompt18-header-controls.test.ts.
+test("header sizing tokens: 44px icon buttons, 40px avatar, 64px bar (48px on phones)", () => {
   const css = read("app/layout/header/headerComponent.module.css");
 
-  assert.match(css, /--header-control-size:\s*40px/, "desktop icon buttons are 40px");
-  assert.match(css, /--header-avatar-size:\s*36px/, "avatar is 36px");
+  assert.match(css, /--header-control-size:\s*44px/, "desktop icon buttons are 44px");
+  assert.match(css, /--header-avatar-size:\s*40px/, "avatar is 40px");
   assert.match(css, /--header-min-height:\s*64px/, "header bar is 64px");
 
   const phone = css.slice(css.indexOf("@media (max-width: 640px)"));
-  assert.match(phone, /--header-control-size:\s*44px/, "phones get 44px targets");
+  assert.match(phone, /--header-control-size:\s*48px/, "phones get 48px targets");
 });
 
 // ------------------------------------------------------------------ PART 3
@@ -239,8 +241,8 @@ test("keep watching: movies do not mention an episode number", () => {
 
 test("sitemap: only view rows become watch URLs, with the view's updated_at as lastmod", () => {
   const xml = buildEpisodesSitemap([
-    { anilist_id: 154587, episode_number: 7, updated_at: "2026-10-30T12:00:00.000Z" },
-    { anilist_id: 154587, episode_number: 8, updated_at: "2026-10-31T12:00:00.000Z" },
+    { anilist_id: 154587, episode_number: 7, updated_at: "2026-10-30T12:00:00.000Z", air_date: null },
+    { anilist_id: 154587, episode_number: 8, updated_at: "2026-10-31T12:00:00.000Z", air_date: null },
   ]);
 
   assert.match(xml, /\/watch\/154587\?ep=7/);
@@ -262,7 +264,7 @@ test("sitemap: media URLs come from imported anime only", () => {
 
 test("sitemap: a just-aired episode we have not imported yields only the media URL", () => {
   const xml = buildRecentSitemap(
-    [{ anilist_id: 100, episode_number: 3, updated_at: "2026-10-30T10:00:00.000Z" }],
+    [{ anilist_id: 100, episode_number: 3, updated_at: "2026-10-30T10:00:00.000Z", air_date: null }],
     [
       { media: { id: 100 }, episode: 3, airingAt: Date.now() / 1000 - 3600 },
       { media: { id: 200 }, episode: 5, airingAt: Date.now() / 1000 - 1800 },
@@ -284,9 +286,14 @@ test("sitemap: a just-aired episode we have not imported yields only the media U
 test("sitemap: index chunk counts match the rows the chunk routes can serve", () => {
   const files = (anime: number, episodes: number) => sitemapIndexFiles(anime, episodes).map((file) => file.loc);
 
-  assert.deepEqual(files(0, 0), ["https://kumoritv.top/sitemaps/new.xml"]);
+  // static.xml is listed first (prompt 18, part 2.2).
+  assert.deepEqual(files(0, 0), [
+    "https://kumoritv.top/sitemaps/static.xml",
+    "https://kumoritv.top/sitemaps/new.xml",
+  ]);
 
   assert.deepEqual(files(CHUNK_SIZE, CHUNK_SIZE), [
+    "https://kumoritv.top/sitemaps/static.xml",
     "https://kumoritv.top/sitemaps/new.xml",
     "https://kumoritv.top/sitemaps/anime-1.xml",
     "https://kumoritv.top/sitemaps/episodes-1.xml",
@@ -306,6 +313,7 @@ test("sitemap: malformed view rows are dropped, not turned into URLs", () => {
     anilist_id: 5,
     episode_number: 2,
     updated_at: null,
+    air_date: null,
   });
 });
 
@@ -321,7 +329,7 @@ test("sitemap: the episodes chunk reads only the view, ordered by id then episod
 
   const rows = await fetchEpisodeSlice(db as never, 1, 1);
   assert.equal(rows.length, 1, "the chunk size is honoured");
-  assert.deepEqual(rows[0], { anilist_id: 1, episode_number: 1, updated_at: "2026-10-03T00:00:00Z" });
+  assert.deepEqual(rows[0], { anilist_id: 1, episode_number: 1, updated_at: "2026-10-03T00:00:00Z", air_date: null });
 
   assert.equal(await countRows(db as never, "sitemap_episodes"), 3);
 });

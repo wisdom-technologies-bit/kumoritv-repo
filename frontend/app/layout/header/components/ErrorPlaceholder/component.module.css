@@ -45,3 +45,20 @@
     color: var(--black-100) !important;
 
 }
+/* The placeholder's image slot: declared here so `styles.img_container` is a
+   real class name and not `undefined` (CSS Modules only export what this file
+   defines). */
+.error_container .img_container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 200px;
+}
+
+.error_container .img_container img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+}
