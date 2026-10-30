@@ -9,9 +9,17 @@
     justify-content: center;
     gap: 0 4px;
     background-color: var(--background);
-    height: 32px;
+    height: var(--header-control-size, 40px);
+    padding: 0;
     border: none;
+    border-radius: 999px;
     box-sizing: border-box;
+    cursor: pointer;
+}
+
+#user_container #user_btn:focus-visible {
+    outline: var(--header-focus-ring, 2px solid var(--brand-color));
+    outline-offset: 2px;
 }
 
 #user_container #user_btn[data-useractive=false] {
@@ -48,9 +56,9 @@
 
 #user_container #user_btn #img_container {
     position: relative;
-    height: 32px;
-    width: 32px;
-    flex: 0 0 32px;
+    height: var(--header-avatar-size, 36px);
+    width: var(--header-avatar-size, 36px);
+    flex: 0 0 var(--header-avatar-size, 36px);
 }
 
 #user_container #user_btn #img_container img {
@@ -76,18 +84,20 @@
 
 @media (max-width: 767px) {
     #user_container #user_btn {
-        height: 38px;
-        min-height: 38px;
+        height: var(--header-control-size, 44px);
+        min-height: var(--header-control-size, 44px);
+        width: auto;
+        padding: 0;
     }
 
     #user_container #user_btn[data-useractive=false] {
-        height: 38px;
-        min-height: 38px;
-        width: 76px;
-        min-width: 76px;
-        padding: 0 8px;
-        gap: 0 8px;
-        border-radius: 4px;
+        height: var(--header-control-size, 44px);
+        min-height: var(--header-control-size, 44px);
+        width: auto;
+        min-width: 72px;
+        padding: 0 10px;
+        gap: 0 6px;
+        border-radius: 999px;
         box-shadow: none;
     }
 
@@ -98,9 +108,9 @@
     }
 
     #user_container #user_btn #img_container {
-        height: 22px;
-        width: 22px;
-        flex: 0 0 22px;
+        height: var(--header-avatar-size, 36px);
+        width: var(--header-avatar-size, 36px);
+        flex: 0 0 var(--header-avatar-size, 36px);
     }
 
     #user_container #user_btn > svg.scale {

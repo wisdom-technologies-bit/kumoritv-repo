@@ -125,15 +125,17 @@ test("watch page metadata: title, description, canonical and og:image", async ()
   assert.ok(meta.description);
   assert.ok(meta.description!.length <= 160);
   assert.ok(meta.description!.startsWith('Watch One Piece Episode 2 "The Great Swordsman" online'));
-  assert.equal(meta.alternates?.canonical, `${SITE}/watch/21?ep=2`);
+  // No episodes row (no DB in this test): the page is not indexable and gets no
+  // canonical, so Google is never pointed at a page with nothing to play.
+  assert.equal(meta.alternates?.canonical, undefined);
   assert.equal(meta.openGraph?.type, "video.episode");
-  assert.equal(meta.openGraph?.url, `${SITE}/watch/21?ep=2`);
+  assert.equal(meta.openGraph?.url, undefined);
   assert.equal(meta.openGraph?.images?.[0]?.url, `${SITE}/og/21/2`);
   assert.ok(meta.openGraph?.images?.[0]?.url?.startsWith("https://"));
   assert.equal(meta.twitter?.card, "summary_large_image");
   assert.equal(meta.twitter?.images?.[0]?.url, `${SITE}/og/21/2`);
-  assert.equal(meta.robots?.index, true);
-  assert.equal(meta.robots?.follow, true);
+  assert.equal(meta.robots?.index, false, "an episode we do not store is not indexed");
+  assert.equal(meta.robots?.follow, false);
 });
 
 test("watch page metadata: a bad or missing ep falls back to episode 1", async () => {
@@ -141,7 +143,7 @@ test("watch page metadata: a bad or missing ep falls back to episode 1", async (
     const page = await import("@/app/watch/[id]/page");
     return (await page.generateMetadata({ params: { id: "21" }, searchParams: { ep: "nope" } } as never)) as Meta;
   });
-  assert.equal(meta.alternates?.canonical, `${SITE}/watch/21?ep=1`);
+  assert.equal(meta.alternates?.canonical, undefined);
   assert.equal(meta.openGraph?.images?.[0]?.url, `${SITE}/og/21/1`);
 });
 
@@ -151,7 +153,7 @@ test("watch page metadata: movies ignore the episode parameter", async () => {
     return (await page.generateMetadata({ params: { id: "21" }, searchParams: { ep: "7" } } as never)) as Meta;
   });
   assert.equal(meta.title, "Watch One Piece (Movie)");
-  assert.equal(meta.alternates?.canonical, `${SITE}/watch/21?ep=1`);
+  assert.equal(meta.alternates?.canonical, undefined);
 });
 
 test("watch page heading uses getEpisodeSeo instead of the client episodes fetch", async () => {

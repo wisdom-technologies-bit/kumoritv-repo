@@ -1,252 +1,396 @@
+/* SEARCH: a dark pill in the header and a results panel under it. */
 
 #search_container {
+    position: relative;
     display: flex;
     align-items: center;
     min-width: 0;
 }
 
-/* HIDE MOBILE SEARCH FORM ON DESKTOP */
-
-@media (min-width: 769px) {
-    #search_container #form_mobile_search {
-        display: none;
-    }
+/* The mobile toggle only exists on phones. */
+#btn_open_search_form_mobile {
+    display: none;
 }
 
-/* MOBILE SEARCH INPUT */
+/* ---------------------------------------------------------------- the pill */
 
-#search_container #form_mobile_search form input {
-    min-width: 65vw;
-}
-
-#search_container #form_search form input,
-#search_container #form_mobile_search form input {
-    transition: all ease-in-out 200ms;
-    padding: 12px 12px;
-    padding-left: 18px;
-    border-radius: 24px 0 0 24px;
-    border: 1px solid var(--black-75);
-    border-right: 0;
-    color: var(--white-100);
-    background-color: var(--white-25);
-    box-sizing: border-box;
-}
-
-#search_container #form_search form:hover input,
-#search_container #form_mobile_search:hover form input,
-#search_container #form_search form:hover button,
-#search_container #form_mobile_search:hover form button {
-    color: var(--black-100);
-    background-color: var(--white-100);
-}
-
-#search_container #form_search form input:focus,
-#search_container #form_mobile_search form input:focus,
-#search_container #form_search form input:focus ~ button,
-#search_container #form_mobile_search form input:focus ~ button {
-    outline-width: 0;
-    color: var(--black-100);
-    background-color: var(--white-100);
-    border: 1px solid var(--brand-color);
-    border-right: 0;
-}
-
-#search_container #form_search form button,
-#search_container #form_mobile_search form button {
-    transition: all ease-in-out 200ms;
+.search_form {
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 8px 12px;
-    border-radius: 0 24px 24px 0;
-    border: 1px solid var(--black-75);
-    border-left: 0;
-    background-color: var(--white-25);
-    box-sizing: border-box;
-}
-
-#search_container #form_search form input:focus ~ button,
-#search_container #form_mobile_search form input:focus ~ button {
-    border: 1px solid var(--brand-color);
-    border-left: 0;
-}
-
-#search_container #form_search form input:-webkit-autofill ~ button,
-#search_container #form_mobile_search form input:-webkit-autofill ~ button {
-    background-color: var(--white-100);
-}
-
-#search_container #form_search form button svg,
-#search_container #form_mobile_search form button svg {
-    transition: all ease-in-out 200ms;
-    transform: scale(1.21);
-    fill: var(--white-75);
-    margin-bottom: 4px;
-}
-
-#search_container #form_search form:hover button svg,
-#search_container #form_mobile_search:hover form button svg {
-    fill: var(--brand-color) !important;
-}
-
-#search_container #form_search form input:focus ~ button svg,
-#search_container #form_mobile_search form input:focus ~ button svg,
-#search_container #form_search form input:-webkit-autofill ~ button svg,
-#search_container #form_mobile_search form input:-webkit-autofill ~ button svg {
-    fill: var(--brand-color);
-}
-
-#search_container #form_search form button:hover svg,
-#search_container #form_mobile_search form button:hover svg {
-    fill: var(--brand-color);
-}
-
-/* MOBILE SEARCH PANEL */
-
-#form_mobile_search {
-    position: absolute;
-    top: 60px;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background-color: var(--background);
-    z-index: 10;
-    height: 60px;
-}
-
-#form_mobile_search > form {
-    width: max-content;
-    margin: 0 auto;
-}
-
-/* SEARCH RESULTS */
-
-#search_results_container {
-    z-index: 2;
-    position: absolute;
-    top: 120px;
-    left: 0;
-    right: 0;
-    background: linear-gradient(var(--background) 70%, var(--background));
-}
-
-@media (min-width: 769px) {
-    #search_results_container {
-        border-radius: 0 0 8px 8px;
-        top: 60px;
-    }
-}
-
-@media (min-width: 1020px) {
-    #search_results_container {
-        left: auto;
-        width: 440px;
-    }
-}
-
-@media (min-width: 1061px) {
-    #search_results_container {
-        top: 67px;
-    }
-}
-
-#search_results_container > button {
-    transition: all ease-in-out 100ms;
-    transform: scale(2.3);
-    display: block;
-    margin: 16px 16px 16px auto;
-    border: none;
-    background: transparent;
-}
-
-#search_results_container > button svg {
-    fill: var(--brand-color) !important;
-}
-
-#search_results_container > button:hover {
-    transform: scale(2.4);
-}
-
-#search_results_container > ul {
-    max-height: calc(100vh - 156px);
-    overflow: auto;
-    padding: 8px 0;
-    width: 96%;
-    margin: auto;
-    margin-bottom: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px 0;
-}
-
-#search_results_container > ul::-webkit-scrollbar {
-    width: 4px;
-}
-
-#search_results_container > ul::-webkit-scrollbar-track {
-    box-shadow: inset 0 0 8px var(--white-25);
-    border-radius: 10px;
-}
-
-#search_results_container > ul::-webkit-scrollbar-thumb {
-    background: var(--white-50);
-    border-radius: 6px;
-}
-
-/* MOBILE SEARCH ICON BUTTON */
-
-#search_container button#btn_open_search_form_mobile {
-    transition: background-color ease-in-out 100ms;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 38px;
-    width: 38px;
-    min-width: 38px;
-    height: 38px;
-    padding: 0;
     margin: 0;
+    padding: 0;
+}
+
+.input_pill {
     box-sizing: border-box;
-    background-color: transparent;
-    border: 0;
-    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    width: 100%;
+    height: var(--header-control-size, 40px);
+
+    padding: 0 8px 0 12px;
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    transition: border-color 150ms ease-in-out, box-shadow 150ms ease-in-out;
+}
+
+.input_pill:focus-within,
+.input_pill[data-open="true"] {
+    border-color: var(--brand-color);
+    box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
+}
+
+.input_icon {
+    flex: 0 0 auto;
+    fill: var(--white-50);
+}
+
+.input_pill:focus-within .input_icon {
     fill: var(--white-100);
 }
 
+.input_pill input {
+    flex: 1 1 auto;
+    min-width: 0;
+
+    height: 100%;
+    padding: 0;
+
+    background: transparent;
+    border: 0;
+    outline: none;
+
+    color: var(--white-100);
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size--small-2);
+}
+
+.input_pill input::placeholder {
+    color: var(--white-50);
+}
+
+/* Remove the native search decorations that break the pill look. */
+.input_pill input::-webkit-search-decoration,
+.input_pill input::-webkit-search-cancel-button,
+.input_pill input::-webkit-search-results-button,
+.input_pill input::-webkit-search-results-decoration {
+    appearance: none;
+}
+
+.clear_btn {
+    flex: 0 0 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 36px;
+    height: 36px;
+    padding: 0;
+
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+
+    cursor: pointer;
+}
+
+.clear_btn svg {
+    fill: var(--white-50);
+}
+
+.clear_btn:hover,
+.clear_btn:focus-visible {
+    background: var(--white-25);
+    outline: none;
+}
+
+.clear_btn:hover svg,
+.clear_btn:focus-visible svg {
+    fill: var(--white-100);
+}
+
+/* Desktop width of the pill. */
+#form_search {
+    display: none;
+}
+
 @media (min-width: 769px) {
-    #search_container button#btn_open_search_form_mobile {
+    #form_search {
+        display: block;
+        width: 240px;
+    }
+
+    #form_mobile_search {
         display: none;
     }
 }
 
-#search_container button#btn_open_search_form_mobile[data-active="true"] {
-    background-color: var(--white-25);
+/* ------------------------------------------------------- mobile search bar */
+
+#form_mobile_search {
+    position: fixed;
+    top: calc(var(--header-min-height, 64px) + 4px);
+    left: 12px;
+    right: 12px;
+    z-index: 120;
+
+    padding: 8px;
+
+    background: var(--background);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.45);
 }
 
-    #search_container button#btn_open_search_form_mobile svg {
-        width: 22px;
-        height: 22px;
-    transform: none;
+#form_mobile_search .input_pill {
+    border-color: transparent;
+    background: var(--white-05);
 }
 
-/* SMALL MOBILE SCREENS */
+/* ------------------------------------------------------------ results panel */
+
+#search_results_container {
+    position: fixed;
+    top: calc(var(--header-min-height, 64px) + 4px);
+    left: 12px;
+    right: 12px;
+    z-index: 130;
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    max-height: 70vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    padding: 8px;
+
+    background: var(--background);
+    border: 1px solid var(--white-25);
+    border-radius: 16px;
+    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55);
+}
+
+@media (min-width: 641px) {
+    #search_results_container {
+        position: absolute;
+        top: calc(100% + 12px);
+        left: auto;
+        right: 0;
+
+        width: 560px;
+        max-width: calc(100vw - 24px);
+        max-height: 70vh;
+    }
+}
+
+.panel_heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+
+    padding: 4px 4px 4px 8px;
+}
+
+.panel_title {
+    margin: 0;
+
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+    color: var(--white-50);
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 44px target for the close X. */
+.panel_close_btn {
+    flex: 0 0 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 44px;
+    height: 44px;
+    padding: 0;
+
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+
+    color: var(--white-75);
+    font-size: 1.4rem;
+    line-height: 1;
+
+    cursor: pointer;
+}
+
+.panel_close_btn:hover,
+.panel_close_btn:focus-visible {
+    background: var(--white-05);
+    color: var(--white-100);
+    outline: none;
+}
+
+.results_list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* ---------------------------------------------------------------- skeletons */
+
+.skeleton_row {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 12px;
+    padding: 8px;
+}
+
+.skeleton_cover,
+.skeleton_text span {
+    display: block;
+
+    background: linear-gradient(
+        90deg,
+        var(--white-05) 0%,
+        var(--white-25) 50%,
+        var(--white-05) 100%
+    );
+    background-size: 200% 100%;
+
+    animation: searchSkeleton 1.3s ease-in-out infinite;
+}
+
+.skeleton_cover {
+    width: 56px;
+    height: 80px;
+    border-radius: 8px;
+}
+
+.skeleton_text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+}
+
+.skeleton_text span {
+    height: 10px;
+    border-radius: 999px;
+}
+
+.skeleton_text span:first-child {
+    width: 70%;
+}
+
+.skeleton_text span:last-child {
+    width: 45%;
+}
+
+@keyframes searchSkeleton {
+    from {
+        background-position: 200% 0;
+    }
+
+    to {
+        background-position: -200% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton_cover,
+    .skeleton_text span {
+        animation: none;
+    }
+}
+
+/* -------------------------------------------------------------- empty state */
+
+.empty_state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+
+    padding: 24px 16px;
+
+    text-align: center;
+}
+
+.empty_title {
+    margin: 0;
+
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+    color: var(--white-100);
+}
+
+.empty_text {
+    margin: 0;
+
+    font-size: var(--font-size--small-2);
+    color: var(--white-50);
+    line-height: 1.4;
+}
+
+/* ------------------------------------------------------------ see all link */
+
+.see_all_link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 44px;
+    margin: 4px;
+
+    background: transparent;
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    color: var(--white-100);
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.see_all_link:hover,
+.see_all_link:focus-visible {
+    border-color: var(--brand-color);
+    background: var(--white-05);
+    outline: none;
+}
+
+/* --------------------------------------------------------------- phones */
 
 @media (max-width: 768px) {
-    #search_container #form_search {
+    #btn_open_search_form_mobile {
+        display: inline-flex;
+    }
+
+    /* When the mobile input is open the panel hangs below it. */
+    #search_results_container[data-mobile-input-open="true"] {
+        top: calc(var(--header-min-height, 64px) + 76px);
+    }
+
+    /* Keep the header on one row: the desktop pill is hidden behind the icon. */
+    #form_search {
         display: none;
     }
-}
 
-@media (max-width: 380px) {
-    #search_container button#btn_open_search_form_mobile {
-        flex-basis: 34px;
-        width: 34px;
-        min-width: 34px;
-        height: 34px;
-    }
-
-    #search_container button#btn_open_search_form_mobile svg {
-        width: 20px;
-        height: 20px;
+    #form_mobile_search {
+        display: block;
     }
 }

@@ -16,7 +16,8 @@ import UserSettingsModal from "../UserSettingsModal";
 import ShowUpLoginPanelAnimated from "@/app/components/UserLoginModal/animatedVariant";
 import { useAppSelector, useAppDispatch } from "@/app/lib/redux/hooks";
 import { removeUserInfo } from "@/app/lib/redux/features/manageUserData";
-import { checkAccessTokenStillValid, removeCookies, handleAnilistUserLoginWithRedux } from "@/app/lib/user/anilistUserLoginOptions";
+import { checkAccessTokenStillValid, removeCookies, handleAnilistUserLoginWithRedux, currentAnilistRedirect } from "@/app/lib/user/anilistUserLoginOptions";
+import AnilistNotice from "@/app/components/AnilistNotice";
 import { toggleShowLoginModalValue } from "@/app/lib/redux/features/loginModal";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
@@ -25,14 +26,24 @@ const framerMotionShowUp = { hidden: { y: "-40px", opacity: 0 }, visible: { y: "
 function UserSideMenu() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false); const [isUserSettingsOpen, setIsUserSettingsOpen] = useState(false);
   const { user, profile, loading, signOut } = useUser(); const anilistUser = useAppSelector((state) => state.UserInfo?.value); const isLoginModalOpen = useAppSelector((state) => state.ShowLoginModal?.value); const dispatch = useAppDispatch(); const pathname = usePathname();
-  useEffect(() => { if (!user && !loading && !anilistUser) void handleAnilistUserLoginWithRedux(); }, [user, loading, anilistUser]);
+  // The AniList redirect has to be consumed whatever the Supabase state is: a
+  // visitor who already holds an anonymous (or email) session still needs their
+  // AniList identity applied. The ref keeps it to one run per mount.
+  const anilistRedirectHandled = React.useRef(false);
+  useEffect(() => {
+    if (anilistRedirectHandled.current) return;
+    if (!currentAnilistRedirect()) return;
+    anilistRedirectHandled.current = true;
+    void handleAnilistUserLoginWithRedux();
+  }, []);
   useEffect(() => { if (anilistUser) checkAccessTokenStillValid(); }, [anilistUser]);
   async function logUserOut() { if (anilistUser) { dispatch(removeUserInfo(undefined)); return; } await removeCookies(); await signOut(); }
   const closeLogin = () => { if (!["/my-lists", "/favourites"].includes(pathname)) dispatch(toggleShowLoginModalValue()); };
   return <div id={styles.user_container}>
+    <AnilistNotice />
     <ShowUpLoginPanelAnimated apperanceCondition={isLoginModalOpen} customOnClickAction={closeLogin} />
-    {!user && !anilistUser ? <button onClick={() => dispatch(toggleShowLoginModalValue())} aria-label="Click to Show User Menu" className={`display_flex_row align_items_center ${styles.heading_btn}`} id={styles.user_btn} data-useractive={false} data-loading={loading}>{loading ? <LoadingSvg width={16} height={16} title="Loading" /> : <><PersonIcon className={styles.scale} alt="User Icon" width={16} height={16} /><span>Login</span></>}</button> : <>
-      <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} aria-label="Click to Show User Menu" className={`display_flex_row align_items_center ${styles.heading_btn} ${isUserMenuOpen ? styles.active : ""}`} id={styles.user_btn} data-useractive={true}><span id={styles.img_container}><Image src={profile?.avatar_url || user?.user_metadata?.avatar_url || FALLBACK} alt={profile?.display_name || profile?.username || "User"} fill sizes="32px" /></span><span>{isUserMenuOpen ? <ChevronUpSvg /> : <ChevronDownSvg />}</span></button>
+    {!user && !anilistUser ? <button onClick={() => dispatch(toggleShowLoginModalValue())} aria-label="Click to Show User Menu" className={`display_flex_row align_items_center ${styles.heading_btn}`} id={styles.user_btn} data-useractive={false} data-loading={loading}>{loading ? <LoadingSvg width={16} height={16} title="Loading" /> : <><PersonIcon className={styles.scale} alt="User Icon" width={22} height={22} /><span>Login</span></>}</button> : <>
+      <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} aria-label="Click to Show User Menu" className={`display_flex_row align_items_center ${styles.heading_btn} ${isUserMenuOpen ? styles.active : ""}`} id={styles.user_btn} data-useractive={true}><span id={styles.img_container}><Image src={profile?.avatar_url || user?.user_metadata?.avatar_url || FALLBACK} alt={profile?.display_name || profile?.username || "User"} fill sizes="36px" /></span><span>{isUserMenuOpen ? <ChevronUpSvg /> : <ChevronDownSvg />}</span></button>
       <AnimatePresence initial={false} mode="wait">{isUserMenuOpen && <motion.div variants={framerMotionShowUp} id={styles.user_menu_list} aria-expanded={isUserMenuOpen} initial="hidden" animate="visible" exit="exit"><ul role="menu"><li role="menuitem"><Link href="/favourites" onClick={() => setIsUserMenuOpen(false)}><FavouriteSvg width={16} height={16} alt="Favourites Icon" /> Favourites</Link></li><li role="menuitem"><Link href="/my-lists" onClick={() => setIsUserMenuOpen(false)}><StarListSvg width={16} height={16} alt="History Icon" /> My Lists</Link></li><li role="menuitem"><button onClick={() => { setIsUserMenuOpen(false); setIsUserSettingsOpen(true); }}><SettingsSvg width={16} height={16} alt="Settings Icon" /> Settings</button></li><li role="menuitem"><button onClick={logUserOut}><LogoutSvg width={16} height={16} alt="Logout Icon" /> Log Out</button></li></ul></motion.div>}{isUserSettingsOpen && <UserSettingsModal auth={undefined as never} onClick={() => setIsUserSettingsOpen(false)} />}</AnimatePresence>
     </>}</div>;
 }

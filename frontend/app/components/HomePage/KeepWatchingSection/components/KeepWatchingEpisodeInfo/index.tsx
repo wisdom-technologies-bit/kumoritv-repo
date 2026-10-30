@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import styles from "./component.module.css";
 import Link from "next/link";
 import Image from "next/image";
-import MediaFormatIcon from "../../../../DynamicAssets/MediaFormatIcon";
 import DeleteSvg from "@/public/assets/trash.svg";
 import { AnimatePresence, motion } from "framer-motion";
 import fallbackImg from "@/public/photo-placeholder.jpg";
@@ -12,6 +11,21 @@ import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { deleteContinueWatching } from "@/app/lib/user-data/progress";
 import { displayTitle } from "@/app/lib/titles";
 import { remainingLabel } from "@/app/lib/episodes/items";
+
+/** Inline so the card needs no asset import for one glyph. */
+function PlayIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M8 5v14l11-7z" fill="currentColor" />
+    </svg>
+  );
+}
 
 type ComponentTypes = {
   animeInfo: KeepWatchingMediaData;
@@ -28,18 +42,46 @@ export function watchHref(animeInfo: KeepWatchingMediaData) {
   }`;
 }
 
+/** 0-1, never 0 so a started episode still shows a sliver of progress. */
+export function progressRatio(animeInfo: KeepWatchingMediaData) {
+  const duration = Number(animeInfo.episodeDuration);
+  const position = Number(animeInfo.episodeTimeLastStop) || 0;
+
+  if (!Number.isFinite(duration) || duration <= 0) return 0;
+
+  return Math.min(1, Math.max(position / duration, 0.005));
+}
+
+/** "Episode 18 · 11m left" */
+export function episodeMetaLine(animeInfo: KeepWatchingMediaData) {
+  const remaining = remainingLabel(
+    animeInfo.episodeTimeLastStop,
+    animeInfo.episodeDuration,
+  );
+  const episode = Number(animeInfo.episode) || 1;
+  const showEpisode = animeInfo.format != "MOVIE";
+
+  return [showEpisode ? `Episode ${episode}` : null, remaining || null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function KeepWatchingEpisodeInfo({
   animeInfo,
   darkMode,
   deleteFromListHook,
 }: ComponentTypes) {
   const [wasDeleted, setWasDeleted] = useState<boolean>(false);
-  const remaining = remainingLabel(
-    animeInfo.episodeTimeLastStop,
-    animeInfo.episodeDuration,
-  );
+  const [imageFailed, setImageFailed] = useState<boolean>(false);
 
   const { user } = useUser();
+
+  const title = displayTitle(animeInfo.title);
+  const episodeNumber = Number(animeInfo.episode) || 1;
+  const metaLine = episodeMetaLine(animeInfo);
+  const ratio = progressRatio(animeInfo);
+  const showEpisodeBadge = animeInfo.format != "MOVIE";
+  const coverSrc = animeInfo.episodeImg || fallbackImg;
 
   async function removeFromKeepWatching() {
     // Deletes this anime's incomplete watch_progress rows (and the local copy).
@@ -61,67 +103,74 @@ function KeepWatchingEpisodeInfo({
           animate={{ transition: { duration: 0.2 } }}
           exit={{ opacity: 0, scale: 0 }}
         >
-          <div id={styles.img_container}>
-            <Image
-              title={displayTitle(animeInfo.title)}
-              src={animeInfo.episodeImg || fallbackImg}
-              placeholder="blur"
-              blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
-              alt={displayTitle(animeInfo.title)}
-              fill
-              sizes="(max-width: 324px) 100vw, (max-width: 495px) 50vw, (max-width: 1025px) 200px, (max-width: 1479px) 180px, 174px"
-            ></Image>
+          <Link
+            className={styles.card_link}
+            href={watchHref(animeInfo)}
+            aria-label={`${title}, episode ${episodeNumber}`}
+            data-keep-watching-link="true"
+          >
+            <div id={styles.img_container} data-image-failed={imageFailed}>
+              {imageFailed ? (
+                <span className={styles.img_placeholder} data-img-fallback="true">
+                  <PlayIcon size={22} />
+                </span>
+              ) : (
+                <Image
+                  title={title}
+                  src={coverSrc}
+                  placeholder="blur"
+                  blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
+                  alt={title}
+                  fill
+                  sizes="(max-width: 640px) 280px, 320px"
+                  onError={() => setImageFailed(true)}
+                />
+              )}
 
-            <span className={styles.media_type_icon}>
-              <MediaFormatIcon format={animeInfo.format} />
+              <span className={styles.gradient} aria-hidden="true" />
 
-              <span className={styles.media_format_title}>
-                {animeInfo.format == "TV" ? "ANIME" : animeInfo.format}
+              <span className={styles.play_circle} aria-hidden="true">
+                <PlayIcon size={16} />
               </span>
-            </span>
 
-            <div className={styles.overlay_info_container}>
-              <Link href={watchHref(animeInfo)}>
-                {animeInfo.format != "MOVIE" ? "CONTINUE EPISODE" : "CONTINUE"}
-              </Link>
+              {showEpisodeBadge && (
+                <span className={styles.ep_badge}>Ep. {episodeNumber}</span>
+              )}
+
+              <span className={styles.progress_bar} aria-hidden="true">
+                <span
+                  className={styles.progress_fill}
+                  style={{ transform: `scaleX(${ratio})` }}
+                  data-progress-ratio={ratio}
+                />
+              </span>
             </div>
+          </Link>
 
-            {animeInfo.format != "MOVIE" && (
-              <span className={styles.episode_name_span}>
-                Ep. {animeInfo.episode}
-              </span>
-            )}
-
-            <motion.div className={styles.progress_bar}>
-              <motion.div
-                initial={{ scaleX: 0 }}
-                animate={{
-                  scaleX:
-                    ((animeInfo.episodeTimeLastStop /
-                      animeInfo.episodeDuration) *
-                      100) /
-                      100 || 0.005,
-                }}
-                transition={{ duration: 1 }}
-              />
-            </motion.div>
-          </div>
+          <button
+            type="button"
+            className={styles.delete_btn}
+            onClick={() => removeFromKeepWatching()}
+            title={`Remove ${title} from Keep Watching`}
+            aria-label={`Remove ${title} from Keep Watching`}
+          >
+            <DeleteSvg width={16} height={16} alt="" />
+          </button>
 
           <div className={styles.info_bottom}>
-            <Link href={`/media/${animeInfo.id}`}>
-              {displayTitle(animeInfo.title)}
+            <Link className={styles.card_title} href={`/media/${animeInfo.id}`}>
+              {title}
             </Link>
 
-            {remaining ? (
-              <small className={styles.remaining}>{remaining}</small>
-            ) : null}
+            <p className={styles.meta_line}>
+              {metaLine}
 
-            <button
-              onClick={() => removeFromKeepWatching()}
-              title={`Remove ${displayTitle(animeInfo.title)} from Keep Watching`}
-            >
-              <DeleteSvg width={16} height={16} alt="Delete" />
-            </button>
+              {animeInfo.dub && (
+                <span className={styles.dub_tag} data-dub-tag="true">
+                  DUB
+                </span>
+              )}
+            </p>
           </div>
         </motion.div>
       )}

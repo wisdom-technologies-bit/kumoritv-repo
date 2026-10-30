@@ -7,10 +7,10 @@ import styles from "./component.module.css";
 type SwiperTypes = {
   children: React.ReactNode;
   options?: {
-    slidesPerView?: number;
-    bp480: number;
-    bp740: number;
-    bp1275: number;
+    slidesPerView?: number | "auto";
+    bp480: number | "auto";
+    bp740: number | "auto";
+    bp1275: number | "auto";
   };
 };
 
