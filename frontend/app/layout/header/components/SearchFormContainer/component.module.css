@@ -7,9 +7,17 @@
     min-width: 0;
 }
 
-/* The mobile toggle only exists on phones. */
+/* The mobile toggle only exists on phones. It gets its looks from the shared
+   global `.header-icon-btn` class in app/globals.css; this module only decides
+   whether it is visible. */
 #btn_open_search_form_mobile {
     display: none;
+}
+
+/* The input is addressed from the toggle's aria-controls, so it needs an id
+   declared here: CSS Modules only export the names this file actually defines. */
+#input_search_bar {
+    width: 100%;
 }
 
 /* ---------------------------------------------------------------- the pill */

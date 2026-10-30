@@ -212,3 +212,84 @@ li {
   width: inherit !important;
 
 }
+
+/* ==========================================================================
+   HEADER CONTROLS (shared, global on purpose)
+   ==========================================================================
+   The search toggle, the notifications bell and the user/login button all use
+   this ONE class. It has to live in the global stylesheet, not in a CSS module:
+   CSS Modules hash every class per file, so a `.heading_btn` rule declared in
+   headerComponent.module.css can never match `styles.heading_btn` resolved from
+   SearchFormContainer/component.module.css. That mismatch is what left the
+   search button with no rule at all, i.e. a browser-default white square.
+
+   The sizing tokens (--header-*) are set on `header#background` in
+   headerComponent.module.css; the fallbacks below keep the controls sane if the
+   class is ever used outside the header.
+   ========================================================================== */
+
+.header-icon-btn {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    gap: 0;
+
+    width: var(--header-control-size, 44px);
+    min-width: var(--header-control-size, 44px);
+    height: var(--header-control-size, 44px);
+    min-height: var(--header-control-size, 44px);
+    padding: 0;
+    margin: 0;
+
+    /* Never a white box: transparent on every surface. */
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    border-radius: 50%;
+    box-shadow: none;
+
+    color: var(--white-100, #fff);
+    line-height: 1;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
+
+    transition: background-color 150ms ease-in-out;
+}
+
+.header-icon-btn:hover,
+.header-icon-btn[data-active="true"] {
+    background-color: var(--header-hover-surface, var(--white-25, rgba(255, 255, 255, 0.25)));
+}
+
+.header-icon-btn:focus-visible {
+    outline: var(--header-focus-ring, 2px solid var(--brand-color, #7c5cff));
+    outline-offset: 2px;
+}
+
+/* Glyphs (SVG icons) and the avatar follow the header tokens. */
+.header-icon-btn > svg,
+.header-icon-btn svg {
+    display: block;
+    flex: 0 0 auto;
+    width: var(--header-glyph-size, 24px);
+    height: var(--header-glyph-size, 24px);
+    fill: var(--white-100, #fff);
+}
+
+.header-icon-btn img {
+    display: block;
+    width: var(--header-avatar-size, 40px);
+    height: var(--header-avatar-size, 40px);
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header-icon-btn {
+        transition: none;
+    }
+}

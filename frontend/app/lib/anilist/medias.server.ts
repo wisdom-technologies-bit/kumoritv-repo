@@ -1,7 +1,7 @@
 'use server';
 
 import { unstable_cache } from 'next/cache';
-import { anilistFetch } from './client';
+import { AniListNotFoundError, AniListRateLimitedError, anilistFetch } from './client';
 import { requestMediaById, requestMedias, requestMediasByDateRelease, requestMediasByTrendingSort } from './queries';
 import type { MediaDataFullInfo } from '@/app/ts/interfaces/anilistMediaData';
 import { parseGenreParam } from '@/app/lib/search/genres';
@@ -82,6 +82,45 @@ export async function getMediaInfo({ id }: { id: number; accessToken?: string })
       { tags: ['anilist'], revalidate: 10800 },
     )();
   } catch { return null; }
+}
+
+/**
+ * The same lookup as getMediaInfo, but it TELLS the caller why it failed.
+ *
+ * getMediaInfo returns null for "rate limited", "not found" and "AniList is down"
+ * alike, which made importAnime report "AniList metadata unavailable" for a plain
+ * 429. The import pipeline needs the difference: a rate limit must be rescheduled
+ * without burning the row's attempts, a missing media is terminal.
+ *
+ * Deliberately not wrapped in unstable_cache: caching a rate-limited answer for
+ * three hours would keep the import queue stuck.
+ */
+export type MediaInfoResult =
+  | { status: 'ok'; media: MediaDataFullInfo }
+  | { status: 'not_found' }
+  | { status: 'rate_limited'; retryAfterMs: number; message: string }
+  | { status: 'unavailable'; message: string };
+
+export async function getMediaInfoResult({ id }: { id: number }): Promise<MediaInfoResult> {
+  if (!Number.isInteger(id) || id <= 0) return { status: 'not_found' };
+
+  try {
+    const data = await anilistFetch<{ Media?: MediaDataFullInfo | null }>(requestMediaById(), { id });
+    const media = data.Media ?? null;
+
+    return media ? { status: 'ok', media } : { status: 'not_found' };
+  } catch (error) {
+    if (error instanceof AniListRateLimitedError) {
+      return { status: 'rate_limited', retryAfterMs: error.retryAfterMs, message: error.message };
+    }
+
+    if (error instanceof AniListNotFoundError) return { status: 'not_found' };
+
+    return {
+      status: 'unavailable',
+      message: error instanceof Error ? error.message : 'AniList request failed',
+    };
+  }
 }
 
 export async function searchMedias({ query, page = 1, perPage = 15, showAdultContent: explicit }: { query: string; showAdultContent?: boolean; page?: number; perPage?: number }) {

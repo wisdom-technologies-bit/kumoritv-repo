@@ -3,16 +3,21 @@
     position: static;
 }
 
+/* The button gets its real looks from the shared global `.header-icon-btn`
+   class in app/globals.css (the same one the search toggle and the bell use).
+   These rules only pin the geometry to the header tokens and add the labelled
+   "Login" variant. */
 #user_container #user_btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0 4px;
-    background-color: var(--background);
-    height: var(--header-control-size, 40px);
+    gap: 0 6px;
+    background-color: transparent;
+    height: var(--header-control-size, 44px);
+    min-height: var(--header-control-size, 44px);
     padding: 0;
     border: none;
-    border-radius: 999px;
+    border-radius: 50%;
     box-sizing: border-box;
     cursor: pointer;
 }
@@ -22,26 +27,23 @@
     outline-offset: 2px;
 }
 
+/* Logged out: the same control, widened into a fully rounded pill because it
+   carries the "Login" label. Same height, same transparent surface, same hover
+   and focus ring as the search toggle and the bell. */
 #user_container #user_btn[data-useractive=false] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 34px;
-    min-height: 34px;
+    height: var(--header-control-size, 44px);
+    min-height: var(--header-control-size, 44px);
     width: auto;
     min-width: 0;
-    padding: 0 12px;
+    padding: 0 14px;
     box-sizing: border-box;
-    transition: all ease-in-out 60ms;
-    box-shadow: 1px 1px;
-    background-color: var(--brand-color);
-    border-radius: 4px;
+    background-color: transparent;
+    border-radius: 999px;
     gap: 0 6px;
     white-space: nowrap;
-}
-
-#user_container #user_btn[data-useractive=false]:hover {
-    box-shadow: 2px 2px;
 }
 
 #user_container #user_btn[data-useractive=false] span {
@@ -51,14 +53,14 @@
 
 #user_container #user_btn[data-loading=true] {
     background-color: transparent;
-    box-shadow: 0 0 !important;
 }
 
 #user_container #user_btn #img_container {
     position: relative;
-    height: var(--header-avatar-size, 36px);
-    width: var(--header-avatar-size, 36px);
-    flex: 0 0 var(--header-avatar-size, 36px);
+    display: block;
+    height: var(--header-avatar-size, 40px);
+    width: var(--header-avatar-size, 40px);
+    flex: 0 0 var(--header-avatar-size, 40px);
 }
 
 #user_container #user_btn #img_container img {
@@ -66,9 +68,12 @@
     object-fit: cover;
 }
 
+/* The person glyph is already sized by the token: no transform scaling. */
 #user_container #user_btn > svg.scale {
-    margin-right: 4px;
-    transform: scale(1.4);
+    margin-right: 0;
+    width: var(--header-glyph-size, 24px);
+    height: var(--header-glyph-size, 24px);
+    transform: none;
 }
 
 #user_container #user_btn.active svg {
@@ -84,38 +89,38 @@
 
 @media (max-width: 767px) {
     #user_container #user_btn {
-        height: var(--header-control-size, 44px);
-        min-height: var(--header-control-size, 44px);
+        height: var(--header-control-size, 48px);
+        min-height: var(--header-control-size, 48px);
         width: auto;
         padding: 0;
     }
 
     #user_container #user_btn[data-useractive=false] {
-        height: var(--header-control-size, 44px);
-        min-height: var(--header-control-size, 44px);
+        height: var(--header-control-size, 48px);
+        min-height: var(--header-control-size, 48px);
         width: auto;
-        min-width: 72px;
-        padding: 0 10px;
+        min-width: 0;
+        padding: 0 12px;
         gap: 0 6px;
         border-radius: 999px;
-        box-shadow: none;
     }
 
     #user_container #user_btn[data-useractive=false] span {
         display: inline-flex;
-        font-size: 12px;
+        font-size: 13px;
         line-height: 1;
+        color: var(--white-100);
     }
 
     #user_container #user_btn #img_container {
-        height: var(--header-avatar-size, 36px);
-        width: var(--header-avatar-size, 36px);
-        flex: 0 0 var(--header-avatar-size, 36px);
+        height: var(--header-avatar-size, 40px);
+        width: var(--header-avatar-size, 40px);
+        flex: 0 0 var(--header-avatar-size, 40px);
     }
 
     #user_container #user_btn > svg.scale {
-        width: 18px;
-        height: 18px;
+        width: var(--header-glyph-size, 26px);
+        height: var(--header-glyph-size, 26px);
         margin-right: 0;
         transform: none;
     }
@@ -124,26 +129,27 @@
 /* VERY NARROW MOBILE SCREENS */
 
 @media (max-width: 380px) {
+    /* 320px: the label tightens, the 48px target does not. */
     #user_container #user_btn[data-useractive=false] {
-        height: 34px;
-        min-height: 34px;
-        padding: 0 5px;
-        gap: 0 6px;
+        height: var(--header-control-size, 48px);
+        min-height: var(--header-control-size, 48px);
+        padding: 0 10px;
+        gap: 0 4px;
     }
 
     #user_container #user_btn[data-useractive=false] span {
-        font-size: 11px;
+        font-size: 12px;
     }
 
     #user_container #user_btn #img_container {
-        height: 20px;
-        width: 20px;
-        flex-basis: 20px;
+        height: var(--header-avatar-size, 40px);
+        width: var(--header-avatar-size, 40px);
+        flex-basis: var(--header-avatar-size, 40px);
     }
 
     #user_container #user_btn > svg.scale {
-        width: 16px;
-        height: 16px;
+        width: var(--header-glyph-size, 26px);
+        height: var(--header-glyph-size, 26px);
     }
 }
 

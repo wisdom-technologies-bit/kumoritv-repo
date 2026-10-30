@@ -11,8 +11,31 @@ export const CHUNK_SIZE = 10000;
 export const ROW_PAGE_SIZE = 1000;
 /** Hard cap on the AniList top-up rows a single new.xml request will consider. */
 export const RECENT_TOPUP_LIMIT = 2000;
-/** Hard cap on view rows read for new.xml (48h window). */
-export const RECENT_EPISODE_LIMIT = 4000;
+/** Hard cap on view rows read for new.xml (72h window), paged at 1000. */
+export const RECENT_EPISODE_LIMIT = 2000;
+/** new.xml window: what actually aired in the last 72 hours. */
+export const RECENT_WINDOW_HOURS = 72;
+
+/**
+ * The only file names /sitemaps/[file] will serve. Next.js App Router folders are
+ * whole path segments, so `episodes-[n].xml` can never be dynamic: one catch-all
+ * route parses these instead.
+ */
+export const SITEMAP_FILE_PATTERN = /^(episodes|anime)-(\d+)\.xml$/;
+
+export type SitemapFile =
+  | { kind: "episodes"; page: number }
+  | { kind: "anime"; page: number };
+
+/** `episodes-3.xml` / `anime-1.xml` -> parsed; anything else -> null (404). */
+export function parseSitemapFileName(file: string | undefined | null): SitemapFile | null {
+  const name = String(file ?? "");
+  const match = SITEMAP_FILE_PATTERN.exec(name);
+  if (!match) return null;
+  const page = Number(match[2]);
+  if (!Number.isInteger(page) || page < 1) return null;
+  return { kind: match[1] as "episodes" | "anime", page };
+}
 
 /**
  * The episodes sitemap is driven by the `public.sitemap_episodes` view:
@@ -25,6 +48,9 @@ export type SitemapEpisode = {
   anilist_id: number;
   episode_number: number;
   updated_at: string | null;
+  /** When the episode actually aired. The view exposes it; `updated_at` does not
+   *  mean "new" (bulk imports and re-syncs bump it). */
+  air_date: string | null;
 };
 
 export type SitemapMedia = {
@@ -60,7 +86,7 @@ export async function readRowsPaged<T = any>(
   options: {
     table: string;
     columns: string;
-    order: string[];
+    order: Array<string | { column: string; ascending?: boolean }>;
     chunkStart: number;
     chunkEnd: number;
     filters?: (query: any) => any;
@@ -83,7 +109,11 @@ export async function readRowsPaged<T = any>(
 
     let query: any = db.from(table).select(columns);
     if (options.filters) query = options.filters(query);
-    for (const column of order) query = query.order(column, { ascending: true });
+    for (const entry of order) {
+      const column = typeof entry === "string" ? entry : entry.column;
+      const ascending = typeof entry === "string" ? true : entry.ascending !== false;
+      query = query.order(column, { ascending });
+    }
     const paged = typeof query?.range === "function" ? query.range(from, to) : query;
 
     const { data, error } = await paged;
@@ -110,6 +140,7 @@ export function parseSitemapEpisode(row: any): SitemapEpisode | null {
     anilist_id: id,
     episode_number: episode,
     updated_at: typeof row?.updated_at === "string" && row.updated_at ? row.updated_at : null,
+    air_date: typeof row?.air_date === "string" && row.air_date ? row.air_date : null,
   };
 }
 
@@ -135,7 +166,7 @@ export async function fetchEpisodeSlice(db: SitemapDb | null, page: number, size
   const from = (Math.max(1, page) - 1) * size;
   const rows = await readRowsPaged<any>(db, {
     table: SITEMAP_EPISODES_VIEW,
-    columns: "anilist_id,episode_number,updated_at",
+    columns: "anilist_id,episode_number,updated_at,air_date",
     order: ["anilist_id", "episode_number"],
     chunkStart: from,
     chunkEnd: from + size - 1,
@@ -157,24 +188,39 @@ export async function fetchMediaSlice(db: SitemapDb | null, page: number, size =
 }
 
 /**
- * View rows touched in the last `hours` (new.xml), ordered by updated_at so the
- * offsets stay stable across pages, and paged so the 1000-row response cap
- * cannot silently cut it down to one page.
+ * new.xml: what actually aired in the last `hours` (72 by default).
+ *
+ * Ordered by `air_date` DESC (newest first) with the (anilist_id, episode_number)
+ * tie-breaker so the 1000-row page offsets stay stable, capped at
+ * RECENT_EPISODE_LIMIT rows. `air_date` - not `updated_at` - is the window key:
+ * bulk imports and re-syncs bump `updated_at` on old episodes, which used to put
+ * ancient episodes at the top of the file.
  */
-export async function fetchRecentEpisodes(db: SitemapDb | null, hours = 48): Promise<SitemapEpisode[]> {
+export async function fetchRecentEpisodes(db: SitemapDb | null, hours = RECENT_WINDOW_HOURS): Promise<SitemapEpisode[]> {
   if (!db) return [] as SitemapEpisode[];
   const since = new Date(Date.now() - hours * 3600000).toISOString();
   const rows = await readRowsPaged<any>(db, {
     table: SITEMAP_EPISODES_VIEW,
-    columns: "anilist_id,episode_number,updated_at",
-    order: ["updated_at"],
+    columns: "anilist_id,episode_number,updated_at,air_date",
+    order: [
+      { column: "air_date", ascending: false },
+      { column: "anilist_id", ascending: true },
+      { column: "episode_number", ascending: true },
+    ],
     chunkStart: 0,
     // Read up to the cap and stop: new.xml never needs more than this.
     chunkEnd: RECENT_EPISODE_LIMIT - 1,
     limit: RECENT_EPISODE_LIMIT,
-    filters: (query: any) => (typeof query?.gte === "function" ? query.gte("updated_at", since) : query),
+    pageSize: ROW_PAGE_SIZE,
+    filters: (query: any) => (typeof query?.gte === "function" ? query.gte("air_date", since) : query),
   });
-  return rows.map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
+  return rows
+    .map(parseSitemapEpisode)
+    .filter((row): row is SitemapEpisode => row !== null)
+    // Belt and braces: the query already filters on air_date, but the window must
+    // hold even for a client that cannot express it. A row with no air_date is by
+    // definition not "just aired", so it never belongs in new.xml.
+    .filter((row) => Boolean(row.air_date) && String(row.air_date) >= since);
 }
 
 // ------------------------------------------------------------------ builders
@@ -201,10 +247,13 @@ export function buildRecentSitemap(episodes: SitemapEpisode[], topUp: any[]): st
   const emittedMedia = new Set<number>();
 
   for (const row of known.values()) {
-    urls.push(sitemapUrl(watchUrl(row.anilist_id, row.episode_number), row.updated_at, "always", "0.9"));
+    // lastmod is the air date when the view has one: updated_at moves on every
+    // re-sync and would tell Google an old episode just changed.
+    const lastmod = row.air_date || row.updated_at;
+    urls.push(sitemapUrl(watchUrl(row.anilist_id, row.episode_number), lastmod, "always", "0.9"));
     if (!emittedMedia.has(row.anilist_id)) {
       emittedMedia.add(row.anilist_id);
-      urls.push(sitemapUrl(mediaUrl(row.anilist_id), row.updated_at));
+      urls.push(sitemapUrl(mediaUrl(row.anilist_id), lastmod));
     }
   }
 
@@ -232,10 +281,36 @@ export function buildRecentSitemap(episodes: SitemapEpisode[], topUp: any[]): st
   return sitemapDoc(urls);
 }
 
-/** The index lists exactly as many chunks as the chunk routes can serve. */
+/**
+ * The fixed, public, indexable pages of the site.
+ *
+ * Only pages that exist in app/ AND are indexable are listed. Deliberately
+ * absent: /privacy and /terms (their page metadata is `robots: { index: false }`
+ * because the wording is region-sensitive, and a sitemap must never advertise a
+ * noindex URL), /favourites and /my-lists (behind a session), /auth and /api/*
+ * (never crawled), and the dynamic /media/[id], /watch/[id], /read/[id] pages
+ * (served by the anime-* and episodes-* chunks).
+ */
+export const STATIC_SITEMAP_PAGES: Array<{ path: string; changefreq: string; priority: string }> = [
+  { path: "/", changefreq: "daily", priority: "1.0" },
+  { path: "/search", changefreq: "daily", priority: "0.8" },
+  { path: "/search?type=manga", changefreq: "daily", priority: "0.7" },
+];
+
+export function buildStaticSitemap(pages = STATIC_SITEMAP_PAGES): string {
+  return sitemapDoc(pages.map((page) => sitemapUrl(`${SITE_URL}${page.path}`, null, page.changefreq, page.priority)));
+}
+
+/**
+ * The index lists exactly as many chunks as the chunk routes can serve:
+ * N = ceil(count / CHUNK_SIZE) from the same constant the files read, and the
+ * counts come from the same source each file pages through (anime table for
+ * anime-*, the sitemap_episodes view for episodes-*).
+ */
 export function sitemapIndexFiles(animeCount: number, episodeCount: number): Array<{ loc: string }> {
   const chunksFor = (count: number) => Math.max(0, Math.ceil((Number(count) || 0) / CHUNK_SIZE));
   return [
+    { loc: `${SITE_URL}/sitemaps/static.xml` },
     { loc: `${SITE_URL}/sitemaps/new.xml` },
     ...Array.from({ length: chunksFor(animeCount) }, (_, index) => ({ loc: `${SITE_URL}/sitemaps/anime-${index + 1}.xml` })),
     ...Array.from({ length: chunksFor(episodeCount) }, (_, index) => ({ loc: `${SITE_URL}/sitemaps/episodes-${index + 1}.xml` })),

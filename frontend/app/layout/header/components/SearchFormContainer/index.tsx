@@ -190,7 +190,7 @@ function SearchFormContainer() {
           aria-expanded={isMobileInputOpen}
           aria-controls={styles.input_search_bar}
           data-active={isMobileInputOpen}
-          className={styles.heading_btn}
+          className="header-icon-btn"
         >
           {isMobileInputOpen ? (
             <CloseSvg alt="" width={22} height={22} />

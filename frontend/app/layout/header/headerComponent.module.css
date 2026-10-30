@@ -4,10 +4,10 @@ header#background {
        inside it) reads these instead of hard-coding pixels, so the wordmark, the
        icon buttons, their glyphs and the avatar always scale together. */
     --header-wordmark-height: 32px;
-    --header-control-size: 40px;
-    --header-glyph-size: 20px;
-    --header-avatar-size: 36px;
-    --header-control-gap: 10px;
+    --header-control-size: 44px;
+    --header-glyph-size: 24px;
+    --header-avatar-size: 40px;
+    --header-control-gap: 8px;
     --header-min-height: 64px;
     --header-hover-surface: var(--white-25);
     --header-focus-ring: 2px solid var(--brand-color);
@@ -21,12 +21,13 @@ header#background {
 
 @media (max-width: 640px) {
     header#background {
-        /* Phones: 44px touch targets and a 22px glyph. */
-        --header-wordmark-height: 28px;
-        --header-control-size: 44px;
-        --header-glyph-size: 22px;
-        --header-avatar-size: 36px;
-        --header-control-gap: 6px;
+        /* Phones: a 30px wordmark next to 48px round controls, 26px glyphs and
+           a 40px avatar, 4px apart. Everything is centred on one line. */
+        --header-wordmark-height: 30px;
+        --header-control-size: 48px;
+        --header-glyph-size: 26px;
+        --header-avatar-size: 40px;
+        --header-control-gap: 4px;
         --header-min-height: 64px;
     }
 }
@@ -111,45 +112,33 @@ header#background > div#container {
     object-position: center;
 }
 
-/* HEADER BUTTONS */
+/* HEADER BUTTONS
+   The controls themselves are styled by the global `.header-icon-btn` class in
+   app/globals.css (one real rule for the search toggle, the bell and the
+   avatar, which CSS Modules could never share between files). These rules only
+   pin the header-level geometry and make the header tokens the single source of
+   truth for size, hover surface and focus ring. */
 
-header#background button.heading_btn {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+header#background .header-icon-btn {
     width: var(--header-control-size);
     min-width: var(--header-control-size);
     height: var(--header-control-size);
+    min-height: var(--header-control-size);
     padding: 0;
     border: none;
     border-radius: 50%;
     background-color: transparent;
-    transition: background-color 150ms ease-in-out;
 }
 
-/* One hover and one focus ring for the search, the bell and the avatar. */
-header#background button.heading_btn:hover,
-header#background button.heading_btn[data-active="true"] {
-    background-color: var(--header-hover-surface);
-}
-
-header#background button.heading_btn:focus-visible {
-    outline: var(--header-focus-ring);
-    outline-offset: 2px;
-}
-
-/* Glyphs follow the token (the SVG width/height props are the fallback). */
-header#background button.heading_btn > svg,
-header#background #notification_btn > svg,
-header#background #user_btn svg {
+header#background .header-icon-btn > svg,
+header#background .header-icon-btn svg {
     width: var(--header-glyph-size);
     height: var(--header-glyph-size);
-    flex: 0 0 auto;
+    fill: var(--white-100);
 }
 
-header#background button svg {
-    fill: var(--white-100);
+header#background .header-icon-btn[data-active="true"] {
+    background-color: var(--header-hover-surface);
 }
 
 /* DESKTOP NAVIGATION: CLOSE TO LOGO */
@@ -224,7 +213,7 @@ header#background button svg {
     flex-direction: row;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--header-control-gap);
     min-width: 0;
     margin-left: auto;
 }
@@ -287,10 +276,11 @@ header#background button svg {
         margin-left: auto;
     }
 
-    header#background button.heading_btn {
+    header#background .header-icon-btn {
         width: var(--header-control-size);
         min-width: var(--header-control-size);
         height: var(--header-control-size);
+        min-height: var(--header-control-size);
         padding: 0;
     }
 }
@@ -299,22 +289,31 @@ header#background button svg {
 
 @media (max-width: 380px) {
     header#background {
-        /* Only the wordmark gets smaller: 44px targets stay 44px. */
-        --header-wordmark-height: 26px;
+        /* The tokens stay put on 320px screens (30px wordmark, 48px controls,
+           4px gap) so the search, the bell and the avatar keep their targets;
+           only the outer padding gets tighter, and nothing is allowed to wrap
+           or push the row wider than the viewport. */
+        --header-wordmark-height: 30px;
         --header-control-gap: 4px;
     }
 
     header#background > div#container {
+        flex-wrap: nowrap;
         padding-left: 8px;
         padding-right: 8px;
+        overflow: visible;
     }
 
     #menu_and_logo_container {
-        gap: 6px;
+        gap: 4px;
     }
 
     #menu_and_logo_container > a#img_container {
         max-width: 104px;
+    }
+
+    header#background {
+        overflow-x: clip;
     }
 }
 
