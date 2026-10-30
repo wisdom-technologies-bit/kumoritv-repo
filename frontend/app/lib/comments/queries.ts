@@ -25,7 +25,7 @@ export const COMMENT_BODY_LIMIT = 400;
 export type CommentsFailure = { message: string; code: string | null };
 export type CommentsResult<T> = { data: T; error: null } | { data: null; error: CommentsFailure };
 
-export type CommentsSort = "recent" | "likes" | "dislikes";
+export type CommentsSort = "recent" | "oldest" | "likes" | "dislikes";
 
 export type ListCommentsParams = {
   anilistId: number;
@@ -82,8 +82,18 @@ function applyEpisodeFilter(query: any, episodeNumber?: number | null) {
 function applySort(query: any, sort: CommentsSort = "recent") {
   if (sort === "likes") return query.order("likes", { ascending: false }).order("created_at", { ascending: false });
   if (sort === "dislikes") return query.order("dislikes", { ascending: false }).order("created_at", { ascending: false });
+  // "oldest" and "recent" are the same column in opposite directions.
+  if (sort === "oldest") return query.order("created_at", { ascending: true });
   return query.order("created_at", { ascending: false });
 }
+
+/** Label -> query sort. The UI never passes anything else. */
+export const SORT_OPTIONS: { value: CommentsSort; label: string }[] = [
+  { value: "likes", label: "Top comments" },
+  { value: "recent", label: "Newest" },
+  { value: "oldest", label: "Oldest" },
+  { value: "dislikes", label: "Most disliked" },
+];
 
 /** Top-level comments, newest first by default. Paginated in the database. */
 export async function listComments(
@@ -120,6 +130,57 @@ export async function countComments(
     const { count, error } = await query;
     if (error) return { data: null, error: toFailure(error) };
     return { data: Number(count ?? 0), error: null };
+  } catch (error) {
+    return { data: null, error: toFailure(error) };
+  }
+}
+
+/** How many replies each visible comment has, without loading the replies. */
+export async function countReplies(
+  client: CommentsClient,
+  parentIds: string[],
+): Promise<CommentsResult<Record<string, number>>> {
+  if (!parentIds.length) return { data: {}, error: null };
+  try {
+    const { data, error } = await client
+      .from("comment_feed")
+      .select("parent_id")
+      .in("parent_id", parentIds)
+      .limit(1000);
+    if (error) return { data: null, error: toFailure(error) };
+
+    const counts: Record<string, number> = {};
+    for (const row of (data ?? []) as { parent_id: string | null }[]) {
+      if (!row.parent_id) continue;
+      counts[row.parent_id] = (counts[row.parent_id] ?? 0) + 1;
+    }
+    return { data: counts, error: null };
+  } catch (error) {
+    return { data: null, error: toFailure(error) };
+  }
+}
+
+/** The episode numbers that actually have top-level comments, ascending. */
+export async function listCommentedEpisodes(
+  client: CommentsClient,
+  { anilistId, limit = 500 }: { anilistId: number; limit?: number },
+): Promise<CommentsResult<number[]>> {
+  try {
+    const { data, error } = await client
+      .from("comment_feed")
+      .select("episode_number")
+      .eq("anilist_id", anilistId)
+      .is("parent_id", null)
+      .not("episode_number", "is", null)
+      .limit(limit);
+    if (error) return { data: null, error: toFailure(error) };
+
+    const episodes = new Set<number>();
+    for (const row of (data ?? []) as { episode_number: number | null }[]) {
+      if (row.episode_number === null || row.episode_number === undefined) continue;
+      episodes.add(Number(row.episode_number));
+    }
+    return { data: Array.from(episodes).sort((a, b) => a - b), error: null };
   } catch (error) {
     return { data: null, error: toFailure(error) };
   }

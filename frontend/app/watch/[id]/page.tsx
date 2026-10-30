@@ -155,7 +155,7 @@ export default async function WatchPage({
               audio={audio as "sub" | "dub"}
               subtitleLanguage={lang}
               initialTime={Number(searchParams.t || 0)}
-              title={displayTitle(media.title)}
+              title={displayTitle(media.title) || name}
               episodeImage={episodeSeo?.thumbnailUrl || undefined}
               cover={cover || undefined}
               nextEpisode={nextEpisode}

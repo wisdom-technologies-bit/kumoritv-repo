@@ -1,6 +1,6 @@
 "use client";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import SwiperCarouselContainer from "../../SwiperCarouselContainer";
 import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
@@ -8,8 +8,12 @@ import KeepWatchingEpisodeInfo from "./components/KeepWatchingEpisodeInfo";
 import { SwiperSlide } from "swiper/react";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
-import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
+import {
+  listContinueWatchingFromServer,
+  subscribe,
+} from "@/app/lib/user-data/progress";
 import { imageKey } from "@/app/lib/episodes/images";
+import { useRefreshOnReturn } from "./useRefreshOnReturn";
 
 // Old entries have no episode thumbnail: resolve them in ONE batched request
 // (episodes.image_url -> anime cover -> placeholder) instead of one call a card.
@@ -60,6 +64,9 @@ function KeepWatchingSection() {
   const { user } = useUser();
 
   const [watchingList, setWatchingList] = useState<KeepWatchingMediaData[]>([]);
+  // Episode thumbnails already resolved this page load: a refresh must not ask
+  // for them again.
+  const knownImages = useRef<Map<string, string>>(new Map());
   const [deletedFromWatchingList, setDeletedFromWatchingList] = useState<
     KeepWatchingMediaData[]
   >([]);
@@ -75,22 +82,38 @@ function KeepWatchingSection() {
     }
   }, [deletedFromWatchingList]);
 
-  useEffect(() => {
-    if (user || anilistUser) getWatchingList();
-  }, [user, anilistUser]);
+  const getWatchingList = useCallback(async () => {
+    // Signed-in: Supabase merged with the local copy. Guest / AniList-only: the
+    // local copy alone. Both paths go through the same call, so a guest with
+    // local progress sees the section too.
+    const continueWatchingList = (await listContinueWatchingFromServer()) || [];
 
-  async function getWatchingList() {
-    // Signed-in: latest incomplete watch_progress row per anime, from Supabase.
-    // Guest / AniList-only: the local device copy.
-    const continueWatchingList = await listContinueWatchingFromServer();
-    const withImages = await fillEpisodeImages(continueWatchingList || []);
+    const withKnownImages = continueWatchingList.map((media) => {
+      if (media.episodeImg) return media;
+      const known = knownImages.current.get(String(media.id));
+      return known ? { ...media, episodeImg: known } : media;
+    });
+
+    const withImages = await fillEpisodeImages(withKnownImages);
+
+    for (const media of withImages) {
+      if (media.episodeImg) knownImages.current.set(String(media.id), media.episodeImg);
+    }
 
     setWatchingList(withImages);
-  }
+  }, []);
+
+  // One load on mount, then a debounced reload whenever the page may have
+  // missed something (focus, bfcache restore, visibility, a player save).
+  useEffect(() => {
+    void getWatchingList();
+  }, [getWatchingList]);
+
+  useRefreshOnReturn(getWatchingList);
 
   return (
     <AnimatePresence initial={false}>
-      {(user || anilistUser) && watchingList!.length > 0 && (
+      {watchingList.length > 0 && (
         <motion.section
           id={styles.keep_watching_container}
           variants={framerMotionVariants}
