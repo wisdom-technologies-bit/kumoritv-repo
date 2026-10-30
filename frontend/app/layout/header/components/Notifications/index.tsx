@@ -69,6 +69,11 @@ function NotificationItem({ notification }: { notification: NotificationView }) 
   const title = displayTitle(notification.title);
   const cover = notification.coverImage?.large || notification.coverImage?.extraLarge || "";
   const isFinale = notification.status != "RELEASING";
+  // The cover is never an empty box: a skeleton while it loads, then either the
+  // image or a block with the title's first letter.
+  const [coverState, setCoverState] = useState<"loading" | "loaded" | "error">(
+    cover ? "loading" : "error"
+  );
 
   return (
     <li
@@ -76,11 +81,31 @@ function NotificationItem({ notification }: { notification: NotificationView }) 
       data-unread={notification.isRead ? "false" : "true"}
       aria-label={`${title}, episode ${episodeNumber} released`}
     >
-      <div className={styles.img_container}>
-        {cover ? (
-          <Image src={cover} alt="" fill sizes="56px" />
+      <div
+        className={styles.img_container}
+        data-cover-state={coverState}
+      >
+        {coverState === "error" ? (
+          <span className={styles.img_fallback} data-cover-fallback="true">
+            {title.trim().charAt(0).toUpperCase() || "?"}
+          </span>
         ) : (
-          <span className={styles.img_placeholder} aria-hidden="true" />
+          <Image
+            src={cover}
+            alt=""
+            fill
+            sizes="56px"
+            onLoad={() => setCoverState("loaded")}
+            onError={() => setCoverState("error")}
+          />
+        )}
+
+        {coverState === "loading" && (
+          <span
+            className={styles.img_skeleton}
+            data-cover-skeleton="true"
+            aria-hidden="true"
+          />
         )}
       </div>
 
@@ -263,9 +288,9 @@ function NotificationsContainer() {
             data-active={isPanelOpen}
           >
             {hasNewNotifications ? (
-              <BellFillSvg fill="white" width={16} height={16} />
+              <BellFillSvg fill="white" width={22} height={22} />
             ) : (
-              <BellSvg fill="white" width={16} height={16} />
+              <BellSvg fill="white" width={22} height={22} />
             )}
           </button>
 

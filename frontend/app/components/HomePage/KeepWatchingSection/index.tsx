@@ -124,11 +124,14 @@ function KeepWatchingSection() {
 
           <div>
             <SwiperCarouselContainer
+              // Fixed-width cards: the slide width comes from the card CSS
+              // (280px on phones, 320px from 741px up), so the swiper must not
+              // stretch them. Swiper still snaps, drags and handles a11y.
               options={{
-                slidesPerView: 2.2,
-                bp480: 2.2,
-                bp740: 3.2,
-                bp1275: 4.2,
+                slidesPerView: "auto",
+                bp480: "auto",
+                bp740: "auto",
+                bp1275: "auto",
               }}
             >
               {watchingList.map((media) => (

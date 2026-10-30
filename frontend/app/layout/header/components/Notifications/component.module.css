@@ -1,7 +1,7 @@
 #notification_container {
     position: relative;
     flex: 0 0 auto;
-    height: 32px;
+    height: var(--header-control-size, 40px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -9,29 +9,36 @@
 
 #notification_btn {
     box-sizing: border-box;
-    margin: auto;
+    margin: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 32px;
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
+    flex: 0 0 var(--header-control-size, 40px);
+    width: var(--header-control-size, 40px);
+    min-width: var(--header-control-size, 40px);
+    height: var(--header-control-size, 40px);
     padding: 0;
     border-radius: 50%;
     background-color: transparent;
     border: 0;
+    cursor: pointer;
+    transition: background-color 150ms ease-in-out;
 }
 
 #notification_btn:hover,
 #notification_btn[data-active="true"] {
-    background-color: var(--white-25);
+    background-color: var(--header-hover-surface, var(--white-25));
+}
+
+#notification_btn:focus-visible {
+    outline: var(--header-focus-ring, 2px solid var(--brand-color));
+    outline-offset: 2px;
 }
 
 #notification_btn svg {
     display: block;
-    width: 22px;
-    height: 22px;
+    width: var(--header-glyph-size, 20px);
+    height: var(--header-glyph-size, 20px);
     transform: none;
 }
 
@@ -44,13 +51,16 @@ span#notifications_badge {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 18px;
+    min-width: 18px;
     height: 18px;
+    padding: 0 4px;
     font-size: var(--font-size--small-2);
+    line-height: 1;
     position: absolute;
-    top: -3px;
-    right: -3px;
-    border-radius: 50%;
+    top: 2px;
+    right: 2px;
+    border-radius: 999px;
+    border: 1px solid var(--background);
     background: var(--brand-color);
     color: var(--white-100);
     z-index: 1;
@@ -189,19 +199,99 @@ span#notifications_badge {
     object-fit: cover;
 }
 
-.notification_item_container .img_placeholder {
-    display: block;
+.notification_item_container .img_fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
     width: 100%;
     height: 100%;
+
     background: var(--white-05);
+    color: var(--white-50);
+
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.notification_item_container .img_skeleton {
+    position: absolute;
+    inset: 0;
+
+    background: linear-gradient(
+        90deg,
+        var(--white-05) 0%,
+        var(--white-25) 50%,
+        var(--white-05) 100%
+    );
+    background-size: 200% 100%;
+
+    animation: notificationCoverShimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes notificationCoverShimmer {
+    from {
+        background-position: 200% 0;
+    }
+
+    to {
+        background-position: -200% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .notification_item_container .img_skeleton {
+        animation: none;
+    }
 }
 
 .notification_item_container .notification_item_info {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+        "heading"
+        "show"
+        "finale"
+        "meta"
+        "link";
+    align-items: start;
     gap: 4px;
     min-width: 0;
+}
+
+.notification_item_container .item_heading {
+    grid-area: heading;
+}
+
+.notification_item_container .item_show {
+    grid-area: show;
+}
+
+.notification_item_container .finale_tag {
+    grid-area: finale;
+    justify-self: start;
+}
+
+.notification_item_container .item_meta {
+    grid-area: meta;
+}
+
+.notification_item_container .watch_link {
+    grid-area: link;
+}
+
+/* DESKTOP: the pill sits at the right of the card, next to the text block. */
+@media (min-width: 641px) {
+    .notification_item_container .notification_item_info {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "heading heading"
+            "show show"
+            "finale finale"
+            "meta link";
+        align-items: center;
+    }
 }
 
 .item_heading {
@@ -265,14 +355,20 @@ span#notifications_badge {
     margin: 0;
 }
 
+/* COMPACT PILL: 34px tall, sized to its label, never a tall oval. */
 .watch_link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
 
-    min-height: 40px;
-    padding: 8px 16px;
-    margin-top: 2px;
+    justify-self: start;
+    align-self: flex-start;
+
+    width: auto;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 16px;
+    margin-top: 8px;
 
     border: 1px solid var(--white-25);
     border-radius: 999px;
@@ -280,11 +376,20 @@ span#notifications_badge {
     background: transparent;
     color: var(--white-100);
 
-    font-size: var(--font-size--small-2);
+    font-size: 0.875rem;
     font-weight: 600;
     line-height: 1;
+    letter-spacing: 0.01em;
     text-decoration: none;
     white-space: nowrap;
+}
+
+@media (min-width: 641px) {
+    .watch_link {
+        margin-top: 0;
+        justify-self: end;
+        align-self: end;
+    }
 }
 
 .watch_link:hover,
@@ -351,40 +456,19 @@ span#notifications_badge {
     }
 }
 
-/* SMALL MOBILE SCREENS: keep the badge clear of the avatar */
-
-@media (max-width: 380px) {
-    #notification_btn {
-        flex-basis: 30px;
-        width: 30px;
-        min-width: 30px;
-        height: 30px;
-    }
-
-    #notification_btn svg {
-        width: 20px;
-        height: 20px;
-    }
-
-    #notification_container {
-        height: 30px;
-    }
-}
+/* SMALL MOBILE SCREENS: the tap targets stay 44px, only the badge tightens */
 
 @media (max-width: 400px) {
+    /* The badge sticks out to the right: keep the bell clear of the avatar. */
     #notification_container {
         margin-right: 4px;
     }
 
     span#notifications_badge {
-        width: 16px;
+        min-width: 16px;
         height: 16px;
-        top: -2px;
-        right: -2px;
+        top: 1px;
+        right: 1px;
         font-size: 0.62rem;
-    }
-
-    #results_container {
-        top: 64px;
     }
 }

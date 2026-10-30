@@ -1,4 +1,5 @@
-import React, { MouseEventHandler, useId } from "react";
+"use client";
+import React, { useState } from "react";
 import styles from "./component.module.css";
 import Image from "next/image";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
@@ -7,33 +8,43 @@ import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
 import { displayTitle } from "@/app/lib/titles";
 
 type SearchResultsTypes = {
-  handleChoseResult?: MouseEventHandler<HTMLDivElement>;
+  handleChoseResult?: () => void;
   mediaFromAnilist?: MediaData;
   mediaFromOfflineDB?: MediaOnJSONFile;
+  isActive?: boolean;
+  onActivate?: () => void;
+  onFocusResult?: () => void;
+  onArrowDown?: () => void;
+  onArrowUp?: () => void;
 };
+
+/** "TV_SHORT" -> "TV Short", "TV" -> "TV", "ONE_SHOT" -> "One Shot" */
+function readableFormat(format?: string | null) {
+  if (!format) return "";
+
+  return format
+    .split("_")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      // AniList's two-letter abbreviation stays uppercase.
+      if (lower === "tv") return "TV";
+
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
 
 function SearchResultItemCard({
   handleChoseResult,
   mediaFromAnilist,
   mediaFromOfflineDB,
+  isActive = false,
+  onActivate,
+  onFocusResult,
+  onArrowDown,
+  onArrowUp,
 }: SearchResultsTypes) {
-  const elementId = useId();
-
-  // change title color to the informed on Item Data when hovered
-  function changeHeadingColor(isHovering: boolean) {
-    const el = document
-      .getElementById(elementId)!
-      .getElementsByTagName("h5")[0]
-      .getElementsByTagName("a")[0];
-
-    if (isHovering)
-      return (el!.style.color =
-        mediaFromAnilist?.coverImage?.color || "var(--white-100)");
-
-    el!.style.color = "var(--white-100)";
-
-    return;
-  }
+  const [coverFailed, setCoverFailed] = useState(false);
 
   const imgSource =
     mediaFromAnilist?.coverImage?.large ||
@@ -45,90 +56,84 @@ function SearchResultItemCard({
     ? displayTitle(mediaFromAnilist.title)
     : displayTitle(mediaFromOfflineDB?.title);
 
-  const mediaType = mediaFromAnilist?.type
-    ? mediaFromAnilist.type
-    : mediaFromOfflineDB?.type || "No Type Defined";
+  const mediaType = (
+    mediaFromAnilist?.type ||
+    mediaFromOfflineDB?.type ||
+    ""
+  ).toString();
+
+  const format = readableFormat(mediaFromAnilist?.format);
+  const year =
+    mediaFromAnilist?.startDate?.year ||
+    mediaFromAnilist?.seasonYear ||
+    mediaFromOfflineDB?.animeSeason?.year ||
+    null;
+  const genres = (
+    mediaFromAnilist?.genres?.length
+      ? mediaFromAnilist.genres
+      : ((mediaFromOfflineDB?.tags ?? []) as string[])
+  )
+    .slice(0, 3)
+    .map((genre) => genre.charAt(0).toUpperCase() + genre.slice(1));
+
+  const metaLine = [format, year ? String(year) : null, genres.join(", ") || null]
+    .filter(Boolean)
+    .join(" · ");
+
+  const href = `/media/${mediaFromAnilist?.id || mediaFromOfflineDB?.anilistId}`;
 
   return (
     <li
-      id={elementId}
       className={styles.result_container}
-      onMouseEnter={() => {
-        changeHeadingColor(true);
-      }}
-      onMouseLeave={() => {
-        changeHeadingColor(false);
-      }}
+      data-active={isActive}
+      data-search-row-item="true"
+      onMouseEnter={onActivate}
     >
-      <div className={styles.image_container} onClick={handleChoseResult}>
-        <Link
-          href={`/media/${
-            mediaFromAnilist?.id || mediaFromOfflineDB?.anilistId
-          }`}
-        >
-          <Image
-            src={imgSource}
-            alt={`Cover Art for ${mediaTitle}`}
-            fill
-            sizes="90px"
-          ></Image>
-        </Link>
-      </div>
+      <Link
+        className={styles.result_link}
+        href={href}
+        data-search-row="true"
+        aria-current={isActive ? "true" : undefined}
+        onClick={handleChoseResult}
+        onFocus={onFocusResult}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            onArrowDown?.();
+          }
 
-      <div className={styles.result_info_container}>
-        <h5 onClick={handleChoseResult}>
-          <Link
-            href={`/media/${
-              mediaFromAnilist?.id || mediaFromOfflineDB?.anilistId
-            }`}
-          >
-            {mediaTitle}
-          </Link>
-        </h5>
-
-        <div>
-          {mediaFromAnilist?.genres && (
-            <ul className={`display_flex_row ${styles.genres_container}`}>
-              {mediaFromAnilist.genres.slice(0, 3).map((item: string, key) => (
-                <li key={key}>
-                  <Link href={`/genre/${item.toLowerCase()}`}>{item}</Link>
-                </li>
-              ))}
-            </ul>
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            onArrowUp?.();
+          }
+        }}
+      >
+        <span className={styles.cover_container} data-cover-failed={coverFailed}>
+          {imgSource && !coverFailed ? (
+            <Image
+              src={imgSource}
+              alt=""
+              fill
+              sizes="56px"
+              onError={() => setCoverFailed(true)}
+            />
+          ) : (
+            <span className={styles.cover_fallback} aria-hidden="true">
+              {mediaTitle.trim().charAt(0).toUpperCase() || "?"}
+            </span>
           )}
+        </span>
 
-          {mediaFromOfflineDB?.tags && (
-            <ul className={`display_flex_row ${styles.genres_container}`}>
-              {mediaFromOfflineDB.tags.slice(0, 3).map((item: string, key) => (
-                <li key={key}>
-                  <Link href={`/genre/${item.toLowerCase()}`}>
-                    {item.slice(0, 1).toUpperCase() + item.slice(1)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+        <span className={styles.result_info_container}>
+          <span className={styles.result_title}>{mediaTitle}</span>
 
-          <div className={`${styles.width_flex} display_flex_row`}>
-            <p>
-              {mediaFromAnilist?.isAdult && <span>+18</span>}
-              {mediaType}
-            </p>
+          {metaLine && <span className={styles.result_meta}>{metaLine}</span>}
+        </span>
 
-            {mediaFromAnilist?.startDate != undefined ? (
-              <small>
-                {mediaType == "ANIME" && "First aired in "}
-                {mediaType == "MANGA" && "Published in "}
-                {mediaFromAnilist.startDate.year}
-              </small>
-            ) : (
-              <small>
-                {mediaFromOfflineDB?.animeSeason.year || "No Date Available"}
-              </small>
-            )}
-          </div>
-        </div>
-      </div>
+        {mediaType && (
+          <span className={styles.type_tag}>{mediaType.toUpperCase()}</span>
+        )}
+      </Link>
     </li>
   );
 }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { anilistCookieMaxAge } from "@/app/lib/user/anilistLogin";
 
 // HANDLES ACCESS TOKEN FOR ANILIST USERS
 export async function POST(request: NextRequest) {
@@ -20,11 +21,16 @@ export async function POST(request: NextRequest) {
         }
       );
 
+    // `expiresIn` is a number of SECONDS. The old code fed it to `expires`
+    // (milliseconds) so the cookie died after ~8h instead of the token's lifetime.
     cookies().set({
       name: "access_token",
       value: JSON.stringify(anilistTokenData) || "",
       httpOnly: true,
-      expires: Date.now() + Number(anilistTokenData.expiresIn),
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: anilistCookieMaxAge(anilistTokenData.expiresIn),
     });
 
     return NextResponse.json(

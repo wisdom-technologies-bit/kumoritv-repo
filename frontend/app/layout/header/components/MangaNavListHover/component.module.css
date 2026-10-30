@@ -1,102 +1,131 @@
+/* MANGA DROPDOWN
+   Mirrors the anime dropdown (AnimeNavListHover/component.module.css): same
+   anchoring below the header, same z-index, same inner padding and column
+   rhythm. Only the grid ratio (1fr 2fr 3fr) is manga-specific. */
+
 #manga_header_nav_container {
-
-    z-index: 2;
     position: absolute;
-    top: 69px;
+    top: calc(100% + 8px);
     left: 0;
+    right: 0;
+    z-index: 50;
 
-    padding-top: 32px;
-    padding-bottom: 64px;
-    padding-left: 64px;
-    padding-right: 64px;
-
+    width: min(100vw, var(--breakpoint-xxl));
+    max-width: var(--breakpoint-xxl);
+    margin: 0 auto;
+    padding: 32px 64px 64px;
+    box-sizing: border-box;
     background-color: var(--black-100);
 
-    width: 100%;
-
+    list-style: none;
 }
 
-#manga_header_nav_container>li {
-
-    max-width: var(--breakpoint-xxl);
-
-    margin: auto;
-
+#manga_header_nav_container > li {
     display: grid;
-
-}
-
-#manga_header_nav_container>li {
-
     grid-template-columns: 1fr 2fr 3fr;
     gap: 32px;
 
+    max-width: var(--breakpoint-xxl);
+    width: 100%;
+    margin: 0 auto;
+
+    list-style: none;
 }
 
-#manga_header_nav_container>li>div:nth-child(2) {
+#manga_header_nav_container > li > div {
+    min-width: 0;
+}
 
-    padding: 0 24px;
+#manga_header_nav_container > li > div > h5 {
+    margin: 0 0 24px;
+    font-size: var(--font-size--p);
+    color: var(--white-100);
+}
 
-    border-left: 1px solid var(--white-25);
-    border-right: 1px solid var(--white-25);
+#manga_header_nav_container > li > div li a {
+    color: var(--white-100);
+    font-size: var(--font-size--small-1);
+    text-decoration: none;
+}
 
+#manga_header_nav_container > li > div li a:hover {
+    color: var(--brand-color);
+}
+
+/* TOPICS COLUMN */
+
+#manga_header_nav_container #topics_container ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 #manga_header_nav_container #topics_container li {
-
-    padding: 6px 0;
-
-}
-
-#list_picked_container ul {
-
-    display: grid;
-    gap: 16px;
-    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-
-}
-
-#list_picked_container ul li small {
-
-    color: var(--white-50);
-
-}
-
-#list_picked_container ul li a {
-
-    color: var(--white-100);
-
-}
-
-#manga_header_nav_container>li>div>h5 {
-
-    margin-bottom: 24px;
-
-    font-size: var(--font-size--p);
-
-}
-
-#manga_header_nav_container>li>div li a {
-
-    font-size: var(--font-size--small-1);
-
+    padding: 8px 0;
 }
 
 #manga_header_nav_container #topics_container a {
-
     font-weight: 600;
-
 }
 
-#manga_header_nav_container>li>div li a:hover {
+/* BORDERED MIDDLE COLUMN */
 
-    color: var(--brand-color);
+#manga_header_nav_container > li > div#manga_card_container {
+    padding: 0 16px;
+    border-left: 1px solid var(--white-25);
+    border-right: 1px solid var(--white-25);
+}
 
+#manga_card_container > div {
+    display: grid;
+    grid-template-columns: minmax(110px, 160px) 1fr;
+    gap: 16px;
 }
 
 #manga_card_container p,
 #manga_card_container p p {
-
     font-size: var(--font-size--small-2);
+    color: var(--white-100);
+}
 
+/* PICKED FOR YOU */
+
+#list_picked_container ul {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+#list_picked_container ul li {
+    min-width: 0;
+}
+
+#list_picked_container ul li small {
+    color: var(--white-50);
+}
+
+#list_picked_container ul li a {
+    color: var(--white-100);
+}
+
+/* Between the two desktop breakpoints the fixed 64px gutters get tight: shrink
+   them so the three columns never overflow or clip. */
+@media (max-width: 1200px) {
+    #manga_header_nav_container {
+        padding: 24px 32px 48px;
+    }
+
+    #manga_header_nav_container > li {
+        gap: 24px;
+    }
+}
+
+@media (max-width: 1059px) {
+    #manga_header_nav_container {
+        display: none;
+    }
 }

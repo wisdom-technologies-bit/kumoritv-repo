@@ -1,0 +1,68 @@
+/* AniList login notice: a small fixed pill under the header. */
+
+.notice {
+    position: fixed;
+    top: 76px;
+    left: 12px;
+    right: 12px;
+    z-index: 150;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px 12px 12px 16px;
+
+    background-color: var(--background);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    color: var(--white-100);
+}
+
+.notice p {
+    font-size: var(--font-size--small-2);
+    line-height: 1.35;
+    margin: 0;
+}
+
+.notice_close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+
+    margin: 0;
+    padding: 0;
+
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+
+    color: var(--white-75);
+    font-size: 1.4rem;
+    line-height: 1;
+
+    cursor: pointer;
+}
+
+.notice_close:hover,
+.notice_close:focus-visible {
+    background: var(--white-05);
+    color: var(--white-100);
+    outline: none;
+}
+
+@media (max-width: 640px) {
+    .notice {
+        top: 72px;
+        border-radius: 16px;
+    }
+}

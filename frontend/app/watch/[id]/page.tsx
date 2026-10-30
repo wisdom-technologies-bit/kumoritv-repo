@@ -15,6 +15,7 @@ import {
   parseEpisodeNumber,
 } from "@/app/lib/seo/titles";
 import { absoluteUrl } from "@/app/lib/seo/text";
+import { episodeExistsInDb, watchRobots } from "@/app/lib/seo/watch-indexability";
 import VideoPlayer from "./components/VideoPlayer";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
@@ -63,20 +64,24 @@ export async function generateMetadata({
   const canonical = buildWatchCanonical(id, episode, media.format);
   const image = { url: ogImageUrl(id, episode), width: 1200, height: 630, alt: title };
 
+  // No episode row in `episodes` -> nothing to play: keep the page working but
+  // keep it (and its canonical) out of the index.
+  const episodeExists = episodeExistsInDb(seo);
+
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: episodeExists ? { canonical } : undefined,
     openGraph: {
       type: "video.episode",
       title,
       description,
-      url: canonical,
+      ...(episodeExists ? { url: canonical } : {}),
       siteName: "KumoriTV",
       images: [image],
     },
     twitter: { card: "summary_large_image", title, description, images: [image] },
-    robots: { index: true, follow: true },
+    robots: watchRobots(episodeExists),
   };
 }
 

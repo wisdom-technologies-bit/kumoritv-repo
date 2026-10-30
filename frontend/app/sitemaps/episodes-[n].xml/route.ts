@@ -1,4 +1,14 @@
-import { rows, sitemapDoc, sitemapUrl, watchUrl, xmlResponse } from "@/lib/sitemap";
+import { buildEpisodesSitemap, fetchEpisodeSlice, getSitemapDb, xmlResponse } from "@/lib/sitemap";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 3600;
-export async function GET(_request: Request, context: { params: { n: string } }) { const page = Math.max(1, Number(context.params.n) || 1); const [episodes, anime] = await Promise.all([rows("airing_episodes", "anilist_id,episode,aired_at", "aired_at", (q) => q.gte("aired_at", new Date(Date.now() - 60 * 86400000).toISOString())), rows("discovered_anime", "anilist_id,episodes_total,status,popularity", "popularity")]); const seen = new Map<string, any>(); for (const row of episodes) seen.set(`${row.anilist_id}-${row.episode}`, row); for (const row of anime) seen.set(`${row.anilist_id}-1`, { ...row, episode: 1 }); for (const row of anime.slice(0, 2000)) { const max = Math.min(3000, row.status === "FINISHED" ? row.episodes_total || 1 : Math.max(1, ...episodes.filter((item: any) => item.anilist_id === row.anilist_id).map((item: any) => item.episode))); for (let episode = 1; episode <= max; episode += 1) seen.set(`${row.anilist_id}-${episode}`, { ...row, episode }); } const data = Array.from(seen.values()).sort((a, b) => a.anilist_id - b.anilist_id || a.episode - b.episode); const slice = data.slice((page - 1) * 40000, page * 40000); return xmlResponse(sitemapDoc(slice.map((row) => sitemapUrl(watchUrl(row.anilist_id, row.episode), row.aired_at))), 3600); }
+
+// One page of /watch/{id}?ep=N URLs. Every URL comes straight from the
+// `sitemap_episodes` view, so an episode is listed only when it is stored with a
+// provider and its anime exists. No 1..N generation, no AniList guesses.
+export async function GET(_request: Request, context: { params: { n: string } }) {
+  const page = Math.max(1, Number(context.params.n) || 1);
+  const episodes = await fetchEpisodeSlice(getSitemapDb(), page);
+
+  return xmlResponse(buildEpisodesSitemap(episodes), 3600);
+}

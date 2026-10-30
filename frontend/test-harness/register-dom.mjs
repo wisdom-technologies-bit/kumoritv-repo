@@ -31,25 +31,80 @@ dom.window.cancelAnimationFrame = (handle) => clearTimeout(handle);
 // jsdom cannot navigate and its `location` is unforgeable, so the global `window`
 // is a thin proxy that hands out a plain location object instead. Everything else
 // is the real jsdom window (methods keep their own `this`).
+// Single source of truth for the (unforgeable) location. `history.replaceState` is
+// wrapped as well so code that strips a query/hash from the URL (the AniList login
+// does) is observable in tests instead of silently updating jsdom's own URL.
+const locationState = { url: "http://localhost:3000/" };
+
+function locationUrl() {
+  try {
+    return new URL(locationState.url, "http://localhost:3000");
+  } catch {
+    return new URL("http://localhost:3000/");
+  }
+}
+
+const realReplaceState = dom.window.history.replaceState.bind(dom.window.history);
+dom.window.history.replaceState = function replaceState(data, title, next) {
+  if (typeof next === "string") {
+    const resolved = new URL(next, locationUrl());
+
+    locationState.url = resolved.href;
+  }
+
+  try {
+    realReplaceState(data, title, next);
+  } catch {
+    /* jsdom refuses cross-document state writes */
+  }
+};
+
 const locationStub = {
-  href: "http://localhost:3000/",
-  origin: "http://localhost:3000",
-  protocol: "http:",
-  host: "localhost:3000",
-  hostname: "localhost",
-  port: "3000",
-  pathname: "/",
-  search: "",
-  hash: "",
+  get href() {
+    return locationState.url;
+  },
+  set href(value) {
+    locationState.url = String(value);
+  },
+  get origin() {
+    return locationUrl().origin;
+  },
+  get protocol() {
+    return locationUrl().protocol;
+  },
+  get host() {
+    return locationUrl().host;
+  },
+  get hostname() {
+    return locationUrl().hostname;
+  },
+  get port() {
+    return locationUrl().port;
+  },
+  get pathname() {
+    return locationUrl().pathname;
+  },
+  get search() {
+    return locationUrl().search;
+  },
+  get hash() {
+    return locationUrl().hash;
+  },
+  set hash(value) {
+    const next = locationUrl();
+
+    next.hash = String(value ?? "");
+    locationState.url = next.href;
+  },
   assign(url) {
-    this.href = url;
+    locationState.url = String(url);
   },
   replace(url) {
-    this.href = url;
+    locationState.url = String(url);
   },
   reload() {},
   toString() {
-    return this.href;
+    return locationState.url;
   },
 };
 
