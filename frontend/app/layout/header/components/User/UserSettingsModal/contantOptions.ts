@@ -1,3 +1,10 @@
+// Option lists for the settings modal.
+//
+// `qualityOptions` and `titlePrefferedLanguages` are kept for reference only: the
+// wiring audit found that `profiles.video_quality` and `profiles.title_language`
+// are written but never read anywhere in the app, so their controls are hidden
+// instead of shown. Saved values are left untouched.
+
 export const languagesOptions = [
   { name: "Arabic", value: "Arabic" },
   { name: "Chinese", value: "Chinese" },

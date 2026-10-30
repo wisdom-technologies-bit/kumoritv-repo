@@ -1,27 +1,21 @@
+"use client";
 import { AnimatePresence, motion } from "framer-motion";
-import React, { MouseEventHandler, useState } from "react";
+import React, { MouseEventHandler, useCallback, useEffect, useRef, useState } from "react";
 import styles from "./component.module.css";
-import CheckSvg from "@/public/assets/check-circle-fill.svg";
-import LoadingSvg from "@/public/assets/ripple-1s-200px.svg";
 import CloseSvg from "@/public/assets/x.svg";
+import CheckSvg from "@/public/assets/check-circle-fill.svg";
 import UserSvg from "@/public/assets/person-circle.svg";
-import VideoSvg from "@/public/assets/play.svg";
-import SourceSvg from "@/public/assets/globe2.svg";
-import DeleteSvg from "@/public/assets/trash.svg";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import * as contantOptions from "./contantOptions";
 import anilistUsersActions from "@/app/api/anilist/anilistUsers";
-import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
-import { removeCookies } from "@/app/lib/user/anilistUserLoginOptions";
-import { sourcesAvailable } from "@/app/data/animeSourcesAvailable";
 import { getPrefs, setPref } from "@/app/lib/user-data/prefs";
 import { clearFavourites } from "@/app/lib/user-data/favourites";
 import { clearProgress } from "@/app/lib/user-data/progress";
 import { clearNotifications } from "@/app/lib/user-data/notifications";
 import { clearUserScopedCaches } from "@/app/lib/user-data/merge";
-import { useRouter } from "next/navigation";
 
 type SettingsTypes = {
   onClick?:
@@ -35,13 +29,62 @@ type SettingsTypes = {
   newUser?: boolean;
 };
 
+type AudioPreference = "sub" | "dub";
+
+// Everything the form can change. Columns that no part of the app reads
+// (title_language, video_quality) and the legacy source / wrong-media-alert
+// settings are intentionally absent: see the wiring audit in the PR notes.
+type SettingsForm = {
+  username: string;
+  avatarUrl: string | null;
+  subtitleLanguage: string;
+  preferredAudio: AudioPreference;
+  autoSkip: boolean;
+  autoNext: boolean;
+  showAdult: boolean;
+};
+
+type DeleteTarget = "favourites" | "history" | "notifications" | "account";
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+const DELETE_COPY: Record<
+  DeleteTarget,
+  { title: string; body: string; action: string; done: string }
+> = {
+  favourites: {
+    title: "Delete favourites?",
+    body: "This removes every title you saved. This cannot be undone.",
+    action: "Delete favourites",
+    done: "Favourites deleted",
+  },
+  history: {
+    title: "Delete watch history?",
+    body: "This cannot be undone.",
+    action: "Delete watch history",
+    done: "Watch history deleted",
+  },
+  notifications: {
+    title: "Delete notifications?",
+    body: "This cannot be undone.",
+    action: "Delete notifications",
+    done: "Notifications deleted",
+  },
+  account: {
+    title: "Delete account?",
+    body: "Every saved title, watch history and notification is removed. This cannot be undone.",
+    action: "Delete account",
+    done: "Account deleted",
+  },
+};
+
 const framerMotionDropIn = {
   hidden: {
-    x: "-100vw",
+    y: 24,
     opacity: 0,
   },
   visible: {
-    x: "0",
+    y: 0,
     opacity: 1,
     transition: {
       duration: 0.2,
@@ -51,875 +94,747 @@ const framerMotionDropIn = {
     },
   },
   exit: {
-    x: "100vw",
+    y: 24,
     opacity: 0,
   },
 };
 
-const framerMotionBtnVariants = {
-  tap: {
-    scale: 0.9,
-  },
-};
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** The cookie cleanup the old form did through anilistUserLoginOptions. */
+async function clearSiteCookies() {
+  const origin = process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || "";
+  const routes = ["/api/media-title-language", "/api/subtitle", "/api/anilist"];
+
+  for (const route of routes) {
+    try {
+      await fetch(`${origin}${route}`, { method: "DELETE" });
+    } catch {
+      /* cookies are best effort */
+    }
+  }
+}
+
+function SectionHeading({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className={styles.card_heading}>
+      <h3>{title}</h3>
+      <p className={styles.card_description}>{description}</p>
+    </div>
+  );
+}
+
+function SwitchRow({
+  id,
+  name,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className={styles.switch_row}>
+      <label className={styles.switch_text} htmlFor={id}>
+        <span className={styles.switch_label}>{label}</span>
+        {description && <span className={styles.switch_desc}>{description}</span>}
+      </label>
+
+      <span className={styles.switch_control}>
+        <input
+          id={id}
+          type="checkbox"
+          role="switch"
+          name={name}
+          className={styles.switch_input}
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span className={styles.switch_track} aria-hidden="true" />
+      </span>
+    </div>
+  );
+}
 
 function UserSettingsModal({
   onClick,
-  auth,
   anilistUser,
   newUser,
 }: SettingsTypes) {
   const { user: supabaseUser, profile } = useUser();
   const router = useRouter();
   const client = createBrowserSupabaseClient();
-  const user = supabaseUser ? {
-    uid: supabaseUser.id,
-    photoURL: profile?.avatar_url || supabaseUser.user_metadata?.avatar_url || null,
-    displayName: profile?.display_name || profile?.username || supabaseUser.user_metadata?.username || null,
-    isAnonymous: supabaseUser.is_anonymous ?? false,
-  } : null;
-  const [userAnilist] = useState<UserAnilist | undefined | null>(anilistUser);
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [wasSuccessfull, setWasSuccessfull] = useState<boolean | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
-  const [openUserProfilePanel, setOpenUserProfilePanel] =
-    useState<boolean>(false);
-  const [newImgProfileSelected, setNewImgProfileSelected] = useState<
-    string | null
-  >(null);
+  const [initial, setInitial] = useState<SettingsForm | null>(null);
+  const [form, setForm] = useState<SettingsForm | null>(null);
 
-  const [deleteBookmarksClick, setDeleteBookmarksClick] =
-    useState<boolean>(false);
-  const [deleteEpisodesClick, setDeleteEpisodesClick] =
-    useState<boolean>(false);
-  const [deleteNotificationsClick, setDeleteNotificationsClick] =
-    useState<boolean>(false);
-  const [deleteAccountClick, setDeleteAccountClick] = useState<boolean>(false);
+  const [openUserProfilePanel, setOpenUserProfilePanel] = useState<boolean>(false);
+  const [pendingDelete, setPendingDelete] = useState<DeleteTarget | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState<string>("");
 
-  const [currentLang, setCurrentLang] = useState<string | null>(null);
-  const [currentSource, setCurrentSource] = useState<string | null>(null);
-  const [currentTitleLang, setCurrentTitleLang] = useState<string | null>(null);
-  const [currentQuality, setCurrentQuality] = useState<string | null>(null);
-  const [currentShowAdultContent, setCurrentShowAdultContent] = useState<
-    boolean | null
-  >(null);
-  const [currentPlayWrongMediaEnabled, setCurrentPlayWrongMediaEnabled] =
-    useState<boolean | null>(null);
-  const [currentSkipIntroAndOutro, setCurrentSkipIntroAndOutro] = useState<
-    boolean | null
-  >(null);
-  const [currentNextEpisode, setCurrentNextEpisode] = useState<boolean | null>(
-    null
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string>("");
+
+  const isSignedIn = Boolean(supabaseUser);
+  const isAnonymous = supabaseUser?.is_anonymous ?? false;
+  const canEditProfile = isSignedIn;
+
+  // Load once: prefs (profiles for signed-in users, localStorage for guests) plus
+  // the adult content flag the server owns.
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      const prefs = await getPrefs();
+
+      let showAdult = false;
+
+      try {
+        const response = await fetch("/api/adult-content", { cache: "no-store" });
+
+        if (response.ok) {
+          const state = await response.json();
+          showAdult = state?.show === true;
+        }
+      } catch {
+        showAdult = false;
+      }
+
+      if (!active) return;
+
+      const next: SettingsForm = {
+        username:
+          profile?.username ||
+          profile?.display_name ||
+          (supabaseUser?.user_metadata?.username as string) ||
+          "",
+        avatarUrl: profile?.avatar_url || null,
+        subtitleLanguage: prefs.subtitle_language || "English",
+        preferredAudio: prefs.dubEpisodes ? "dub" : "sub",
+        autoSkip: Boolean(prefs.autoSkip),
+        autoNext: Boolean(prefs.autoNext),
+        showAdult,
+      };
+
+      setForm(next);
+      setInitial(next);
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const closeModal = useCallback(() => {
+    if (newUser) return;
+
+    (onClick as MouseEventHandler<HTMLDivElement>)?.(
+      undefined as unknown as React.MouseEvent<HTMLDivElement>
+    );
+  }, [newUser, onClick]);
+
+  // Focus lands inside the dialog, Tab is trapped, Escape closes, and the element
+  // that opened the modal gets focus back.
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+
+    const node = modalRef.current;
+    const firstField = node?.querySelector<HTMLElement>(FOCUSABLE);
+    firstField?.focus?.();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+
+        setPendingDelete((current) => {
+          if (current) return null;
+
+          closeModal();
+
+          return null;
+        });
+
+        return;
+      }
+
+      if (event.key !== "Tab" || !node) return;
+
+      const focusables = Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE));
+
+      if (focusables.length === 0) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeElement = document.activeElement;
+
+      if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+
+      restoreFocusRef.current?.focus?.();
+    };
+  }, [closeModal]);
+
+  const update = useCallback(<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) => {
+    setForm((current) => (current ? { ...current, [key]: value } : current));
+    setStatus("idle");
+    setErrorMessage("");
+  }, []);
+
+  const isDirty = Boolean(
+    form && initial && JSON.stringify(form) !== JSON.stringify(initial)
   );
 
   async function handleUpdateUserInfoForm(
-    e: React.FormEvent<HTMLFormElement> | HTMLFormElement
+    event: React.FormEvent<HTMLFormElement> | HTMLFormElement
   ) {
-    e.preventDefault();
+    event.preventDefault();
 
-    if (!user && !userAnilist) return;
+    if (!form || !initial || status === "saving") return;
 
-    setIsLoading(true);
-    setWasSuccessfull(false);
+    setStatus("saving");
+    setErrorMessage("");
 
-    const form = e.target as HTMLFormElement;
-
-    if (user && client) {
-      const username = user.isAnonymous ? profile?.username : String(form.username.value || "").slice(0, 40);
-      const { error } = await (client as any).from("profiles").update({
-        username: username || profile?.username,
-        display_name: user.isAnonymous ? "Anonymous" : username || profile?.display_name,
-        avatar_url: newImgProfileSelected || profile?.avatar_url,
-        title_language: form.mediaTitlePreferredLang.value,
-        subtitle_language: form.language.value,
-        preferred_audio: form.source.value,
-        video_quality: form.quality.value,
-        auto_next: form.autoNextEpisode.checked,
-        auto_skip: form.skipIntroAndOutro.checked,
-      }).eq("id", user.uid);
-      if (error) throw error;
-    }
-
-    // Playback preferences: profiles table when signed in, localStorage for guests
-    // (an AniList-only user has no Supabase session and behaves as a guest).
-    await setPref("autoNext", form.autoNextEpisode.checked);
-    await setPref("autoSkip", form.skipIntroAndOutro.checked);
-    await setPref("subtitle_language", form.language.value);
-
-    // Profile when signed in, cookie for guests; the server reads it on every
-    // AniList request, so lists update on the next router refresh.
     try {
-      await fetch("/api/adult-content", {
+      if (supabaseUser && client) {
+        // Only the columns this form owns are written. `preferred_audio` is set
+        // through setPref below (sub/dub), never from a legacy source name.
+        const patch: Record<string, unknown> = {
+          avatar_url: form.avatarUrl || profile?.avatar_url || null,
+        };
+
+        if (!isAnonymous) {
+          const username = form.username.trim().slice(0, 40);
+
+          if (username) {
+            patch.username = username;
+            patch.display_name = username;
+          }
+        }
+
+        const { error } = await (client as any)
+          .from("profiles")
+          .update(patch)
+          .eq("id", supabaseUser.id);
+
+        if (error) throw error;
+      }
+
+      // Playback preferences: profiles table when signed in, localStorage for guests.
+      await setPref("subtitle_language", form.subtitleLanguage);
+      await setPref("autoSkip", form.autoSkip);
+      await setPref("autoNext", form.autoNext);
+      await setPref("dubEpisodes", form.preferredAudio === "dub");
+
+      const adultResponse = await fetch("/api/adult-content", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ enabled: form.showAdultContent.checked === true }),
+        body: JSON.stringify({ enabled: form.showAdult === true }),
       });
+
+      if (!adultResponse.ok) throw new Error("adult content preference not saved");
+
+      if (anilistUser) {
+        await anilistUsersActions.handleAdultContentSetting({
+          isEnabled: `${form.showAdult}`,
+        });
+
+        await anilistUsersActions.handleSubtitleLanguageSetting({
+          lang: form.subtitleLanguage,
+        });
+      }
+
       router.refresh();
+
+      setInitial({ ...form });
+      setStatus("saved");
     } catch {
-      /* keep the rest of the settings saving */
-    }
-
-    await (onClick as ((value: void) => void | PromiseLike<void>) | null | undefined)?.();
-
-    if (userAnilist) {
-      await anilistUsersActions.handleMediaTitleLanguageSetting({
-        lang: form.mediaTitlePreferredLang.value,
-      });
-
-      await anilistUsersActions.handleAdultContentSetting({
-        isEnabled: `${form.showAdultContent.checked}`,
-      });
-
-      await anilistUsersActions.handleSubtitleLanguageSetting({
-        lang: form.language.value,
-      });
-
-      await anilistUsersActions.handlePlayWrongMediaSetting({
-        isEnabled: `${form.playVideoWhenMismatch.checked}`,
-      });
-    } else {
-      await userSettingsActions.setMediaTitleLanguageCookie({
-        lang: form.mediaTitlePreferredLang.value,
-      });
-
-      await userSettingsActions.setSubtitleLanguageCookie({
-        lang: form.language.value,
-      });
-
-      await userSettingsActions.setPlayWrongMediaCookie({
-        playWrongMedia: `${form.playVideoWhenMismatch.checked}`,
-      });
-    }
-
-    setIsLoading(false);
-    setWasSuccessfull(true);
-  }
-
-  async function deleteOptions(
-    option: "account" | "bookmarks" | "notifications" | "episodes"
-  ) {
-    if (!user && !userAnilist) return;
-
-    setIsLoading(true);
-    setWasSuccessfull(false);
-
-    switch (option) {
-      case "bookmarks":
-        await clearFavourites();
-
-        setIsLoading(false);
-        setWasSuccessfull(true);
-
-        break;
-
-      case "episodes":
-        await clearProgress();
-
-        setIsLoading(false);
-        setWasSuccessfull(true);
-
-        break;
-
-      case "notifications":
-        await clearNotifications();
-
-        setIsLoading(false);
-        setWasSuccessfull(true);
-
-        break;
-
-      case "account":
-        if (user) {
-          const response = await fetch("/api/account/delete", { method: "POST" });
-          if (!response.ok) throw new Error("Unable to delete account");
-          await client?.auth.signOut();
-        } else {
-          clearUserScopedCaches();
-          removeCookies();
-        }
-        window.location.href = "/";
-        break;
-
-      default:
-        return;
+      setStatus("error");
+      setErrorMessage("We could not save your changes. Please try again.");
     }
   }
 
-  // Adult content is hidden by default; the server knows the profile/cookie value
-  // for signed-in users and guests alike.
-  (async function getAdultContentPreference() {
+  async function runDelete(target: DeleteTarget) {
+    setPendingDelete(null);
+    setErrorMessage("");
+
     try {
-      const response = await fetch("/api/adult-content", { cache: "no-store" });
-      if (!response.ok) throw new Error("unavailable");
-      const state = await response.json();
-      setCurrentShowAdultContent(state?.show === true);
+      switch (target) {
+        case "favourites":
+          await clearFavourites();
+          break;
+
+        case "history":
+          await clearProgress();
+          break;
+
+        case "notifications":
+          await clearNotifications();
+          break;
+
+        case "account":
+          if (supabaseUser) {
+            const response = await fetch("/api/account/delete", { method: "POST" });
+
+            if (!response.ok) throw new Error("Unable to delete account");
+
+            await client?.auth.signOut();
+          } else {
+            clearUserScopedCaches();
+            await clearSiteCookies();
+          }
+
+          window.location.href = "/";
+          return;
+
+        default:
+          return;
+      }
+
+      setStatus("idle");
+      setErrorMessage(DELETE_COPY[target].done);
     } catch {
-      setCurrentShowAdultContent(false);
+      setErrorMessage("That could not be deleted. Please try again.");
+    } finally {
+      setDeleteConfirmText("");
     }
-  })();
+  }
 
-  (async function getUserSavedSettings() {
-    if (!user && !userAnilist) return;
+  const avatarSrc =
+    form?.avatarUrl || profile?.avatar_url || anilistUser?.avatar?.large || null;
 
-    const prefs = await getPrefs();
-
-    setCurrentLang(prefs.subtitle_language || "English");
-    setCurrentSource(currentSource || "crunchyroll");
-    setCurrentTitleLang(profile?.title_language || "romaji");
-    setCurrentQuality(profile?.video_quality || "auto");
-    setCurrentSkipIntroAndOutro(prefs.autoSkip);
-    setCurrentNextEpisode(prefs.autoNext);
-    setCurrentPlayWrongMediaEnabled(false);
-  })();
+  const confirmCopy = pendingDelete ? DELETE_COPY[pendingDelete] : null;
+  const accountDeleteReady = deleteConfirmText.trim().toUpperCase() === "DELETE";
 
   return (
     <motion.div
       id={styles.backdrop}
-      onClick={
-        !newUser ? (onClick as MouseEventHandler<HTMLDivElement>) : undefined
-      }
+      onClick={!newUser ? closeModal : undefined}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      data-disabled-scroll={true}
     >
       <motion.div
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
         id={styles.modal}
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
         variants={framerMotionDropIn}
         initial="hidden"
         animate="visible"
         exit="exit"
       >
         <div className={styles.settings_heading}>
-          <h2>Configure Your Account</h2>
+          <h2 id="settings-modal-title">Settings</h2>
 
           {!newUser && (
-            <motion.button
-              title="Close Settings"
-              onClick={onClick as MouseEventHandler<HTMLButtonElement>}
+            <button
+              type="button"
+              title="Close settings"
+              aria-label="Close settings"
+              onClick={() => closeModal()}
               id={styles.close_menu_btn}
-              variants={framerMotionBtnVariants}
-              whileTap={"tap"}
             >
               <CloseSvg alt="Close" width={16} height={16} />
-            </motion.button>
+            </button>
           )}
         </div>
 
-        {user?.isAnonymous && (
-          <div id={styles.anonymous_disclaimer_container}>
-            <h5>You are in Anonymous Mode!</h5>
-            <p>
-              In this mode you <b>can not</b> make Comments or change your
-              Username.
-            </p>
-          </div>
-        )}
-
-        <form onSubmit={(e) => handleUpdateUserInfoForm(e)}>
-          <div className={styles.group_container}>
-            <h5>
-              <span>
-                <UserSvg alt="Person" width={16} height={16} />
-              </span>{" "}
-              User
-            </h5>
-
-            {anilistUser && (
-              <small
-                style={{
-                  textAlign: "center",
-                  fontSize: "var(--font-size--small-1)",
-                }}
-              >
-                You only may change Username and Photo on{" "}
-                <a
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href={`https://anilist.co/user/${anilistUser.name}`}
-                  style={{
-                    display: "inline-block",
-                    fontSize: "var(--font-size--small-1)",
-                    textDecoration: "underline",
-                  }}
-                >
-                  <b>AniList Website</b>
-                </a>
-              </small>
+        <form className={styles.settings_form} onSubmit={handleUpdateUserInfoForm}>
+          <div className={styles.body}>
+            {isAnonymous && (
+              <div className={styles.note}>
+                <b>Anonymous mode.</b> You can change playback preferences, but not
+                your username or comments.
+              </div>
             )}
 
-            <div className={`${styles.user_acc_info_container}`}>
-              <div>
-                {(user || anilistUser) && (
-                  <>
-                    <label
-                      id={styles.img_container}
-                      data-disabled={anilistUser != undefined}
-                      onClick={() =>
-                        user
-                          ? setOpenUserProfilePanel(!openUserProfilePanel)
-                          : undefined
-                      }
-                    >
+            {/* PROFILE */}
+            <section className={styles.card}>
+              <SectionHeading
+                title="Profile"
+                description={
+                  canEditProfile
+                    ? "How you appear on comments and lists."
+                    : "Your profile is managed on AniList."
+                }
+              />
+
+              {canEditProfile ? (
+                <div className={styles.profile_row}>
+                  <div className={styles.avatar} data-avatar-container="true">
+                    {avatarSrc ? (
                       <Image
-                        aria-label="Change Profile Image"
-                        src={
-                          user?.photoURL ||
-                          (anilistUser?.avatar.large as string)
-                        }
-                        alt={user?.displayName || (anilistUser?.name as string)}
+                        src={avatarSrc}
+                        alt="Profile picture"
                         fill
-                        sizes="(max-width: 400px) 95vw, (max-width: 520px) 109px, 140px"
+                        sizes="96px"
                       />
-                    </label>
-                  </>
-                )}
-              </div>
-
-              <div>
-                {(user || anilistUser) && (
-                  <React.Fragment>
-                    <label>
-                      Change Username
-                      <input
-                        type="text"
-                        name="username"
-                        disabled={
-                          user?.isAnonymous || anilistUser?.isUserFromAnilist
-                        }
-                        defaultValue={user?.displayName || anilistUser?.name}
-                        placeholder={user?.displayName || anilistUser?.name}
-                        required
-                        title="Only letters and numbers."
-                      ></input>
-                    </label>
-
-                    {user?.isAnonymous && (
-                      <small>
-                        Can not change while <b>Anonymous</b>
-                      </small>
+                    ) : (
+                      <span className={styles.avatar_fallback} aria-hidden="true">
+                        <UserSvg width={36} height={36} />
+                      </span>
                     )}
-                  </React.Fragment>
-                )}
-                <AnimatePresence initial={false} mode="wait">
-                  {newImgProfileSelected && (
-                    <motion.small
-                      initial={{ opacity: 0, height: 0, marginTop: "8px" }}
-                      animate={{
-                        opacity: 1,
-                        height: "auto",
-                        transition: { duration: 0.4 },
-                      }}
-                      exit={{ opacity: 0, height: 0, marginTop: "0" }}
-                      style={{
-                        height: "100%",
-                        display: "block",
-                        marginTop: "24px",
-                        color: "#2e882b",
-                        fontWeight: "500",
-                      }}
-                    >
-                      New Image Selected!
-                    </motion.small>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+                  </div>
 
-            {/* IMAGES PANEL */}
-            <AnimatePresence initial={false} mode="wait">
-              {openUserProfilePanel && (
-                <motion.div
-                  initial={{
-                    opacity: 0,
-                    height: 0,
-                    marginTop: "8px",
-                    marginBottom: "40px",
-                  }}
-                  animate={{
-                    opacity: 1,
-                    height: "auto",
-                    transition: { duration: 0.4 },
-                  }}
-                  exit={{
-                    opacity: 0,
-                    height: 0,
-                    marginTop: "0",
-                    marginBottom: "0",
-                  }}
-                  id={styles.imgs_panel_container}
+                  <button
+                    type="button"
+                    className={styles.secondary_btn}
+                    onClick={() => setOpenUserProfilePanel((open) => !open)}
+                    aria-expanded={openUserProfilePanel}
+                  >
+                    Change avatar
+                  </button>
+                </div>
+              ) : (
+                anilistUser && (
+                  <a
+                    className={styles.link}
+                    href={`https://anilist.co/user/${anilistUser.name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open your AniList profile
+                  </a>
+                )
+              )}
+
+              <AnimatePresence initial={false} mode="wait">
+                {canEditProfile && openUserProfilePanel && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className={styles.imgs_panel_container}
+                  >
+                    {contantOptions.imagesOptions.map((item, key) => (
+                      <div key={`${item.value}-${key}`} className={styles.img_checkbox}>
+                        <input
+                          type="checkbox"
+                          name="photoURL"
+                          aria-label={`Use ${item.name} as avatar`}
+                          value={item.value}
+                          checked={form?.avatarUrl === item.value}
+                          onChange={() =>
+                            update(
+                              "avatarUrl",
+                              form?.avatarUrl === item.value ? null : item.value
+                            )
+                          }
+                        />
+                        <Image src={item.value} alt="" fill sizes="96px" />
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {canEditProfile && (
+                <div className={styles.field}>
+                  <label htmlFor="settings-username">Username</label>
+                  <input
+                    id="settings-username"
+                    type="text"
+                    name="username"
+                    maxLength={40}
+                    autoComplete="off"
+                    disabled={isAnonymous}
+                    value={form?.username ?? ""}
+                    placeholder="Your username"
+                    onChange={(event) => update("username", event.target.value)}
+                  />
+                  {isAnonymous && (
+                    <span className={styles.helper}>
+                      Username cannot be changed while Anonymous.
+                    </span>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* PLAYBACK */}
+            <section className={styles.card}>
+              <SectionHeading
+                title="Playback"
+                description="Defaults used by the watch page and the player."
+              />
+
+              <div className={styles.field}>
+                <label htmlFor="settings-subtitle-language">Subtitle language</label>
+                <select
+                  id="settings-subtitle-language"
+                  name="subtitleLanguage"
+                  value={form?.subtitleLanguage || "English"}
+                  onChange={(event) => update("subtitleLanguage", event.target.value)}
+                  disabled={!form}
                 >
-                  {contantOptions.imagesOptions.map((item, key) => (
-                    <motion.div
-                      key={key}
-                      className={styles.img_checkbox}
-                      variants={framerMotionBtnVariants}
-                      whileTap={"tap"}
-                    >
-                      <input
-                        type="checkbox"
-                        name="photoURL"
-                        value={item.value}
-                        checked={
-                          newImgProfileSelected
-                            ? newImgProfileSelected == item.value
-                            : false
-                        }
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        onClick={(e: any) =>
-                          setNewImgProfileSelected(
-                            newImgProfileSelected == e.target.value
-                              ? null
-                              : e.target.value
-                          )
-                        }
-                      ></input>
-                      <Image
-                        src={item.value}
-                        alt={item.name}
-                        fill
-                        sizes="(max-width: 479px) 30vw, 101px"
-                      />
-                    </motion.div>
+                  {contantOptions.languagesOptions.map((language) => (
+                    <option key={language.value} value={language.value}>
+                      {language.name}
+                    </option>
                   ))}
-                </motion.div>
+                </select>
+                <span className={styles.helper}>
+                  Used when the stream offers this language.
+                </span>
+              </div>
+
+              <div className={styles.field}>
+                <span className={styles.field_label}>Preferred audio</span>
+                <div
+                  className={styles.segmented}
+                  role="group"
+                  aria-label="Preferred audio"
+                >
+                  {[
+                    { label: "Sub", value: "sub" as AudioPreference },
+                    { label: "Dub", value: "dub" as AudioPreference },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      data-audio={option.value}
+                      data-active={form?.preferredAudio === option.value}
+                      aria-pressed={form?.preferredAudio === option.value}
+                      onClick={() => update("preferredAudio", option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <span className={styles.helper}>
+                  Which audio track the watch page picks when both are available.
+                </span>
+              </div>
+
+              <SwitchRow
+                id="settings-auto-skip"
+                name="autoSkip"
+                label="Skip intro & outro"
+                description="Jump past openings and endings."
+                checked={form?.autoSkip === true}
+                onChange={(value) => update("autoSkip", value)}
+              />
+
+              <SwitchRow
+                id="settings-auto-next"
+                name="autoNext"
+                label="Autoplay next episode"
+                description="Start the next episode when this one ends."
+                checked={form?.autoNext === true}
+                onChange={(value) => update("autoNext", value)}
+              />
+            </section>
+
+            {/* CONTENT */}
+            <section className={styles.card}>
+              <SectionHeading
+                title="Content"
+                description="What shows up in search and browse."
+              />
+
+              <SwitchRow
+                id="settings-show-adult"
+                name="showAdultContent"
+                label="Show adult content (18+)"
+                checked={form?.showAdult === true}
+                onChange={(value) => update("showAdult", value)}
+              />
+
+              {anilistUser && (
+                <span className={styles.helper}>
+                  This also updates your AniList account setting.
+                </span>
+              )}
+            </section>
+
+            {/* DATA */}
+            <section className={styles.card}>
+              <SectionHeading
+                title="Data"
+                description="Clear what this account has stored."
+              />
+
+              <div className={styles.data_list}>
+                <button
+                  type="button"
+                  className={styles.danger_btn}
+                  onClick={() => setPendingDelete("favourites")}
+                  disabled={!isSignedIn && !anilistUser}
+                >
+                  Delete favourites
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.danger_btn}
+                  onClick={() => setPendingDelete("history")}
+                  disabled={!isSignedIn && !anilistUser}
+                >
+                  Delete watch history
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.danger_btn}
+                  onClick={() => setPendingDelete("notifications")}
+                  disabled={!isSignedIn && !anilistUser}
+                >
+                  Delete notifications
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.danger_btn}
+                  onClick={() => setPendingDelete("account")}
+                  disabled={!isSignedIn && !anilistUser}
+                >
+                  Delete account
+                </button>
+              </div>
+            </section>
+          </div>
+
+          {/* STICKY FOOTER: the save button never covers the last field. */}
+          <div className={styles.footer}>
+            <AnimatePresence initial={false} mode="wait">
+              {status === "saved" && (
+                <motion.p
+                  key="saved"
+                  role="status"
+                  className={styles.saved_message}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <CheckSvg width={14} height={14} alt="" /> Saved
+                </motion.p>
+              )}
+
+              {status === "error" && errorMessage && (
+                <motion.p
+                  key="error"
+                  role="alert"
+                  className={styles.error_message}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  {errorMessage}
+                </motion.p>
               )}
             </AnimatePresence>
+
+            {status !== "error" && status !== "saved" && errorMessage && (
+              <p role="status" className={styles.saved_message}>
+                {errorMessage}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className={styles.save_btn}
+              disabled={!isDirty || status === "saving" || !form}
+              data-state={status}
+            >
+              {status === "saving"
+                ? "Saving…"
+                : status === "saved"
+                  ? "Saved"
+                  : "Save changes"}
+            </button>
           </div>
+        </form>
 
-          <div className={styles.group_container}>
-            <h5>
-              <span>
-                <VideoSvg alt="Play" width={16} height={16} />
-              </span>{" "}
-              Video
-            </h5>
+        {pendingDelete && confirmCopy && (
+          <div
+            className={styles.confirm_backdrop}
+            onClick={() => {
+              setPendingDelete(null);
+              setDeleteConfirmText("");
+            }}
+          >
+            <div
+              className={styles.confirm_dialog}
+              role="dialog"
+              aria-modal="true"
+              aria-label={confirmCopy.title}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3>{confirmCopy.title}</h3>
+              <p>{confirmCopy.body}</p>
 
-            <div>
-              {currentLang && (
-                <label>
-                  Subtitle Language
-                  <select name="language" defaultValue={currentLang}>
-                    {contantOptions.languagesOptions.map((language) => (
-                      <option key={language.value} value={language.value}>
-                        {language.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <small>
-                Only works with <b>Aniwatch</b>
-              </small>
-            </div>
-
-            <div>
-              {currentQuality && (
-                <label>
-                  <span>
-                    Preferable Video Quality{" "}
-                    <span
-                      style={{
-                        padding: "4px",
-                        background: "var(--brand-color)",
-                        color: "var(--white-100)",
-                      }}
-                    >
-                      BETA
-                    </span>
-                  </span>
-                  <select name="quality" defaultValue={currentQuality}>
-                    {contantOptions.qualityOptions.map((quality) => (
-                      <option key={quality.name} value={quality.value}>
-                        {quality.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <small>
-                Some videos <b>may not have the quality selected</b>. By that,
-                the video will be displayed with the default quality.
-              </small>
-            </div>
-
-            <div>
-              {currentSkipIntroAndOutro != null && (
-                <>
-                  <div className={styles.checkbox_container}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="skipIntroAndOutro"
-                        defaultChecked={
-                          (currentSkipIntroAndOutro == true) as boolean
-                        }
-                      ></input>
-                      <span />
-                    </label>
-                    <p>
-                      Skip Openings And Endings (<b>Aniwatch only!</b>)
-                    </p>
-                  </div>
-
-                  {/* <small style={{ marginTop: "16px", display: "block" }}>Only works with <b>Aniwatch</b></small> */}
-                </>
-              )}
-            </div>
-
-            <div>
-              {currentNextEpisode != null && (
-                <>
-                  <div className={styles.checkbox_container}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="autoNextEpisode"
-                        defaultChecked={(currentNextEpisode == true) as boolean}
-                      ></input>
-                      <span />
-                    </label>
-                    <p>Auto Play Next Episode</p>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className={styles.group_container}>
-            <h5>
-              <span>
-                <SourceSvg alt="Globe" width={16} height={16} />
-              </span>{" "}
-              Source
-            </h5>
-
-            <div>
-              {currentTitleLang && (
-                <>
-                  <label>
-                    Media Title Language
-                    <select
-                      name="mediaTitlePreferredLang"
-                      defaultValue={currentTitleLang}
-                    >
-                      {contantOptions.titlePrefferedLanguages.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
+              {pendingDelete === "account" && (
+                <div className={styles.field}>
+                  <label htmlFor="settings-delete-confirm">
+                    Type DELETE to confirm
                   </label>
-                  {userAnilist && (
-                    <small>
-                      Changing this option will also change on your AniList
-                      Account
-                    </small>
-                  )}
-                </>
+                  <input
+                    id="settings-delete-confirm"
+                    type="text"
+                    name="deleteAccountConfirm"
+                    autoComplete="off"
+                    value={deleteConfirmText}
+                    onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  />
+                </div>
               )}
-            </div>
 
-            <div>
-              {currentSource && (
-                <>
-                  <label>
-                    Main Source of Episodes
-                    <select name="source" defaultValue={currentSource}>
-                      {sourcesAvailable.map((source) => (
-                        <option key={source.value} value={source.value}>
-                          {source.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <small>
-                    Focus the anime episodes to the source selected.{" "}
-                    <b>You can still use the others sources.</b>
-                  </small>
-                </>
-              )}
-            </div>
+              <div className={styles.confirm_actions}>
+                <button
+                  type="button"
+                  className={styles.secondary_btn}
+                  onClick={() => {
+                    setPendingDelete(null);
+                    setDeleteConfirmText("");
+                  }}
+                >
+                  Cancel
+                </button>
 
-            <div>
-              {currentShowAdultContent != null && (
-                <>
-                  <div className={styles.checkbox_container}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="showAdultContent"
-                        defaultChecked={
-                          (currentShowAdultContent == true) as boolean
-                        }
-                      ></input>
-                      <span />
-                    </label>
-                    <p>Show Adult Content (+18)</p>
-                  </div>
-
-                  {userAnilist && (
-                    <small style={{ marginTop: "16px", display: "block" }}>
-                      Changing this option will also change on your AniList
-                      Account
-                    </small>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div>
-              {currentPlayWrongMediaEnabled != null && (
-                <>
-                  <div className={styles.checkbox_container}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        name="playVideoWhenMismatch"
-                        defaultChecked={
-                          (currentPlayWrongMediaEnabled == true) as boolean
-                        }
-                      ></input>
-                      <span />
-                    </label>
-                    <p>{`Don't`} show wrong media alert on Watch Page</p>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {!newUser && (
-            <div>
-              <h5 style={{ marginBottom: "16px" }}>
-                <span>
-                  <DeleteSvg alt="Play" width={16} height={16} />
-                </span>{" "}
-                Delete
-              </h5>
-
-              <div className={styles.btns_container}>
-                <label>
-                  <motion.button
-                    type="button"
-                    onClick={() =>
-                      setDeleteBookmarksClick(!deleteBookmarksClick)
-                    }
-                    variants={framerMotionBtnVariants}
-                    whileTap="tap"
-                    data-active={deleteBookmarksClick}
-                  >
-                    Delete Favourites
-                  </motion.button>
-                </label>
-                <AnimatePresence initial={false} mode="wait">
-                  {deleteBookmarksClick && (
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "8px",
-                        marginBottom: "40px",
-                      }}
-                      animate={{
-                        opacity: 1,
-                        height: "auto",
-                        transition: { duration: 0.4 },
-                      }}
-                      exit={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "0",
-                        marginBottom: "0",
-                      }}
-                      className={styles.confirm_delete_container}
-                    >
-                      <p>Are you Sure?</p>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteBookmarksClick(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button onClick={() => deleteOptions("bookmarks")}>
-                        Delete!
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <label>
-                  <motion.button
-                    type="button"
-                    onClick={() => setDeleteEpisodesClick(!deleteEpisodesClick)}
-                    variants={framerMotionBtnVariants}
-                    whileTap="tap"
-                    data-active={deleteEpisodesClick}
-                  >
-                    Delete Episodes Watched
-                  </motion.button>
-                </label>
-                <AnimatePresence initial={false} mode="wait">
-                  {deleteEpisodesClick && (
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "8px",
-                        marginBottom: "40px",
-                      }}
-                      animate={{
-                        opacity: 1,
-                        height: "auto",
-                        transition: { duration: 0.4 },
-                      }}
-                      exit={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "0",
-                        marginBottom: "0",
-                      }}
-                      className={styles.confirm_delete_container}
-                    >
-                      <p>Are you Sure?</p>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteEpisodesClick(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button onClick={() => deleteOptions("episodes")}>
-                        Delete!
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <label>
-                  <motion.button
-                    type="button"
-                    onClick={() =>
-                      setDeleteNotificationsClick(!deleteNotificationsClick)
-                    }
-                    variants={framerMotionBtnVariants}
-                    whileTap="tap"
-                    data-active={deleteNotificationsClick}
-                  >
-                    Delete Notifications
-                  </motion.button>
-                </label>
-                <AnimatePresence initial={false} mode="wait">
-                  {deleteNotificationsClick && (
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "8px",
-                        marginBottom: "40px",
-                      }}
-                      animate={{
-                        opacity: 1,
-                        height: "auto",
-                        transition: { duration: 0.4 },
-                      }}
-                      exit={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "0",
-                        marginBottom: "0",
-                      }}
-                      className={styles.confirm_delete_container}
-                    >
-                      <p>Are you Sure?</p>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteNotificationsClick(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button onClick={() => deleteOptions("episodes")}>
-                        Delete!
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <label>
-                  <motion.button
-                    type="button"
-                    onClick={() => setDeleteAccountClick(!deleteAccountClick)}
-                    variants={framerMotionBtnVariants}
-                    whileTap="tap"
-                    data-active={deleteAccountClick}
-                  >
-                    Delete All Account Info
-                  </motion.button>
-                </label>
-                <AnimatePresence initial={false} mode="wait">
-                  {deleteAccountClick && (
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "8px",
-                        marginBottom: "40px",
-                      }}
-                      animate={{
-                        opacity: 1,
-                        height: "auto",
-                        transition: { duration: 0.4 },
-                      }}
-                      exit={{
-                        opacity: 0,
-                        height: 0,
-                        marginTop: "0",
-                        marginBottom: "0",
-                      }}
-                      className={styles.confirm_delete_container}
-                    >
-                      <p>Are you Sure?</p>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteAccountClick(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button onClick={() => deleteOptions("account")}>
-                        Delete!
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <button
+                  type="button"
+                  className={styles.danger_btn}
+                  onClick={() => runDelete(pendingDelete)}
+                  disabled={pendingDelete === "account" && !accountDeleteReady}
+                >
+                  Delete
+                </button>
               </div>
             </div>
-          )}
-
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            type="submit"
-            data-change-success={wasSuccessfull}
-            disabled={isLoading}
-            title="Submit Changes"
-          >
-            {isLoading ? (
-              <LoadingSvg width={21} height={21} />
-            ) : wasSuccessfull == true ? (
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "0 8px",
-                }}
-              >
-                <CheckSvg width={16} height={16} /> Changes Complete
-              </span>
-            ) : (
-              "Confirm Changes"
-            )}
-          </motion.button>
-        </form>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );
