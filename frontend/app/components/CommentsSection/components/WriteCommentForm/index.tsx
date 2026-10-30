@@ -1,13 +1,14 @@
 "use client";
 
 import styles from "./component.module.css";
-import { FormEvent, useRef, useState } from "react";
 import Image from "next/image";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import ProfileFallbackImg from "@/public/profile_fallback.jpg";
-import SvgCheck from "@/public/assets/check-circle-fill.svg";
 import { COMMENT_BODY_LIMIT, CommentsFailure, isCommentingTooFast } from "@/app/lib/comments/queries";
 
 export type CommentSubmission = { body: string; isSpoiler: boolean };
+
+/** What the parent passes on: the submission plus the episode the comment belongs to. */
 export type CommentSubmitResult = { error: CommentsFailure | null };
 
 type WriteCommentFormTypes = {
@@ -17,10 +18,25 @@ type WriteCommentFormTypes = {
   avatarUrl?: string | null;
   onSubmit: (submission: CommentSubmission) => Promise<CommentSubmitResult>;
   onGuestAttempt: () => void;
+  /** Episode the comment is filed under (watch page); null = the anime itself. */
+  episodeNumber?: number | null;
+  /** When given, the composer offers an episode picker with these numbers. */
+  episodeOptions?: number[];
+  onEpisodeChange?: (episode: number | null) => void;
+  onCancel?: () => void;
+  autoFocus?: boolean;
 };
 
-/** The comment box. Same markup and classes as the original section, but the
- *  comment is written through the Supabase data layer instead of Firestore. */
+function initialOf(name: string | null | undefined) {
+  const trimmed = (name ?? "").trim();
+  return trimmed ? trimmed[0]!.toUpperCase() : "";
+}
+
+/**
+ * ani.pm style composer: a round avatar, a single underlined line that expands
+ * into a textarea with a counter, the spoiler toggle and the episode picker.
+ * Expectations from the old form are unchanged (rate-limit text, submit state).
+ */
 export default function WriteCommentForm({
   isAReply,
   isSignedIn,
@@ -28,42 +44,62 @@ export default function WriteCommentForm({
   avatarUrl,
   onSubmit,
   onGuestAttempt,
+  episodeNumber = null,
+  episodeOptions,
+  onEpisodeChange,
+  onCancel,
+  autoFocus,
 }: WriteCommentFormTypes) {
-  const [currTextLength, setCurrTextLength] = useState<number>(0);
+  const [isOpen, setIsOpen] = useState<boolean>(!!isAReply || !!autoFocus);
+  const [body, setBody] = useState<string>("");
+  const [isSpoiler, setIsSpoiler] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [wasCommentCreatedSuccessfully, setWasCommentCreatedSuccessfully] = useState<boolean>(false);
+  const [success, setSuccess] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const spoilerRef = useRef<HTMLInputElement>(null);
 
-  const inputCharLimit = COMMENT_BODY_LIMIT;
   const displayName = username || "Anonymous";
+  const trimmed = body.trim();
+  const isOverLimit = body.length > COMMENT_BODY_LIMIT;
+  const canSubmit = !!trimmed && !isOverLimit && !isSubmitting;
 
-  function isCommentTextValid(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || trimmed.length > inputCharLimit) return false;
-    return true;
+  useEffect(() => {
+    if (isOpen) textareaRef.current?.focus();
+  }, [isOpen]);
+
+  // Grow with the text, up to a comfortable height. Runs after render.
+  useEffect(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${Math.min(node.scrollHeight, 200)}px`;
+  }, [body, isOpen]);
+
+  function startWriting() {
+    if (!isSignedIn) {
+      onGuestAttempt();
+      return;
+    }
+    setIsOpen(true);
   }
 
-  async function handleCreateComment(e: FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
 
     if (!isSignedIn) {
       onGuestAttempt();
       return;
     }
-
-    const text = textareaRef.current?.value ?? "";
-    if (!isCommentTextValid(text)) return;
+    if (!canSubmit) return;
 
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const result = await onSubmit({ body: text, isSpoiler: !!spoilerRef.current?.checked });
+    const result = await onSubmit({ body, isSpoiler });
 
     if (result.error) {
-      // Keep what was typed so nothing is lost; the rate limit message is shown as is.
+      // The text stays so nothing is lost; the rate-limit sentence is shown as is.
       setErrorMessage(
         isCommentingTooFast(result.error)
           ? result.error.message
@@ -73,81 +109,136 @@ export default function WriteCommentForm({
       return;
     }
 
-    if (textareaRef.current) textareaRef.current.value = "";
-    if (spoilerRef.current) spoilerRef.current.checked = false;
-    setCurrTextLength(0);
-    setWasCommentCreatedSuccessfully(true);
+    setBody("");
+    setIsSpoiler(false);
+    setSuccess(true);
     setIsSubmitting(false);
+    if (isAReply) onCancel?.();
+  }
+
+  function handleCancel() {
+    setBody("");
+    setIsSpoiler(false);
+    setErrorMessage(null);
+    if (isAReply) onCancel?.();
+    else setIsOpen(false);
   }
 
   return (
-    <div id={styles.write_comment_container}>
-      <div className={styles.img_container}>
-        <Image
-          src={avatarUrl || ProfileFallbackImg}
-          alt={isSignedIn ? `${displayName} profile picture` : "User Not Logged In Profile Picture"}
-          fill
-          sizes="60px"
-        />
+    <div
+      id={styles.write_comment_container}
+      data-open={isOpen}
+      data-reply={isAReply ? "true" : "false"}
+    >
+      <div className={styles.avatar} aria-hidden="true">
+        {avatarUrl ? (
+          <Image src={avatarUrl} alt="" fill sizes="40px" className={styles.avatar_img} />
+        ) : isSignedIn ? (
+          <Image src={ProfileFallbackImg} alt="" fill sizes="40px" className={styles.avatar_img} />
+        ) : (
+          <span className={styles.avatar_initial}>{initialOf(displayName) || "?"}</span>
+        )}
       </div>
 
-      <form onSubmit={handleCreateComment}>
-        <label>
-          {isSignedIn
-            ? `${isAReply ? `Reply as ${displayName}` : `Comment as ${displayName}`}`
-            : "Please log in to comment"}
-
-          <textarea
-            ref={textareaRef}
-            rows={isAReply ? 2 : 3}
-            cols={70}
-            name="comment"
-            onChange={(e) => {
-              setCurrTextLength(e.target.value.length);
-              if (wasCommentCreatedSuccessfully) setWasCommentCreatedSuccessfully(false);
-              if (errorMessage) setErrorMessage(null);
-            }}
-            placeholder={isAReply ? "Reply with..." : "Leave a comment"}
-            required
-          ></textarea>
-        </label>
-
-        <div className={styles.flex_row_justify_between}>
-          <div id={styles.is_spoiler_checkbox_container}>
-            <label>
-              <input
-                ref={spoilerRef}
-                type="checkbox"
-                name="spoiler"
-                defaultChecked={false}
-                aria-label="Spoiler Checkbox"
-              />
-              <span />
+      <form onSubmit={handleSubmit} className={styles.form}>
+        {!isOpen ? (
+          <button
+            type="button"
+            className={styles.collapsed_input}
+            onClick={startWriting}
+            onFocus={startWriting}
+            data-testid="composer-collapsed"
+          >
+            Add a comment…
+          </button>
+        ) : (
+          <>
+            <label className={styles.sr_only} htmlFor={`comment-body-${isAReply ? "reply" : "top"}`}>
+              {isAReply ? `Reply as ${displayName}` : `Comment as ${displayName}`}
             </label>
 
-            <p>SPOILER!!!</p>
-          </div>
+            <textarea
+              id={`comment-body-${isAReply ? "reply" : "top"}`}
+              ref={textareaRef}
+              className={styles.textarea}
+              rows={isAReply ? 2 : 3}
+              name="comment"
+              value={body}
+              maxLength={COMMENT_BODY_LIMIT * 2}
+              placeholder={isAReply ? "Write a reply…" : "Add a comment…"}
+              onChange={(event) => {
+                setBody(event.target.value);
+                if (success) setSuccess(false);
+                if (errorMessage) setErrorMessage(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") handleCancel();
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  void handleSubmit(event);
+                }
+              }}
+            />
 
-          <small data-over-limit={currTextLength > inputCharLimit}>
-            Chars. {currTextLength} / {inputCharLimit}
-          </small>
-        </div>
+            <div className={styles.toolbar}>
+              <label className={styles.spoiler_toggle}>
+                <input
+                  type="checkbox"
+                  checked={isSpoiler}
+                  onChange={(event) => setIsSpoiler(event.target.checked)}
+                  aria-label="Mark as spoiler"
+                />
+                <span>Spoiler</span>
+              </label>
 
-        {errorMessage && (
-          <p className={styles.form_error} role="alert">
-            {errorMessage}
-          </p>
+              {episodeOptions && episodeOptions.length > 0 && (
+                <label className={styles.episode_picker}>
+                  <span className={styles.sr_only}>Episode</span>
+                  <select
+                    value={episodeNumber ?? ""}
+                    onChange={(event) =>
+                      onEpisodeChange?.(event.target.value ? Number(event.target.value) : null)
+                    }
+                  >
+                    <option value="">Whole series</option>
+                    {episodeOptions.map((episode) => (
+                      <option key={episode} value={episode}>
+                        EP {episode}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <small
+                className={styles.counter}
+                data-over-limit={isOverLimit}
+                aria-live="polite"
+              >
+                {body.length} / {COMMENT_BODY_LIMIT}
+              </small>
+            </div>
+
+            {errorMessage && (
+              <p className={styles.form_error} role="alert">
+                {errorMessage}
+              </p>
+            )}
+
+            <div className={styles.actions}>
+              <button type="button" className={styles.cancel_button} onClick={handleCancel}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={styles.submit_button}
+                disabled={!canSubmit}
+                aria-label="Post comment"
+              >
+                {isSubmitting ? "Sending…" : "Comment"}
+              </button>
+            </div>
+          </>
         )}
-
-        <button type="submit" disabled={isSubmitting || currTextLength > inputCharLimit}>
-          {wasCommentCreatedSuccessfully ? (
-            <>
-              <SvgCheck width={16} height={16} alt="Check" /> Comment Done
-            </>
-          ) : (
-            "Comment!"
-          )}
-        </button>
       </form>
     </div>
   );

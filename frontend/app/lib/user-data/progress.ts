@@ -143,6 +143,46 @@ const latest = new Map<string, ProgressRecord>();
 const pending = new Map<string, { id: number | string; record: ProgressRecord }>();
 let listenersInstalled = false;
 let hydration: Promise<number> | null = null;
+// One warning per failure code per page load: a broken column would otherwise
+// log on every 10s tick of every episode.
+const warnedWriteCodes = new Set<string>();
+
+/** Error code of a failed write, or "unknown" when the failure has none. */
+export function writeFailureCode(failure: unknown): string {
+  if (failure && typeof failure === "object" && typeof (failure as { code?: unknown }).code === "string") {
+    return String((failure as { code: string }).code);
+  }
+  return "unknown";
+}
+
+/**
+ * Logs a failed server write once per error code per page load and reports
+ * whether it logged. A broken column would otherwise log on every 10s tick of
+ * every episode.
+ */
+export function warnServerWriteFailureOnce(failure: unknown): boolean {
+  const code = writeFailureCode(failure);
+  if (warnedWriteCodes.has(code)) return false;
+  warnedWriteCodes.add(code);
+  try {
+    console.warn(
+      "[progress] server write failed",
+      failure && typeof failure === "object"
+        ? String((failure as { message?: unknown }).message ?? "")
+        : String(failure),
+      code,
+    );
+  } catch {
+    /* console may be unavailable */
+  }
+  return true;
+}
+
+/** True once per episode, the first time playback reaches the keep-watching
+ *  threshold, so a short visit still creates the entry. */
+export function shouldMarkFirstSave(time: number, alreadySaved: boolean): boolean {
+  return !alreadySaved && Number(time) >= CONTINUE_WATCHING_MIN_SECONDS;
+}
 
 function writeKey(id: number | string, record: ProgressRecord) {
   return `${id}:${record.episode}`;
@@ -200,7 +240,13 @@ async function writeServer(
     if (result.ok) {
       lastWriteAt.set(key, nowMs);
       pending.delete(key);
+      return;
     }
+
+    // The row is not on the server yet, but it is not lost either: flushProgress
+    // retries everything in `pending` on pause/hide/pagehide.
+    pending.set(key, { id, record });
+    warnServerWriteFailureOnce(result.error);
   } catch {
     /* best effort: never block playback, never throw */
   }
@@ -445,12 +491,75 @@ export async function hydrateKeepWatchingImages(
   }
 }
 
+/** The card's best title, in the order the cards render it. */
+function cardTitle(card: KeepWatchingMediaData): string {
+  const title = card.title as Record<string, string | undefined> | undefined;
+  return title?.userPreferred || title?.romaji || title?.english || "";
+}
+
+function cardCover(card: KeepWatchingMediaData): string {
+  return card.coverImage?.extraLarge || card.coverImage?.large || "";
+}
+
+/**
+ * Server rows and the local copy, one card per anime.
+ *
+ * A signed-in user writes to Supabase, but a write can fail (offline, a rejected
+ * row, a paused tab): the local copy then holds the newer episode and the server
+ * does not. Neither side alone is the truth, so the newest `updatedAt` wins and
+ * the loser still fills in any art it has. A local-only anime keeps its card.
+ */
+export function mergeContinueWatchingLists(
+  serverCards: KeepWatchingMediaData[],
+  localCards: KeepWatchingMediaData[],
+  limit = CONTINUE_WATCHING_LIMIT,
+): KeepWatchingMediaData[] {
+  const byAnime = new Map<string, KeepWatchingMediaData>();
+
+  for (const card of [...serverCards, ...localCards]) {
+    if (!card || card.id === undefined || card.id === null) continue;
+    const key = String(card.id);
+    const existing = byAnime.get(key);
+    if (!existing) {
+      byAnime.set(key, card);
+      continue;
+    }
+
+    const winner = (card.updatedAt || 0) > (existing.updatedAt || 0) ? card : existing;
+    const other = winner === card ? existing : card;
+    const cover = cardCover(winner) || cardCover(other);
+
+    byAnime.set(key, {
+      ...winner,
+      // metadata the winner may be missing: never drop art the other side has
+      title: cardTitle(winner)
+        ? winner.title
+        : (other.title ?? winner.title),
+      coverImage: cover
+        ? { extraLarge: cover, large: cover }
+        : (winner.coverImage ?? other.coverImage),
+      episodeImg: winner.episodeImg?.trim() || other.episodeImg?.trim() || "",
+    } as KeepWatchingMediaData);
+  }
+
+  return Array.from(byAnime.values())
+    .filter((card) =>
+      shouldResume(
+        Number(card.episodeTimeLastStop) || 0,
+        Number(card.episodeDuration) || 0,
+      ),
+    )
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, limit);
+}
+
 export async function listContinueWatchingFromServer(
   input?: UserDataContextInput,
 ): Promise<KeepWatchingMediaData[]> {
+  const local = listContinueWatchingAsMediaData();
   const ctx = await resolveContext(input);
-  if (!isSignedIn(ctx))
-    return hydrateKeepWatchingImages(listContinueWatchingAsMediaData());
+  // Guests and anonymous devices: the local copy is all there is.
+  if (!isSignedIn(ctx)) return hydrateKeepWatchingImages(local);
 
   const result = await attempt("progress.continueWatching", async () => {
     const { data, error } = await ctx.client!.from("watch_progress")
@@ -462,10 +571,15 @@ export async function listContinueWatchingFromServer(
     return (data ?? []) as ServerProgressRow[];
   });
 
-  if (!result.ok)
-    return hydrateKeepWatchingImages(listContinueWatchingAsMediaData());
+  if (!result.ok) return hydrateKeepWatchingImages(local);
+
+  // Server rows win only where they are newer; the local list still covers the
+  // writes the server never received.
   return hydrateKeepWatchingImages(
-    buildContinueWatchingMediaData(result.data),
+    mergeContinueWatchingLists(
+      buildContinueWatchingMediaData(result.data),
+      local,
+    ),
   );
 }
 
@@ -525,4 +639,5 @@ export function __resetProgressSyncForTests() {
   pending.clear();
   hydration = null;
   listenersInstalled = false;
+  warnedWriteCodes.clear();
 }

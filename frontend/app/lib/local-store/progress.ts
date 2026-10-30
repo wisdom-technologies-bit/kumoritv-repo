@@ -5,7 +5,9 @@
 
 export type { ProgressRecord } from "@/app/lib/user-data/progress";
 export {
+  CONTINUE_WATCHING_MIN_SECONDS,
   getProgress,
+  shouldMarkFirstSave,
   saveProgress,
   markWatched,
   isWatched,

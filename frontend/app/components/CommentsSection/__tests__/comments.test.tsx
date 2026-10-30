@@ -66,6 +66,12 @@ async function mountSection(options: { client: FakeSupabaseClient | null; user?:
 
 const MODAL_ACTION = "ShowLoginModal/toggleShowLoginModalValue";
 
+/** The composer starts as one underlined line; it expands when it is used. */
+async function openComposer(container: HTMLElement) {
+  const collapsed = container.querySelector('[data-testid="composer-collapsed"]');
+  if (collapsed) await click(collapsed);
+}
+
 test("guest: writing, replying and reacting all open the login modal", async () => {
   const client = new FakeSupabaseClient({ comment_feed: [feedRow()] });
 
@@ -74,9 +80,10 @@ test("guest: writing, replying and reacting all open the login modal", async () 
 
   assert.equal(store.getState().ShowLoginModal.value, false);
 
-  await typeInto(container.querySelector("textarea"), "hello as a guest");
-  await submit(container.querySelector("form"));
+  // Tapping the collapsed composer is the guest's way in.
+  await openComposer(container);
   assert.equal(store.getState().ShowLoginModal.value, true);
+  assert.equal(container.querySelector("textarea"), null);
   assert.equal(actions.filter((type) => type === MODAL_ACTION).length, 1);
   assert.equal(client.rows("comments").length, 0);
 
@@ -86,7 +93,8 @@ test("guest: writing, replying and reacting all open the login modal", async () 
 
   await click(container.querySelector('[data-testid="reply-comment-1"]'));
   assert.equal(actions.filter((type) => type === MODAL_ACTION).length, 3);
-  assert.equal(container.querySelectorAll("form").length, 1);
+  // no reply box is opened for a guest
+  assert.equal(container.querySelectorAll("textarea").length, 0);
 
   await tree.unmount();
 });
@@ -97,14 +105,14 @@ test("signed in: posting adds the comment to the list immediately", async () => 
   const { tree } = await mountSection({ client });
   const { container } = tree;
 
-  assert.match(text(container), /1 comment(?!s)/);
+  assert.match(text(container), /1 Comment(?!s)/);
 
+  await openComposer(container);
   await typeInto(container.querySelector("textarea"), "  a brand new take  ");
   await submit(container.querySelector("form"));
 
   assert.match(text(container), /a brand new take/);
-  assert.match(text(container), /2 comments/);
-  assert.match(text(container), /Comment Done/);
+  assert.match(text(container), /2 Comments/);
 
   const rows = client.rows("comments");
   assert.equal(rows.length, 1);
@@ -129,6 +137,7 @@ test("signed in on the watch page: only this episode is listed and stored", asyn
   assert.match(text(container), /episode two talk/);
   assert.doesNotMatch(text(container), /episode one talk/);
 
+  await openComposer(container);
   await typeInto(container.querySelector("textarea"), "episode thread");
   await submit(container.querySelector("form"));
 
@@ -149,7 +158,7 @@ test("signed in: like, switch to dislike, then remove the reaction", async () =>
   assert.equal(container.querySelector('[data-testid="like-comment-1"]')!.getAttribute("aria-pressed"), "true");
   assert.equal(client.rows("comment_reactions").length, 1);
   assert.equal(client.rows("comment_reactions")[0].value, 1);
-  assert.match(text(container), /1\s*•\s*Likes/);
+  assert.match(container.querySelector('[data-testid="like-comment-1"]')!.textContent ?? "", /1/);
 
   await click(container.querySelector('[data-testid="dislike-comment-1"]'));
   assert.equal(client.rows("comment_reactions").length, 1);
@@ -204,12 +213,12 @@ test("spoiler comments stay hidden until they are clicked", async () => {
   const item = container.querySelector('[data-testid="comment-spoiler"]')!;
   assert.equal(item.getAttribute("data-has-spoiler"), "true");
 
-  const textContainer = Array.from(item.querySelectorAll("div")).find((element) =>
-    (element.getAttribute("class") ?? "").includes("comment_text_container"),
-  );
-  assert.ok(textContainer, "expected the comment text container");
+  const reveal = container.querySelector('[data-testid="spoiler-spoiler"]');
+  assert.ok(reveal, "expected the spoiler bar");
+  assert.doesNotMatch(text(container), /the big reveal/);
 
-  await click(textContainer!);
+  await click(reveal!);
+  assert.match(text(container), /the big reveal/);
   assert.equal(container.querySelector('[data-testid="comment-spoiler"]')!.getAttribute("data-has-spoiler"), "false");
 
   await tree.unmount();
@@ -222,6 +231,7 @@ test("'commenting too fast' is shown under the form and the text is kept", async
   const { tree } = await mountSection({ client });
   const { container } = tree;
 
+  await openComposer(container);
   await typeInto(container.querySelector("textarea"), "too soon");
   await submit(container.querySelector("form"));
 
@@ -240,6 +250,7 @@ test("a generic failure keeps the typed text and shows a short error", async () 
   const { tree } = await mountSection({ client });
   const { container } = tree;
 
+  await openComposer(container);
   await typeInto(container.querySelector("textarea"), "unsent words");
   await submit(container.querySelector("form"));
 
@@ -290,7 +301,13 @@ test("replies render nested under their top-level comment and attach to it", asy
   const { container } = tree;
 
   const parent = container.querySelector('[data-testid="comment-parent"]')!;
-  assert.ok(parent.textContent?.includes("a nested reply"));
+  assert.ok(parent, "expected the parent comment");
+
+  // replies load only when the toggle is used
+  await flush();
+  await click(container.querySelector('[data-testid="replies-parent"]'));
+  await flush();
+  assert.ok(container.querySelector('[data-testid="comment-parent"]')!.textContent?.includes("a nested reply"));
 
   // replying to a reply still attaches to the top-level comment
   await click(container.querySelector('[data-testid="reply-reply-1"]'));

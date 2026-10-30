@@ -13,6 +13,7 @@ import styles from "./component.module.css";
 import {
   getProgress,
   saveProgress,
+  shouldMarkFirstSave,
   shouldResume,
 } from "@/app/lib/local-store/progress";
 import {
@@ -294,6 +295,13 @@ export default function VideoPlayer({
     [subtitleOptions, defaultSubtitleIndex],
   );
 
+  // One early save per episode: without it a short visit only reached the server
+  // after the 10s tick (or on pause/hide, which a closed tab may skip).
+  const firstSaveDoneRef = useRef(false);
+  useEffect(() => {
+    firstSaveDoneRef.current = false;
+  }, [anilistId, episode, audio]);
+
   const seekTo = (time: number) => {
     const player: any = playerRef.current;
     if (!player) return;
@@ -331,7 +339,9 @@ export default function VideoPlayer({
       window.removeEventListener("pagehide", cleanup);
       persist();
     };
-  }, [anilistId, episode, audio, title]);
+    // cover and episodeImage belong to the snapshot: without them a metadata
+    // arrival after mount was never saved.
+  }, [anilistId, episode, audio, title, cover, episodeImage]);
   const canPlay = () => {
     const player = playerRef.current;
     if (!player) return;
@@ -496,6 +506,11 @@ export default function VideoPlayer({
               progressRef.current.duration = Number.isFinite(currentDuration)
                 ? currentDuration
                 : 0;
+
+              if (shouldMarkFirstSave(current, firstSaveDoneRef.current)) {
+                firstSaveDoneRef.current = true;
+                persist();
+              }
 
               const next = visibleSkipRange(current, skipRanges);
               const nextKey = next?.key ?? null;
