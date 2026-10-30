@@ -12,6 +12,7 @@ import KeepWatchingEpisodeInfo, {
 } from "@/app/components/HomePage/KeepWatchingSection/components/KeepWatchingEpisodeInfo";
 import SearchResultItemCard from "@/app/layout/header/components/SearchFormContainer/components/SearchResultItemCard";
 import {
+  CHUNK_SIZE,
   buildEpisodesSitemap,
   buildMediaSitemap,
   buildRecentSitemap,
@@ -285,13 +286,13 @@ test("sitemap: index chunk counts match the rows the chunk routes can serve", ()
 
   assert.deepEqual(files(0, 0), ["https://kumoritv.top/sitemaps/new.xml"]);
 
-  assert.deepEqual(files(40000, 40000), [
+  assert.deepEqual(files(CHUNK_SIZE, CHUNK_SIZE), [
     "https://kumoritv.top/sitemaps/new.xml",
     "https://kumoritv.top/sitemaps/anime-1.xml",
     "https://kumoritv.top/sitemaps/episodes-1.xml",
   ]);
 
-  const big = files(80001, 40001);
+  const big = files(2 * CHUNK_SIZE + 1, CHUNK_SIZE + 1);
   assert.ok(big.includes("https://kumoritv.top/sitemaps/anime-3.xml"));
   assert.ok(big.includes("https://kumoritv.top/sitemaps/episodes-2.xml"));
   assert.ok(!big.includes("https://kumoritv.top/sitemaps/episodes-3.xml"));

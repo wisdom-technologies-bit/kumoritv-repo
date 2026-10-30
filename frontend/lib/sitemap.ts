@@ -2,7 +2,13 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 import { fetchAiringWindow } from "@/app/lib/discovery/anilist";
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top").replace(/\/$/, "");
-export const CHUNK_SIZE = 40000;
+export const CHUNK_SIZE = 10000;
+/**
+ * PostgREST never returns more than 1000 rows per request, whatever `range` or
+ * `limit` asks for. Every multi-row read below pages in steps of this size
+ * (same fix as `selectAllEpisodeRows` in app/lib/anime-db/queries.ts).
+ */
+export const ROW_PAGE_SIZE = 1000;
 /** Hard cap on the AniList top-up rows a single new.xml request will consider. */
 export const RECENT_TOPUP_LIMIT = 2000;
 /** Hard cap on view rows read for new.xml (48h window). */
@@ -41,20 +47,57 @@ export function getSitemapDb(): SitemapDb | null {
   return createAdminClient() as unknown as SitemapDb | null;
 }
 
-async function range<T>(
+/**
+ * Reads `[chunkStart, chunkEnd]` in pages of 1000 rows.
+ *
+ * PostgREST caps every response at 1000 rows, so a single `.range(0, 39999)`
+ * silently returns 1000 rows and the rest of the chunk goes missing. Each page
+ * is requested sequentially (no artificial delay) with a stable ORDER BY so the
+ * offsets line up, and the walk stops as soon as a short page arrives.
+ */
+export async function readRowsPaged<T = any>(
   db: SitemapDb | null,
-  table: string,
-  columns: string,
-  order: string[],
-  from: number,
-  to: number,
+  options: {
+    table: string;
+    columns: string;
+    order: string[];
+    chunkStart: number;
+    chunkEnd: number;
+    filters?: (query: any) => any;
+    pageSize?: number;
+    limit?: number;
+  },
 ): Promise<T[]> {
+  const { table, columns, order, chunkStart, chunkEnd } = options;
+  const pageSize = options.pageSize && options.pageSize > 0 ? options.pageSize : ROW_PAGE_SIZE;
+  const limit = options.limit && options.limit > 0 ? options.limit : Infinity;
   if (!db) return [] as T[];
-  let query: any = db.from(table).select(columns);
-  for (const column of order) query = query.order(column, { ascending: true });
-  const { data, error } = await query.range(from, to);
-  if (error) throw error;
-  return (data || []) as T[];
+
+  const rows: T[] = [];
+  const start = Math.max(0, chunkStart);
+  const end = Math.max(start, chunkEnd);
+
+  for (let from = start; from <= end; from += pageSize) {
+    // Never ask for more than one page: the server would truncate it anyway.
+    const to = Math.min(from + pageSize - 1, end);
+
+    let query: any = db.from(table).select(columns);
+    if (options.filters) query = options.filters(query);
+    for (const column of order) query = query.order(column, { ascending: true });
+    const paged = typeof query?.range === "function" ? query.range(from, to) : query;
+
+    const { data, error } = await paged;
+    if (error) throw error;
+
+    const page = Array.isArray(data) ? (data as T[]) : [];
+    rows.push(...page);
+
+    // A short page means the chunk is exhausted; a full one means keep going.
+    if (page.length < to - from + 1) break;
+    if (rows.length >= limit) break;
+  }
+
+  return rows.length > limit ? rows.slice(0, limit) : rows;
 }
 
 /** Drops malformed view rows instead of emitting invented episode numbers. */
@@ -87,32 +130,51 @@ export async function countRows(db: SitemapDb | null, table: string): Promise<nu
   return Number(count) || 0;
 }
 
-/** One page of playable episodes, ordered by (anilist_id, episode_number). */
+/** One chunk (CHUNK_SIZE rows) of playable episodes, ordered by id then episode. */
 export async function fetchEpisodeSlice(db: SitemapDb | null, page: number, size = CHUNK_SIZE): Promise<SitemapEpisode[]> {
   const from = (Math.max(1, page) - 1) * size;
-  const rows = await range<any>(db, SITEMAP_EPISODES_VIEW, "anilist_id,episode_number,updated_at", ["anilist_id", "episode_number"], from, from + size - 1);
+  const rows = await readRowsPaged<any>(db, {
+    table: SITEMAP_EPISODES_VIEW,
+    columns: "anilist_id,episode_number,updated_at",
+    order: ["anilist_id", "episode_number"],
+    chunkStart: from,
+    chunkEnd: from + size - 1,
+  });
   return rows.map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
 }
 
-/** One page of imported anime (media pages). */
+/** One chunk of imported anime (media pages). */
 export async function fetchMediaSlice(db: SitemapDb | null, page: number, size = CHUNK_SIZE): Promise<SitemapMedia[]> {
   const from = (Math.max(1, page) - 1) * size;
-  const rows = await range<any>(db, "anime", "anilist_id,updated_at", ["anilist_id"], from, from + size - 1);
+  const rows = await readRowsPaged<any>(db, {
+    table: "anime",
+    columns: "anilist_id,updated_at",
+    order: ["anilist_id"],
+    chunkStart: from,
+    chunkEnd: from + size - 1,
+  });
   return rows.map(parseSitemapMedia).filter((row): row is SitemapMedia => row !== null);
 }
 
-/** View rows touched in the last `hours` (new.xml). */
+/**
+ * View rows touched in the last `hours` (new.xml), ordered by updated_at so the
+ * offsets stay stable across pages, and paged so the 1000-row response cap
+ * cannot silently cut it down to one page.
+ */
 export async function fetchRecentEpisodes(db: SitemapDb | null, hours = 48): Promise<SitemapEpisode[]> {
   if (!db) return [] as SitemapEpisode[];
   const since = new Date(Date.now() - hours * 3600000).toISOString();
-  const { data, error } = await db
-    .from(SITEMAP_EPISODES_VIEW)
-    .select("anilist_id,episode_number,updated_at")
-    .gte("updated_at", since)
-    .order("updated_at", { ascending: false })
-    .limit(RECENT_EPISODE_LIMIT);
-  if (error) throw error;
-  return ((data || []) as any[]).map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
+  const rows = await readRowsPaged<any>(db, {
+    table: SITEMAP_EPISODES_VIEW,
+    columns: "anilist_id,episode_number,updated_at",
+    order: ["updated_at"],
+    chunkStart: 0,
+    // Read up to the cap and stop: new.xml never needs more than this.
+    chunkEnd: RECENT_EPISODE_LIMIT - 1,
+    limit: RECENT_EPISODE_LIMIT,
+    filters: (query: any) => (typeof query?.gte === "function" ? query.gte("updated_at", since) : query),
+  });
+  return rows.map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
 }
 
 // ------------------------------------------------------------------ builders
