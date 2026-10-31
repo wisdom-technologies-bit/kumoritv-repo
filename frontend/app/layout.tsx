@@ -61,6 +61,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Monetag */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(s){s.dataset.zone='12159142',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
+          }}
+        />
+      </head>
       <GoogleAnalytics /> {/* Google Analytics */}
       <body className={inter.className}>
         <Analytics /> {/* Vercel Analytics - Has use limit */}
