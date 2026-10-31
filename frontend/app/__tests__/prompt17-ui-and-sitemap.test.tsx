@@ -27,17 +27,19 @@ const read = (relative: string) => fs.readFileSync(path.join(process.cwd(), rela
 
 // ------------------------------------------------------------------ PART 2
 
-// Prompt 18 raised the tokens: 44px controls on desktop, 48px on phones, with a
-// 40px avatar and a 64px bar. See prompt18-header-controls.test.ts.
-test("header sizing tokens: 44px icon buttons, 40px avatar, 64px bar (48px on phones)", () => {
+// Prompt 19 settled the tokens: 44px tap targets everywhere, a 36px avatar,
+// a 28px wordmark on phones and a 64px bar. See prompt19-header.test.ts and
+// prompt18-header-controls.test.ts.
+test("header sizing tokens: 44px icon buttons, 36px avatar, 64px bar", () => {
   const css = read("app/layout/header/headerComponent.module.css");
 
-  assert.match(css, /--header-control-size:\s*44px/, "desktop icon buttons are 44px");
-  assert.match(css, /--header-avatar-size:\s*40px/, "avatar is 40px");
+  assert.match(css, /--header-control-size:\s*44px/, "icon buttons are 44px tap targets");
+  assert.match(css, /--header-avatar-size:\s*36px/, "avatar is 36px");
   assert.match(css, /--header-min-height:\s*64px/, "header bar is 64px");
 
-  const phone = css.slice(css.indexOf("@media (max-width: 640px)"));
-  assert.match(phone, /--header-control-size:\s*48px/, "phones get 48px targets");
+  const phone = css.slice(css.indexOf("@media (max-width: 767px)"));
+  assert.match(phone, /--header-wordmark-height:\s*28px/, "phones keep a 28px wordmark");
+  assert.match(phone, /--header-control-size:\s*44px/, "phones keep 44px targets");
 });
 
 // ------------------------------------------------------------------ PART 3
@@ -74,7 +76,7 @@ test("the notifications watch pill is compact, not a tall oval", () => {
   const css = read("app/layout/header/components/Notifications/component.module.css");
   const pill = css.slice(css.indexOf(".watch_link {"));
 
-  assert.match(pill, /height:\s*34px/, "the pill is 34px tall");
+  assert.match(pill, /height:\s*36px/, "the pill is 36px tall");
   assert.match(pill, /width:\s*auto/, "it hugs its label");
   assert.match(pill, /border-radius:\s*999px/, "it stays a pill");
 });
@@ -123,7 +125,8 @@ test("the search panel is a full-width sheet on phones and a 560px dropdown on d
   assert.match(panel, /position:\s*fixed/, "phones get a sheet under the header");
   assert.match(panel, /left:\s*12px/);
   assert.match(panel, /right:\s*12px/);
-  assert.match(panel, /max-height:\s*70vh/);
+  // Prompt 19: the sheet is capped against the viewport, not a flat 70vh.
+  assert.match(panel, /max-height:\s*calc\(100dvh - var\(--header-min-height/);
 
   const desktop = css.slice(css.indexOf("@media (min-width: 641px)"));
   assert.match(desktop, /position:\s*absolute/, "desktop anchors the panel under the search box");

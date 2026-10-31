@@ -39,6 +39,14 @@
     text-decoration: none;
 }
 
+/* Scoped link layout: the header's own blanket `a { display: block }` is gone,
+   so each menu that wants a full-width clickable row says so itself. */
+#anime_header_nav_container > li > div li > a {
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+}
+
 #anime_header_nav_container > li > div li a:hover {
     color: var(--brand-color);
 }

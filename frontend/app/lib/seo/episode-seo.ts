@@ -21,6 +21,8 @@ export type EpisodeSeo = {
   durationISO: string | null;
   hasSub: boolean;
   hasDub: boolean;
+  /** The `episodes` row's created/updated time: the VideoObject uploadDate fallback. */
+  rowCreatedAtISO?: string | null;
   source: EpisodeSeoSource;
 };
 
@@ -33,6 +35,7 @@ export type EpisodeSeoRow = {
   hasSub: boolean;
   hasDub: boolean;
   airedAtISO: string | null;
+  rowCreatedAtISO: string | null;
 };
 
 export type EpisodeSeoDeps = {
@@ -106,7 +109,7 @@ export async function readEpisodeSeoRow(
   const [episodeResult, airingResult] = await Promise.allSettled([
     db
       .from("episodes")
-      .select("title, description, image_url, air_date, duration, sub_providers, dub_providers")
+      .select("title, description, image_url, air_date, duration, sub_providers, dub_providers, created_at, updated_at")
       .eq("anilist_id", anilistId)
       .eq("episode_number", episode)
       .maybeSingle(),
@@ -133,6 +136,7 @@ export async function readEpisodeSeoRow(
     hasSub: providerCount(row.sub_providers) > 0,
     hasDub: providerCount(row.dub_providers) > 0,
     airedAtISO: toAiredAtIso(airing?.aired_at) || toAiredAtIso(row.air_date),
+    rowCreatedAtISO: toAiredAtIso(row.created_at) || toAiredAtIso(row.updated_at),
   };
 }
 
@@ -210,6 +214,7 @@ export async function resolveEpisodeSeo(
     durationISO: null,
     hasSub: false,
     hasDub: false,
+    rowCreatedAtISO: null,
     source: "fallback",
   };
   if (!Number.isInteger(id) || id <= 0) return fallback;
@@ -275,6 +280,7 @@ export async function resolveEpisodeSeo(
       durationISO,
       hasSub: Boolean(row?.hasSub),
       hasDub: Boolean(row?.hasDub),
+      rowCreatedAtISO: row?.rowCreatedAtISO || null,
       source: row ? "db" : source,
     };
   } catch {

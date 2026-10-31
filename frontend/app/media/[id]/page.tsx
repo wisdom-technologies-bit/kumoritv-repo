@@ -17,6 +17,7 @@ import { animeName, buildMediaCanonical, buildMediaDescription, buildMediaTitle 
 import { absoluteUrl } from "@/app/lib/seo/text";
 import { anilistStartDateIso, buildMediaJsonLd } from "@/app/lib/seo/jsonld";
 import JsonLd from "@/app/lib/seo/JsonLd";
+import { loadCommentSummary } from "@/app/lib/seo/comments-jsonld";
 import { notFound } from "next/navigation";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 import { displayTitle } from "@/app/lib/titles";
@@ -115,6 +116,10 @@ export default async function MediaPage({
   }
 
   const canonical = buildMediaCanonical(params.id);
+
+  // Best effort: a failing or slow comments query just omits comment/commentCount.
+  const commentSummary = await loadCommentSummary({ anilistId: mediaInfo.id });
+
   const structuredData = buildMediaJsonLd({
     id: mediaInfo.id,
     name: animeName(mediaInfo.title) || `Anime ${params.id}`,
@@ -130,6 +135,9 @@ export default async function MediaPage({
     startDateISO: anilistStartDateIso(mediaInfo.startDate),
     episodes: mediaInfo.episodes,
     year: mediaInfo.seasonYear || mediaInfo.startDate?.year,
+    idMal: (mediaInfo as { idMal?: number | null }).idMal ?? null,
+    type: mediaInfo.type,
+    comments: commentSummary,
   });
 
   return (

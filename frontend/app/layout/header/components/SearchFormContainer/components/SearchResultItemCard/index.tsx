@@ -127,12 +127,16 @@ function SearchResultItemCard({
         <span className={styles.result_info_container}>
           <span className={styles.result_title}>{mediaTitle}</span>
 
-          {metaLine && <span className={styles.result_meta}>{metaLine}</span>}
-        </span>
+          {(mediaType || metaLine) && (
+            <span className={styles.result_meta_row}>
+              {mediaType && (
+                <span className={styles.type_tag}>{mediaType.toUpperCase()}</span>
+              )}
 
-        {mediaType && (
-          <span className={styles.type_tag}>{mediaType.toUpperCase()}</span>
-        )}
+              {metaLine && <span className={styles.result_meta}>{metaLine}</span>}
+            </span>
+          )}
+        </span>
       </Link>
     </li>
   );

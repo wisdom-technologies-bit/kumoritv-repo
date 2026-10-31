@@ -6,10 +6,12 @@ header#background {
     --header-wordmark-height: 32px;
     --header-control-size: 44px;
     --header-glyph-size: 24px;
-    --header-avatar-size: 40px;
+    --header-avatar-size: 36px;
+    --header-chevron-size: 16px;
+    --header-avatar-gap: 4px;
     --header-control-gap: 8px;
     --header-min-height: 64px;
-    --header-hover-surface: var(--white-25);
+    --header-hover-surface: var(--white-05);
     --header-focus-ring: 2px solid var(--brand-color);
 
     background-color: var(--background);
@@ -19,21 +21,31 @@ header#background {
     width: 100%;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
     header#background {
-        /* Phones: a 30px wordmark next to 48px round controls, 26px glyphs and
-           a 40px avatar, 4px apart. Everything is centred on one line. */
-        --header-wordmark-height: 30px;
-        --header-control-size: 48px;
-        --header-glyph-size: 26px;
-        --header-avatar-size: 40px;
+        /* Phones: a 28px wordmark next to 44px tap targets, 24px glyphs and a
+           36px avatar whose chevron is 4px away, 4px apart from each other.
+           Everything sits on the wordmark's centre line. */
+        --header-wordmark-height: 28px;
+        --header-control-size: 44px;
+        --header-glyph-size: 24px;
+        --header-avatar-size: 36px;
+        --header-chevron-size: 16px;
+        --header-avatar-gap: 4px;
         --header-control-gap: 4px;
         --header-min-height: 64px;
     }
 }
 
-header#background a {
-    display: block;
+/* The old blanket `header#background a { display: block }` (specificity 1,0,2)
+   beat every class inside the header: it turned the notification "Watch now"
+   pill into a tall oval, stacked the search result rows and stretched the
+   "See all results" link into a tall box. It is gone. Only the header's OWN
+   chrome links get an explicit display now; panels and menus style their own
+   links. */
+header#background #menu_and_logo_container > a#img_container,
+header#background #navbar_container > ul > li > a {
+    display: flex;
 }
 
 header#background > div#container {
@@ -130,15 +142,17 @@ header#background .header-icon-btn {
     background-color: transparent;
 }
 
+/* No painted disc on any state here: globals.css owns the touch/hover split. */
+header#background .header-icon-btn:hover,
+header#background .header-icon-btn[data-active="true"] {
+    background-color: transparent;
+}
+
 header#background .header-icon-btn > svg,
 header#background .header-icon-btn svg {
     width: var(--header-glyph-size);
     height: var(--header-glyph-size);
     fill: var(--white-100);
-}
-
-header#background .header-icon-btn[data-active="true"] {
-    background-color: var(--header-hover-surface);
 }
 
 /* DESKTOP NAVIGATION: CLOSE TO LOGO */
@@ -240,21 +254,27 @@ header#background .header-icon-btn[data-active="true"] {
         min-width: 0;
     }
 
-    /* MOBILE WORDMARK CONTAINER */
+    /* MOBILE WORDMARK CONTAINER
+       The wordmark keeps its 28px height and its intrinsic width: sizing the box
+       to a fixed max-width painted the logo inside a wider box, which pushed the
+       icon group off its rhythm. It may shrink (never overlap) on tiny screens. */
     #menu_and_logo_container > a#img_container {
         width: auto;
-        max-width: 128px;
+        max-width: 100%;
         min-width: 0;
         height: var(--header-wordmark-height);
     }
 
     #img_container picture {
-        width: 100%;
+        display: flex;
+        width: auto;
+        max-width: 100%;
         height: 100%;
     }
 
     #img_container picture img {
-        width: 100%;
+        width: auto;
+        max-width: 100%;
         height: 100%;
         object-fit: contain;
         object-position: left center;
@@ -263,6 +283,7 @@ header#background .header-icon-btn[data-active="true"] {
     #logo,
     .logo_image {
         width: auto;
+        max-width: 100%;
         min-width: 0;
         height: var(--header-wordmark-height);
         object-fit: contain;
@@ -289,11 +310,11 @@ header#background .header-icon-btn[data-active="true"] {
 
 @media (max-width: 380px) {
     header#background {
-        /* The tokens stay put on 320px screens (30px wordmark, 48px controls,
+        /* The tokens stay put on 320px screens (28px wordmark, 44px tap targets,
            4px gap) so the search, the bell and the avatar keep their targets;
            only the outer padding gets tighter, and nothing is allowed to wrap
            or push the row wider than the viewport. */
-        --header-wordmark-height: 30px;
+        --header-wordmark-height: 28px;
         --header-control-gap: 4px;
     }
 
@@ -306,10 +327,6 @@ header#background .header-icon-btn[data-active="true"] {
 
     #menu_and_logo_container {
         gap: 4px;
-    }
-
-    #menu_and_logo_container > a#img_container {
-        max-width: 104px;
     }
 
     header#background {

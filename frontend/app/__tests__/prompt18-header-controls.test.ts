@@ -122,22 +122,24 @@ test("search toggle, bell and user button all use the shared class", () => {
   }
 });
 
-test("header sizing tokens: phones 30/48/26/40/4, desktop 32/44/24/40/8", () => {
+// Prompt 19 settled the rhythm: 32/44/24/36/8 on desktop and
+// 28/44/24/36/4 on phones (see prompt19-header.test.ts).
+test("header sizing tokens: phones 28/44/24/36/4, desktop 32/44/24/36/8", () => {
   const css = read("app/layout/header/headerComponent.module.css");
 
-  const desktop = css.slice(0, css.indexOf("@media (max-width: 640px)"));
+  const desktop = css.slice(0, css.indexOf("@media (max-width: 767px)"));
   assert.match(desktop, /--header-wordmark-height:\s*32px/, "desktop wordmark is 32px");
   assert.match(desktop, /--header-control-size:\s*44px/, "desktop controls are 44px");
   assert.match(desktop, /--header-glyph-size:\s*24px/, "desktop glyphs are 24px");
-  assert.match(desktop, /--header-avatar-size:\s*40px/, "desktop avatar is 40px");
+  assert.match(desktop, /--header-avatar-size:\s*36px/, "desktop avatar is 36px");
   assert.match(desktop, /--header-control-gap:\s*8px/, "desktop gap is 8px");
 
-  const phoneStart = css.indexOf("@media (max-width: 640px)");
+  const phoneStart = css.indexOf("@media (max-width: 767px)");
   const phone = css.slice(phoneStart, css.indexOf("}", css.indexOf("--header-control-gap", phoneStart)) + 1);
-  assert.match(phone, /--header-wordmark-height:\s*30px/, "phone wordmark is 30px");
-  assert.match(phone, /--header-control-size:\s*48px/, "phone controls are 48px");
-  assert.match(phone, /--header-glyph-size:\s*26px/, "phone glyphs are 26px");
-  assert.match(phone, /--header-avatar-size:\s*40px/, "phone avatar is 40px");
+  assert.match(phone, /--header-wordmark-height:\s*28px/, "phone wordmark is 28px");
+  assert.match(phone, /--header-control-size:\s*44px/, "phone controls are 44px");
+  assert.match(phone, /--header-glyph-size:\s*24px/, "phone glyphs are 24px");
+  assert.match(phone, /--header-avatar-size:\s*36px/, "phone avatar is 36px");
   assert.match(phone, /--header-control-gap:\s*4px/, "phone gap is 4px");
 });
 
@@ -150,7 +152,7 @@ test("nothing shrinks the controls below their token on 320-380px screens", () =
   for (const token of ["--header-wordmark-height", "--header-control-size", "--header-glyph-size", "--header-avatar-size"]) {
     const declaration = narrowBlock.match(new RegExp(`${token}:\\s*(\\d+)px`));
     if (!declaration) continue;
-    const expected = token.includes("control") ? 48 : token.includes("wordmark") ? 30 : token.includes("glyph") ? 26 : 40;
+    const expected = token.includes("control") ? 44 : token.includes("wordmark") ? 28 : token.includes("glyph") ? 24 : 36;
     assert.equal(Number(declaration[1]), expected, `${token} keeps its phone value at 320px`);
   }
 

@@ -114,7 +114,28 @@ export default async function Home() {
     )
     .then((res) => res.map((item) => item.media));
 
-  const homeJsonLd = buildHomeJsonLd();
+  // ONE ItemList in Google's "summary page" carousel format: only @type,
+  // position and url per ListItem, top trending/popular non-adult titles that are
+  // already rendered on this page. No images, no names, no invented TVSeries.
+  const itemListSources = [listAnimesTrending, listAnimesReleasingByPopularity];
+  const homeItemUrls: string[] = [];
+  const seenHomeIds = new Set<number>();
+
+  for (const source of itemListSources) {
+    for (const item of source || []) {
+      if (!item || item.isAdult === true) continue;
+      if (seenHomeIds.has(item.id)) continue;
+      seenHomeIds.add(item.id);
+      homeItemUrls.push(absoluteUrl(`/media/${item.id}`));
+      if (homeItemUrls.length >= 10) break;
+    }
+
+    if (homeItemUrls.length >= 10) break;
+  }
+
+  const homeJsonLd = buildHomeJsonLd({
+    items: homeItemUrls.map((url) => ({ url })),
+  });
 
   return (
     <main id={styles.container} className={styles.main}>

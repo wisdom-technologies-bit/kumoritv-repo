@@ -16,6 +16,7 @@ import {
 } from "@/app/lib/seo/titles";
 import { absoluteUrl } from "@/app/lib/seo/text";
 import { episodeExistsInDb, watchRobots } from "@/app/lib/seo/watch-indexability";
+import { loadCommentSummary } from "@/app/lib/seo/comments-jsonld";
 import VideoPlayer from "./components/VideoPlayer";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
@@ -124,23 +125,37 @@ export default async function WatchPage({
   const episodeTitle = episodeSeo?.episodeTitle || `Episode ${ep}`;
   const name = animeName(media.title) || `Anime ${id}`;
   const canonical = buildWatchCanonical(id, ep, media.format);
+
+  // VideoObject only when we actually hold the episode: `source: "db"` means the
+  // `episodes` row exists, so the page has something to play.
+  const playable = episodeExistsInDb(episodeSeo);
+
+  // Best effort: a failing or slow comments query omits comment/commentCount and
+  // never blocks the render.
+  const commentSummary = playable
+    ? await loadCommentSummary({ anilistId: id, episodeNumber: ep })
+    : null;
+
   const jsonLd = buildWatchJsonLd({
     id,
     animeName: name,
     episode: ep,
     episodeTitle: episodeSeo?.episodeTitle ?? null,
     description: episodeSeo?.synopsis || media.description,
-    imageUrl: ogImageUrl(id, ep),
     thumbnailUrl:
       episodeSeo?.thumbnailUrl ||
       plain(media.bannerImage) ||
       plain(media.coverImage?.extraLarge as unknown) ||
       null,
     airedAtISO: episodeSeo?.airedAtISO ?? null,
+    rowCreatedAtISO: episodeSeo?.rowCreatedAtISO ?? null,
     durationISO: episodeSeo?.durationISO ?? null,
     url: canonical,
     seriesUrl: absoluteUrl(`/media/${id}`),
     format: media.format,
+    playable,
+    isFamilyFriendly: media.isAdult !== true,
+    comments: commentSummary,
   });
 
   return (
