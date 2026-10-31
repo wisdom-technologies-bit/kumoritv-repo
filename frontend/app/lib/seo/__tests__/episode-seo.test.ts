@@ -248,6 +248,7 @@ test("never throws when every dependency fails", async () => {
     hasSub: false,
     hasDub: false,
     source: "fallback",
+    rowCreatedAtISO: null,
   });
 });
 

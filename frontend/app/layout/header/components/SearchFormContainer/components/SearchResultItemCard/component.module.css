@@ -1,20 +1,34 @@
-/* ONE SEARCH ROW: cover, title + meta, type tag. No heavy borders. */
+/* ONE SEARCH ROW: cover on the left, title + meta + tag on the right.
+   The row is an <a> inside the header, so every rule here has to survive the
+   header's link styles: it used to be stacked (cover above the title) because
+   `header#background a { display: block }` (specificity 1,0,2) beat the
+   `.result_link` grid (0,1,0). The blanket rule is gone, and the layout rule
+   below is deliberately doubled up so a header-level `a` rule can never win
+   again. */
 
 .result_container {
     list-style: none;
     margin: 0;
     padding: 0;
+    min-width: 0;
 }
 
-.result_link {
-    display: grid;
-    grid-template-columns: 56px minmax(0, 1fr) auto;
+/* Doubled class = specificity (0,2,0): still a single honest class rule, but it
+   outranks anything a future blanket `header ... a` could reintroduce, without
+   an id from a sibling module (CSS Modules hashes ids per file) and without
+   !important. */
+.result_link.result_link {
+    display: flex;
+    flex-direction: row;
     align-items: center;
+    flex-wrap: nowrap;
     gap: 12px;
 
-    padding: 8px;
-    border-radius: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    box-sizing: border-box;
 
+    border-radius: 12px;
     background: transparent;
     border: 1px solid transparent;
 
@@ -35,10 +49,11 @@
     box-shadow: inset 0 0 0 2px var(--brand-color);
 }
 
+/* The cover never grows or shrinks: a fixed 56x80 block on the left. */
 .cover_container {
     position: relative;
     display: block;
-
+    flex: 0 0 56px;
     width: 56px;
     height: 80px;
 
@@ -64,10 +79,14 @@
     font-weight: 700;
 }
 
+/* The text block is the only part allowed to shrink. */
 .result_info_container {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -78,49 +97,68 @@
     -webkit-line-clamp: 2;
     overflow: hidden;
 
-    font-size: var(--font-size--small-1);
+    width: 100%;
+    font-size: 16px;
     font-weight: 600;
     color: var(--white-100);
-    line-height: 1.3;
+    line-height: 1.25;
+    text-transform: none;
     overflow-wrap: anywhere;
 }
 
+/* Tag and meta share one row; the tag keeps its own width. */
+.result_meta_row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
 .result_meta {
-    font-size: var(--font-size--small-2);
+    flex: 1 1 auto;
+    min-width: 0;
+
+    font-size: 13px;
     color: var(--white-50);
     line-height: 1.3;
 
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* Small inline pill: never stretched to the row width. */
 .type_tag {
-    align-self: start;
+    flex: 0 0 auto;
+    align-self: center;
 
-    padding: 3px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    height: 22px;
+    padding: 0 8px;
+    box-sizing: border-box;
 
     border: 1px solid var(--white-25);
     border-radius: 999px;
 
-    font-size: 0.62rem;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    line-height: 1.2;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-transform: uppercase;
     color: var(--white-75);
     white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 480px) {
     .result_link {
-        grid-template-columns: 48px minmax(0, 1fr) auto;
         gap: 10px;
-        padding: 8px 6px;
-    }
-
-    .cover_container {
-        width: 48px;
-        height: 68px;
+        padding: 8px 10px;
     }
 }

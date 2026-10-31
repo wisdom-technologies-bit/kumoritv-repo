@@ -83,6 +83,13 @@ function SearchFormContainer() {
     return () => window.clearTimeout(timer);
   }, [trimmedQuery, hasQuery]);
 
+  // A new query starts at the top of the list, never mid-scroll.
+  useEffect(() => {
+    const panel = panelRef.current;
+
+    if (panel) panel.scrollTop = 0;
+  }, [trimmedQuery]);
+
   // Close on route change (a result was followed) and on Escape / outside click.
   useEffect(() => {
     setIsPanelOpen(false);
@@ -350,9 +357,19 @@ function SearchFormContainer() {
               )}
 
               {!isLoading && hasQuery && (
-                <a className={styles.see_all_link} href={seeAllHref} data-search-see-all="true">
-                  See all results for “{trimmedQuery}”
-                </a>
+                /* Sticky footer: the link stays reachable and never covers the
+                   last row (it sits below the list in the flow). */
+                <div className={styles.results_footer} data-search-footer="true">
+                  <a
+                    className={styles.see_all_link}
+                    href={seeAllHref}
+                    data-search-see-all="true"
+                  >
+                    <span className={styles.see_all_label}>
+                      See all results for “{trimmedQuery}”
+                    </span>
+                  </a>
+                </div>
               )}
             </motion.div>
           )}

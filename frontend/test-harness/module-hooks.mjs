@@ -10,6 +10,7 @@ const mocks = {
   "next/image": "next-image",
   "framer-motion": "framer-motion",
   "@/app/lib/supabase/browser": "supabase-browser",
+  "server-only": "server-only",
   "@/app/lib/supabase/AuthProvider": "auth-provider",
 };
 
@@ -48,6 +49,8 @@ export default { motion, AnimatePresence, MotionConfig };`,
   "supabase-browser": `export function createBrowserSupabaseClient() {
   return globalThis.__commentsTestClient ?? null;
 }`,
+  // The real package throws outside a React Server Component build.
+  "server-only": `export {};`,
   "auth-provider": `export function useUser() {
   return globalThis.__commentsTestAuth ?? { user: null, profile: null, isAnonymous: false, loading: false, signOut: async () => {} };
 }`,

@@ -226,9 +226,20 @@ li {
    The sizing tokens (--header-*) are set on `header#background` in
    headerComponent.module.css; the fallbacks below keep the controls sane if the
    class is ever used outside the header.
+
+   HOVER / ACTIVE STATE
+   --------------------
+   The surface is painted by a `::before` box, never by the button itself:
+   - hover-capable pointers get a subtle 40px rounded square (radius 10px)
+     inside the 44px tap target;
+   - touch devices (`hover: none`) get NO surface at all, only the glyph turning
+     the brand accent. A 44px painted disc on a phone read as a grey blob.
    ========================================================================== */
 
 .header-icon-btn {
+    position: relative;
+    isolation: isolate;
+
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
@@ -256,13 +267,65 @@ li {
     appearance: none;
     -webkit-appearance: none;
     -webkit-tap-highlight-color: transparent;
-
-    transition: background-color 150ms ease-in-out;
 }
 
-.header-icon-btn:hover,
-.header-icon-btn[data-active="true"] {
-    background-color: var(--header-hover-surface, var(--white-25, rgba(255, 255, 255, 0.25)));
+/* The hover/active surface lives here so it can be smaller than the tap target
+   without changing the layout or the accessible box. */
+.header-icon-btn::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    transform: translate(-50%, -50%);
+    background-color: transparent;
+    transition: background-color 150ms ease-in-out;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* Pointers that can hover: one subtle rounded-square surface for every control. */
+@media (hover: hover) {
+    .header-icon-btn:hover,
+    .header-icon-btn[data-active="true"] {
+        /* The visible surface is the ::before box above. */
+        background-color: transparent;
+    }
+
+    .header-icon-btn:hover::before,
+    .header-icon-btn[data-active="true"]::before {
+        background-color: var(--header-hover-surface, var(--white-05, rgba(255, 255, 255, 0.05)));
+    }
+}
+
+/* Touch: no surface at all, the glyph takes the accent colour instead. */
+@media (hover: none) {
+    .header-icon-btn,
+    .header-icon-btn:hover,
+    .header-icon-btn:active,
+    .header-icon-btn:focus:not(:focus-visible),
+    .header-icon-btn[data-active="true"] {
+        background: transparent;
+        background-color: transparent;
+    }
+
+    .header-icon-btn::before,
+    .header-icon-btn:hover::before,
+    .header-icon-btn:active::before,
+    .header-icon-btn[data-active="true"]::before {
+        background-color: transparent;
+    }
+
+    .header-icon-btn:hover > svg,
+    .header-icon-btn:active > svg,
+    .header-icon-btn[data-active="true"] > svg,
+    .header-icon-btn:hover svg,
+    .header-icon-btn:active svg,
+    .header-icon-btn[data-active="true"] svg {
+        fill: var(--brand-color);
+    }
 }
 
 .header-icon-btn:focus-visible {
@@ -282,14 +345,14 @@ li {
 
 .header-icon-btn img {
     display: block;
-    width: var(--header-avatar-size, 40px);
-    height: var(--header-avatar-size, 40px);
+    width: var(--header-avatar-size, 36px);
+    height: var(--header-avatar-size, 36px);
     border-radius: 50%;
     object-fit: cover;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .header-icon-btn {
+    .header-icon-btn::before {
         transition: none;
     }
 }

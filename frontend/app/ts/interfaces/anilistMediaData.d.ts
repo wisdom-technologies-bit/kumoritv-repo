@@ -28,6 +28,8 @@ export interface MediaData {
   seasonYear: number;
   isAdult: boolean;
   id: number;
+  /** MyAnimeList id, when AniList knows one. Used for JSON-LD sameAs. */
+  idMal?: number | null;
   isFavourite: boolean;
   mediaListEntry: {
     id: number;

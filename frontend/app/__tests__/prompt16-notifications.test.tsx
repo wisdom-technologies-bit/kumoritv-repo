@@ -366,5 +366,13 @@ test("the stylesheet pins the sheet under the header and keeps it inside the vie
   assert.match(css, /overflow-y: auto/, "the sheet scrolls");
 
   assert.match(css, /@media \(max-width: 400px\)/, "very small phones get their own rules");
-  assert.match(css, /margin-right: 4px/, "the bell keeps clear of the avatar");
+
+  // Prompt 19 moved the bell/avatar separation into the header row's gap, so the
+  // bell itself must not carry stray margins that would break the rhythm.
+  assert.match(css, /#notification_btn \{[\s\S]*?margin: 0;/, "the bell adds no margin of its own");
+  const headerCss = readFileSync(
+    join(process.cwd(), "app/layout/header/headerComponent.module.css"),
+    "utf8",
+  );
+  assert.match(headerCss, /--header-control-gap:\s*4px/, "the row gap separates the bell from the avatar");
 });
