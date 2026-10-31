@@ -4,7 +4,7 @@ import "./globals.css";
 import Header from "./layout/header";
 import Footer from "./layout/footer";
 import NextTopLoader from "nextjs-toploader";
-import { Analytics } from "@vercel/analytics/react";
+import { Analytics } from "@vercel/analytics/next";
 import StoreProvider from "./lib/redux/StoreProvider";
 import LoadingPageContainer from "./components/LoadingContainer";
 import GoogleAnalytics from "./googleAnalytics";
