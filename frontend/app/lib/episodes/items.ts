@@ -130,7 +130,7 @@ export function filterEpisodes(
     .sort((a, b) => (order === "asc" ? a.number - b.number : b.number - a.number));
 }
 
-export const EPISODE_CHUNK_SIZE = 100;
+export const EPISODE_CHUNK_SIZE = 10;
 
 export function chunkEpisodes<T>(items: T[], size = EPISODE_CHUNK_SIZE): T[][] {
   if (size <= 0) return [items];
