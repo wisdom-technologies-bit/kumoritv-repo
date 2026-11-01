@@ -16,6 +16,8 @@ export type StorageLike = {
  *  describes a subset of the tables this layer reads (notifications, ...). */
 export type SupabaseLike = {
   from(table: string): any;
+  /** Used for the security-definer helpers (`push_allowed`, `claim_push_outbox`). */
+  rpc?(fn: string, args?: Record<string, unknown>): any;
   auth?: any;
 };
 
