@@ -63,8 +63,8 @@ export const watchUrl = (id: number, episode: number) => `${SITE_URL}/watch/${id
 export const mediaUrl = (id: number) => `${SITE_URL}/media/${id}`;
 export const xmlResponse = (body: string, seconds: number, type = "application/xml") => new Response(body, { headers: { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": `public, s-maxage=${seconds}, stale-while-revalidate` } });
 export function sitemapUrl(loc: string, lastmod?: string | null, changefreq?: string, priority?: string) { return `<url><loc>${xmlEscape(loc)}</loc>${lastmod ? `<lastmod>${xmlEscape(lastmod)}</lastmod>` : ""}${changefreq ? `<changefreq>${changefreq}</changefreq>` : ""}${priority ? `<priority>${priority}</priority>` : ""}</url>`; }
-export function sitemapDoc(urls: string[]) { return `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`; }
-export function indexDoc(files: Array<{ loc: string; lastmod?: string }>) { return `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${files.map((file) => `<sitemap><loc>${xmlEscape(file.loc)}</loc>${file.lastmod ? `<lastmod>${xmlEscape(file.lastmod)}</lastmod>` : ""}</sitemap>`).join("")}</sitemapindex>`; }
+export function sitemapDoc(urls: string[]) { return `<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.join("")}</urlset>`; }
+export function indexDoc(files: Array<{ loc: string; lastmod?: string }>) { return `<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${files.map((file) => `<sitemap><loc>${xmlEscape(file.loc)}</loc>${file.lastmod ? `<lastmod>${xmlEscape(file.lastmod)}</lastmod>` : ""}</sitemap>`).join("")}</sitemapindex>`; }
 
 /** Supabase-shaped client. The view is not in the generated types, so it is `any`. */
 export type SitemapDb = { from: (table: string) => any };
