@@ -200,9 +200,9 @@ function SearchFormContainer() {
           className="header-icon-btn"
         >
           {isMobileInputOpen ? (
-            <CloseSvg alt="" width={22} height={22} />
+            <CloseSvg alt="" width={22} height={22} viewBox="0 0 16 16" />
           ) : (
-            <SearchIcon alt="" width={22} height={22} />
+            <SearchIcon alt="" width={22} height={22} viewBox="0 0 16 16" />
           )}
         </button>
 
