@@ -289,9 +289,9 @@ function NotificationsContainer() {
             data-active={isPanelOpen}
           >
             {hasNewNotifications ? (
-              <BellFillSvg fill="white" width={22} height={22} />
+              <BellFillSvg fill="white" width={22} height={22} viewBox="0 0 16 16" />
             ) : (
-              <BellSvg fill="white" width={22} height={22} />
+              <BellSvg fill="white" width={22} height={22} viewBox="0 0 16 16" />
             )}
           </button>
 
