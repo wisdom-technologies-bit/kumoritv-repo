@@ -1,6 +1,9 @@
 
 #user_container {
     position: static;
+    display: flex;
+    align-items: center;
+    height: var(--header-control-size, 44px);
 }
 
 /* The button gets its real looks from the shared global `.header-icon-btn`
