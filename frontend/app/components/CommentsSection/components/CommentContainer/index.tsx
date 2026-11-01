@@ -14,6 +14,7 @@ import WriteCommentForm, {
 } from "../WriteCommentForm";
 import { formatTimeAgo } from "@/app/lib/comments/timeAgo";
 import type { CommentFeedRow, ReactionValue } from "@/app/lib/comments/queries";
+import { splitMentions } from "@/app/lib/comments/mentions";
 
 export type CommentContainerTypes = {
   comment: CommentFeedRow;
@@ -150,7 +151,18 @@ export default function CommentContainer({
             <span aria-hidden="true">⚠</span> Spoiler — tap to reveal
           </button>
         ) : (
-          <p className={styles.comment_body}>{comment.body}</p>
+          <p className={styles.comment_body}>
+            {/* "@username" is highlighted, never linked: there is no public profile page. */}
+            {splitMentions(comment.body).map((segment, index) =>
+              segment.mention ? (
+                <span className={styles.mention} key={`m-${index}`}>
+                  {segment.text}
+                </span>
+              ) : (
+                <React.Fragment key={`t-${index}`}>{segment.text}</React.Fragment>
+              ),
+            )}
+          </p>
         )}
 
         <div className={styles.actions_row}>

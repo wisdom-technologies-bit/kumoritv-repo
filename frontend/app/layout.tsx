@@ -9,6 +9,7 @@ import StoreProvider from "./lib/redux/StoreProvider";
 import LoadingPageContainer from "./components/LoadingContainer";
 import GoogleAnalytics from "./googleAnalytics";
 import { AuthProvider } from "./lib/supabase/AuthProvider";
+import PushProvider from "./lib/push/PushProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -74,6 +75,8 @@ export default function RootLayout({
         <Analytics /> {/* Vercel Analytics - Has use limit */}
         <StoreProvider>
           <AuthProvider>
+            {/* Only signed-in users ever load OneSignal; the bell does not need it. */}
+            <PushProvider />
             <Header />
 
             <NextTopLoader color="var(--brand-color)" showSpinner={false} />

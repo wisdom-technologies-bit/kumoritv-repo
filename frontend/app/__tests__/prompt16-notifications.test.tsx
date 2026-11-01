@@ -62,41 +62,65 @@ const TWO_EPISODES: Row[] = [
   },
 ];
 
-/** Chainable stand-in for the Supabase query builder used by the notifications lib. */
+/**
+ * Chainable stand-in for the Supabase query builder used by the notifications lib.
+ * Since prompt 21 the bell also reads `user_notifications`, `announcements` and
+ * `announcement_reads`; this fixture only seeds episode rows, so every other
+ * table answers empty (the merged-bell behaviour has its own test file).
+ */
 function fakeClient(rows: Row[] = TWO_EPISODES) {
   const calls: string[] = [];
 
-  const builder: any = {
-    select() {
-      calls.push("select");
-      return builder;
-    },
-    update() {
-      calls.push("update");
-      return builder;
-    },
-    delete() {
-      calls.push("delete");
-      return builder;
-    },
-    eq() {
-      return builder;
-    },
-    is() {
-      return builder;
-    },
-    order() {
-      return builder;
-    },
-    limit() {
-      return builder;
-    },
-    then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
-      return Promise.resolve({ data: rows, error: null, count: rows.length }).then(resolve, reject);
-    },
-  };
+  // A fresh builder per query: the bell now issues three reads in parallel, and a
+  // shared builder would let them overwrite each other's table name.
+  function builderFor(table: string): any {
+    const builder: any = {
+      select() {
+        calls.push("select");
+        return builder;
+      },
+      update() {
+        calls.push("update");
+        return builder;
+      },
+      delete() {
+        calls.push("delete");
+        return builder;
+      },
+      eq() {
+        return builder;
+      },
+      is() {
+        return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return builder;
+      },
+      upsert() {
+        calls.push("upsert");
+        return Promise.resolve({ error: null });
+      },
+      then(resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) {
+        const payload = table === "notifications" ? rows : [];
 
-  return { calls, from: () => builder, auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) } };
+        return Promise.resolve({ data: payload, error: null, count: payload.length }).then(
+          resolve,
+          reject,
+        );
+      },
+    };
+
+    return builder;
+  }
+
+  return {
+    calls,
+    from: (table: string) => builderFor(table),
+    auth: { getSession: async () => ({ data: { session: { user: { id: "u1" } } } }) },
+  };
 }
 
 function makeStore() {

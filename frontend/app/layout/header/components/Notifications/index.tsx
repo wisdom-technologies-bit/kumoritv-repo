@@ -10,10 +10,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { useAppSelector } from "@/app/lib/redux/hooks";
+import HeartFillSvg from "@/public/assets/heart-fill.svg";
+import MegaphoneFillSvg from "@/public/assets/megaphone-fill.svg";
 import {
-  listNotifications,
-  markAllNotificationsRead,
+  BELL_ITEM_LIMIT,
+  loadBell,
+  markAllBellRead,
+  type AnnouncementView,
+  type BellItem,
   type NotificationView,
+  type UserNotificationView,
 } from "@/app/lib/user-data/notifications";
 import { displayTitle } from "@/app/lib/titles";
 
@@ -140,6 +146,179 @@ function NotificationItem({ notification }: { notification: NotificationView }) 
   );
 }
 
+/** reply / mention: the actor's face, what they did, and the snippet. */
+function UserNotificationItem({ notification }: { notification: UserNotificationView }) {
+  const initial = (notification.actorName ?? "?").trim().charAt(0).toUpperCase() || "?";
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  const showAvatar = Boolean(notification.actorAvatar) && !avatarBroken;
+
+  return (
+    <li
+      className={styles.notification_item_container}
+      data-unread={notification.isRead ? "false" : "true"}
+      data-kind={notification.kind}
+      aria-label={notification.title}
+    >
+      <div className={styles.img_container} data-actor-avatar="true">
+        {showAvatar ? (
+          <Image
+            src={notification.actorAvatar as string}
+            alt=""
+            fill
+            sizes="56px"
+            onError={() => setAvatarBroken(true)}
+          />
+        ) : (
+          <span className={styles.img_fallback}>{initial}</span>
+        )}
+      </div>
+
+      <div className={styles.notification_item_info}>
+        <div className={styles.item_heading}>
+          <p className={styles.item_title}>{notification.title}</p>
+
+          {!notification.isRead && (
+            <span className={styles.unread_dot} data-unread-dot="true" role="img" aria-label="Unread" />
+          )}
+        </div>
+
+        {notification.body && <p className={styles.item_snippet}>{notification.body}</p>}
+
+        {notification.url && (
+          <Link className={styles.watch_link} href={notification.url}>
+            View
+          </Link>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** like: a heart, the running count and the comment snippet. */
+function LikeNotificationItem({ notification }: { notification: UserNotificationView }) {
+  const count = notification.count || 1;
+
+  return (
+    <li
+      className={styles.notification_item_container}
+      data-unread={notification.isRead ? "false" : "true"}
+      data-kind="like"
+      aria-label={`Your comment got ${count} ${count === 1 ? "like" : "likes"}`}
+    >
+      <div className={styles.icon_container} aria-hidden="true">
+        <HeartFillSvg width={18} height={18} viewBox="0 0 16 16" />
+      </div>
+
+      <div className={styles.notification_item_info}>
+        <div className={styles.item_heading}>
+          <p className={styles.item_title}>
+            Your comment got {count} {count === 1 ? "like" : "likes"}
+          </p>
+
+          {!notification.isRead && (
+            <span className={styles.unread_dot} data-unread-dot="true" role="img" aria-label="Unread" />
+          )}
+        </div>
+
+        {notification.body && <p className={styles.item_snippet}>{notification.body}</p>}
+
+        {notification.url && (
+          <Link className={styles.watch_link} href={notification.url}>
+            View
+          </Link>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** digest: "N new episodes on KumoriTV", with up to three titles in the body. */
+function DigestNotificationItem({ notification }: { notification: UserNotificationView }) {
+  const initial = "K";
+
+  return (
+    <li
+      className={styles.notification_item_container}
+      data-unread={notification.isRead ? "false" : "true"}
+      data-kind="digest"
+      aria-label={notification.title}
+    >
+      <div className={styles.img_container}>
+        {notification.image ? (
+          <Image src={notification.image} alt="" fill sizes="56px" />
+        ) : (
+          <span className={styles.img_fallback}>{initial}</span>
+        )}
+      </div>
+
+      <div className={styles.notification_item_info}>
+        <div className={styles.item_heading}>
+          <p className={styles.item_title}>{notification.title}</p>
+
+          {!notification.isRead && (
+            <span className={styles.unread_dot} data-unread-dot="true" role="img" aria-label="Unread" />
+          )}
+        </div>
+
+        {notification.body && <p className={styles.item_snippet}>{notification.body}</p>}
+
+        <Link className={styles.watch_link} href={notification.url || "/"}>
+          Browse
+        </Link>
+      </div>
+    </li>
+  );
+}
+
+/** announcement: a megaphone, the title and body, and the optional button. */
+function AnnouncementItem({ announcement }: { announcement: AnnouncementView }) {
+  return (
+    <li
+      className={styles.notification_item_container}
+      data-unread={announcement.isRead ? "false" : "true"}
+      data-kind="announcement"
+      aria-label={announcement.title}
+    >
+      <div className={styles.icon_container} aria-hidden="true">
+        <MegaphoneFillSvg width={18} height={18} viewBox="0 0 16 16" />
+      </div>
+
+      <div className={styles.notification_item_info}>
+        <div className={styles.item_heading}>
+          <p className={styles.item_title}>{announcement.title}</p>
+
+          {!announcement.isRead && (
+            <span className={styles.unread_dot} data-unread-dot="true" role="img" aria-label="Unread" />
+          )}
+        </div>
+
+        {announcement.body && <p className={styles.item_snippet}>{announcement.body}</p>}
+
+        {announcement.image && (
+          <div className={styles.announcement_image}>
+            <Image src={announcement.image} alt="" fill sizes="240px" />
+          </div>
+        )}
+
+        {announcement.url && (
+          <Link className={styles.watch_link} href={announcement.url}>
+            Open
+          </Link>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function BellRow({ entry }: { entry: BellItem }) {
+  if (entry.source === "episodes") return <NotificationItem notification={entry.item} />;
+  if (entry.source === "announcement") return <AnnouncementItem announcement={entry.item} />;
+  if (entry.item.kind === "like") return <LikeNotificationItem notification={entry.item} />;
+  if (entry.item.kind === "digest") return <DigestNotificationItem notification={entry.item} />;
+
+  return <UserNotificationItem notification={entry.item} />;
+}
+
 function NotificationsContainer() {
   //
   // HOW IT WORKS
@@ -149,9 +328,7 @@ function NotificationsContainer() {
   // this component only reads them: on mount, on window focus and every 5 minutes.
   // Unread rows (read_at is null) drive the badge; opening the panel marks them read.
   //
-  const [notificationsList, setNotificationsList] = useState<NotificationView[]>(
-    []
-  );
+  const [bellItems, setBellItems] = useState<BellItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isPanelOpen, setIsPanelOpen] = useState<boolean>(false);
 
@@ -167,15 +344,18 @@ function NotificationsContainer() {
 
   const refreshNotifications = useCallback(async () => {
     if (!user) {
-      setNotificationsList([]);
+      setBellItems([]);
       setUnreadCount(0);
 
       return;
     }
 
-    const result = await listNotifications();
+    // One read for all three sources: episode rows, user_notifications and
+    // announcements. Push being off (or OneSignal failing to load) changes
+    // nothing here: the bell only reads the database.
+    const result = await loadBell();
 
-    setNotificationsList(result.items);
+    setBellItems(result.items);
     setUnreadCount(result.unreadCount);
   }, [user]);
 
@@ -261,9 +441,13 @@ function NotificationsContainer() {
     }
 
     setIsPanelOpen(true);
+    // The badge clears at once; the rows keep their unread styling until the next
+    // refresh, exactly as they did before the bell merged its sources.
     setUnreadCount(0);
 
-    await markAllNotificationsRead();
+    // Covers all three tables (episode rows, user_notifications, announcement
+    // reads). The announcement upsert is idempotent, so repeating is harmless.
+    await markAllBellRead();
   }
 
   if (user || anilistUser) {
@@ -341,7 +525,7 @@ function NotificationsContainer() {
                     </button>
                   </div>
 
-                  {notificationsList.length == 0 && (
+                  {bellItems.length == 0 && (
                     <div className={styles.empty_state}>
                       <BellSvg
                         fill="currentColor"
@@ -358,13 +542,10 @@ function NotificationsContainer() {
                     </div>
                   )}
 
-                  {notificationsList.length != 0 && (
-                    <ul className={styles.notification_list}>
-                      {notificationsList.map((notification) => (
-                        <NotificationItem
-                          key={notification.id}
-                          notification={notification}
-                        />
+                  {bellItems.length != 0 && (
+                    <ul className={styles.notification_list} data-bell-count={bellItems.length}>
+                      {bellItems.slice(0, BELL_ITEM_LIMIT).map((entry) => (
+                        <BellRow key={entry.id} entry={entry} />
                       ))}
                     </ul>
                   )}

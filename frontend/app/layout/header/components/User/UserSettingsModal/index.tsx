@@ -16,6 +16,9 @@ import { clearFavourites } from "@/app/lib/user-data/favourites";
 import { clearProgress } from "@/app/lib/user-data/progress";
 import { clearNotifications } from "@/app/lib/user-data/notifications";
 import { clearUserScopedCaches } from "@/app/lib/user-data/merge";
+import SectionHeading from "./SectionHeading";
+import SwitchRow from "./SwitchRow";
+import NotificationsSection, { NOTIFICATIONS_SECTION_ID } from "./NotificationsSection";
 
 type SettingsTypes = {
   onClick?:
@@ -27,6 +30,8 @@ type SettingsTypes = {
   auth?: unknown;
   anilistUser?: UserAnilist | null;
   newUser?: boolean;
+  /** Scroll target when the modal is opened from `?settings=notifications`. */
+  initialSection?: "notifications" | null;
 };
 
 type AudioPreference = "sub" | "dub";
@@ -116,63 +121,11 @@ async function clearSiteCookies() {
   }
 }
 
-function SectionHeading({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className={styles.card_heading}>
-      <h3>{title}</h3>
-      <p className={styles.card_description}>{description}</p>
-    </div>
-  );
-}
-
-function SwitchRow({
-  id,
-  name,
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  id: string;
-  name: string;
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <div className={styles.switch_row}>
-      <label className={styles.switch_text} htmlFor={id}>
-        <span className={styles.switch_label}>{label}</span>
-        {description && <span className={styles.switch_desc}>{description}</span>}
-      </label>
-
-      <span className={styles.switch_control}>
-        <input
-          id={id}
-          type="checkbox"
-          role="switch"
-          name={name}
-          className={styles.switch_input}
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span className={styles.switch_track} aria-hidden="true" />
-      </span>
-    </div>
-  );
-}
-
 function UserSettingsModal({
   onClick,
   anilistUser,
   newUser,
+  initialSection = null,
 }: SettingsTypes) {
   const { user: supabaseUser, profile } = useUser();
   const router = useRouter();
@@ -303,6 +256,15 @@ function UserSettingsModal({
       restoreFocusRef.current?.focus?.();
     };
   }, [closeModal]);
+
+  // `?settings=notifications` scrolls the Notifications card into view. jsdom has
+  // no scrollIntoView, hence the optional call.
+  useEffect(() => {
+    if (initialSection !== "notifications") return;
+
+    const node = document.getElementById(NOTIFICATIONS_SECTION_ID);
+    node?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [initialSection]);
 
   const update = useCallback(<K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) => {
     setForm((current) => (current ? { ...current, [key]: value } : current));
@@ -678,6 +640,9 @@ function UserSettingsModal({
                 </span>
               )}
             </section>
+
+            {/* NOTIFICATIONS */}
+            <NotificationsSection isSignedIn={isSignedIn} />
 
             {/* DATA */}
             <section className={styles.card}>

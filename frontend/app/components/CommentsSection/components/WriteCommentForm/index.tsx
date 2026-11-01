@@ -5,6 +5,7 @@ import Image from "next/image";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import ProfileFallbackImg from "@/public/profile_fallback.jpg";
 import { COMMENT_BODY_LIMIT, CommentsFailure, isCommentingTooFast } from "@/app/lib/comments/queries";
+import MentionPicker, { useMentionPicker, type MentionUser } from "../MentionPicker";
 
 export type CommentSubmission = { body: string; isSpoiler: boolean };
 
@@ -25,6 +26,8 @@ type WriteCommentFormTypes = {
   onEpisodeChange?: (episode: number | null) => void;
   onCancel?: () => void;
   autoFocus?: boolean;
+  /** Test seam for the @ picker's lookup; production uses /api/users/search. */
+  mentionFetcher?: (query: string) => Promise<MentionUser[]>;
 };
 
 function initialOf(name: string | null | undefined) {
@@ -49,6 +52,7 @@ export default function WriteCommentForm({
   onEpisodeChange,
   onCancel,
   autoFocus,
+  mentionFetcher,
 }: WriteCommentFormTypes) {
   const [isOpen, setIsOpen] = useState<boolean>(!!isAReply || !!autoFocus);
   const [body, setBody] = useState<string>("");
@@ -56,8 +60,40 @@ export default function WriteCommentForm({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [success, setSuccess] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Caret position, so the @ picker knows which token is being typed. */
+  const [caret, setCaret] = useState<number>(0);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  /** Caret to restore after a pick (React owns the value, so it re-applies). */
+  const pendingCaret = useRef<number | null>(null);
+
+  const mentions = useMentionPicker({
+    text: body,
+    caret,
+    fetcher: mentionFetcher,
+    onInsert: ({ text, caret: nextCaret }) => {
+      pendingCaret.current = nextCaret;
+      setBody(text);
+      setCaret(nextCaret);
+    },
+  });
+
+  useEffect(() => {
+    if (pendingCaret.current === null) return;
+
+    const node = textareaRef.current;
+    const position = pendingCaret.current;
+    pendingCaret.current = null;
+
+    if (node) {
+      node.focus();
+      try {
+        node.setSelectionRange(position, position);
+      } catch {
+        /* older browsers do not support it on every input type */
+      }
+    }
+  }, [body]);
 
   const displayName = username || "Anonymous";
   const trimmed = body.trim();
@@ -117,6 +153,7 @@ export default function WriteCommentForm({
   }
 
   function handleCancel() {
+    mentions.close();
     setBody("");
     setIsSpoiler(false);
     setErrorMessage(null);
@@ -140,7 +177,7 @@ export default function WriteCommentForm({
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className={styles.form}>
+      <form onSubmit={handleSubmit} className={styles.form} style={{ position: "relative" }}>
         {!isOpen ? (
           <button
             type="button"
@@ -168,16 +205,35 @@ export default function WriteCommentForm({
               placeholder={isAReply ? "Write a reply…" : "Add a comment…"}
               onChange={(event) => {
                 setBody(event.target.value);
+                setCaret(event.target.selectionStart ?? event.target.value.length);
                 if (success) setSuccess(false);
                 if (errorMessage) setErrorMessage(null);
               }}
+              onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+              onKeyUp={(event) => {
+                if (["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key)) return;
+                setCaret(event.currentTarget.selectionStart ?? 0);
+              }}
               onKeyDown={(event) => {
+                // The @ picker gets first refusal: Escape closes the list, not the
+                // whole comment.
+                if (mentions.handleKeyDown(event)) return;
                 if (event.key === "Escape") handleCancel();
                 if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                   void handleSubmit(event);
                 }
               }}
             />
+
+            {mentions.isOpen && (
+              <MentionPicker
+                results={mentions.results}
+                activeIndex={mentions.activeIndex}
+                onHover={mentions.setActiveIndex}
+                onSelect={mentions.select}
+              />
+            )}
 
             <div className={styles.toolbar}>
               <label className={styles.spoiler_toggle}>

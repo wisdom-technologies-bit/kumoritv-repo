@@ -682,3 +682,40 @@
     justify-content: flex-end;
     flex-wrap: wrap;
 }
+
+/* NOTIFICATIONS: the account-wide categories sit indented under the master
+   toggle so it is obvious they only apply while push is on. */
+
+.sub_switches {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    margin-top: 2px;
+    padding-left: 12px;
+
+    border-left: 2px solid var(--white-05);
+}
+
+.sub_switches .switch_row {
+    min-height: 44px;
+}
+
+.sub_switches .switch_label {
+    font-size: var(--font-size--small-2);
+}
+
+/* A disabled switch row reads as unavailable, but the label stays legible. */
+.switch_row[data-disabled="true"] {
+    opacity: 0.6;
+}
+
+.switch_row[data-disabled="true"] .switch_input {
+    cursor: not-allowed;
+}
+
+@media (max-width: 400px) {
+    .sub_switches {
+        padding-left: 8px;
+    }
+}

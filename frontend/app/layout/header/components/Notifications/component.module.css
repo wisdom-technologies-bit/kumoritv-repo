@@ -481,3 +481,61 @@ span#notifications_badge {
         font-size: 0.62rem;
     }
 }
+
+/* UNIFIED BELL — reply, mention, like, digest and announcement rows
+   They reuse the episode card (thumbnail + info + pill button); an icon row
+   replaces the cover where there is no artwork. */
+
+.icon_container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    flex: 0 0 48px;
+    width: 48px;
+    height: 64px;
+
+    border-radius: 10px;
+
+    background: var(--white-05);
+    color: var(--brand-color);
+}
+
+.item_snippet {
+    display: -webkit-box;
+    overflow: hidden;
+
+    margin: 2px 0 0;
+
+    color: var(--white-75);
+    font-size: var(--font-size--small-2);
+    line-height: 1.4;
+
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.announcement_image {
+    position: relative;
+
+    width: 100%;
+    max-width: 240px;
+    aspect-ratio: 16 / 9;
+    margin-top: 6px;
+    overflow: hidden;
+
+    border-radius: 10px;
+    background: var(--white-05);
+}
+
+.announcement_image img {
+    object-fit: cover;
+}
+
+@media (max-width: 400px) {
+    .icon_container {
+        flex-basis: 40px;
+        width: 40px;
+        height: 56px;
+    }
+}

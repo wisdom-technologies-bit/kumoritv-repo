@@ -92,6 +92,17 @@
 }
 
 /* BODY */
+/* A mention reads as a handle, not a link. */
+.mention {
+    color: var(--brand-color);
+    font-weight: 500;
+
+    padding: 0 1px;
+
+    background: var(--white-05);
+    border-radius: 4px;
+}
+
 .comment_body {
     margin: 2px 0 0;
     color: var(--white-100);

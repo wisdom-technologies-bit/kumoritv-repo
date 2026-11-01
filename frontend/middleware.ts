@@ -24,4 +24,7 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+// `push/` is excluded so the OneSignal service workers under
+// /push/onesignal/* are served straight from /public: no auth call, no rewrite,
+// no redirect. The browser refuses a worker script that answers with one.
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|push/).*)"] };
