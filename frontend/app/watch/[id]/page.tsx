@@ -142,11 +142,10 @@ export default async function WatchPage({
     episode: ep,
     episodeTitle: episodeSeo?.episodeTitle ?? null,
     description: episodeSeo?.synopsis || media.description,
-    thumbnailUrl:
-      episodeSeo?.thumbnailUrl ||
-      plain(media.bannerImage) ||
-      plain(media.coverImage?.extraLarge as unknown) ||
-      null,
+    // Always our own /thumb route: it proxies the same source images (the
+    // episode image, then the banner, then the cover) and falls back to the OG
+    // card, so Googlebot never fetches a third-party host that blocks it.
+    thumbnailUrl: absoluteUrl(`/thumb/${id}/${ep}`),
     airedAtISO: episodeSeo?.airedAtISO ?? null,
     rowCreatedAtISO: episodeSeo?.rowCreatedAtISO ?? null,
     durationISO: episodeSeo?.durationISO ?? null,

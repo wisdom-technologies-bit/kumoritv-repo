@@ -28,7 +28,7 @@ export const OG_FALLBACK_CACHE_CONTROL =
 export const OG_IMAGE_TIMEOUT_MS = 3000;
 
 /** 8x8 brand-coloured PNG, used only if the encoder itself fails. */
-const LAST_RESORT_PNG =
+export const OG_LAST_RESORT_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVR4nGPg5hb5jw8zjAwFAO+TSkHmnF6wAAAAAElFTkSuQmCC";
 
 type MediaLike = {
@@ -194,7 +194,7 @@ async function toPngResponse(element: React.ReactElement, cacheControl: string):
 }
 
 async function lastResortResponse(cacheControl: string): Promise<Response> {
-  const png = Buffer.from(LAST_RESORT_PNG, "base64");
+  const png = Buffer.from(OG_LAST_RESORT_PNG, "base64");
   return new Response(png, {
     status: 200,
     headers: {
