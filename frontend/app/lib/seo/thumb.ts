@@ -273,7 +273,8 @@ export async function fetchThumbImage(
     }
 
     const contentType = text(response.headers.get("content-type")).toLowerCase();
-    if (!contentType.startsWith("image/")) {
+    // Raster images only: an SVG served from our own origin could run script.
+    if (!contentType.startsWith("image/") || contentType.startsWith("image/svg")) {
       await response.body?.cancel().catch(() => undefined);
       return null;
     }
