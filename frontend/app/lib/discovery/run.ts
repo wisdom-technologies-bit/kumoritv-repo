@@ -1,5 +1,5 @@
-import { waitUntil } from "@vercel/functions";
 import { NextResponse } from "next/server";
+import { runInBackground } from "@/app/lib/background";
 import { acquireLock, finishRun } from "./lock";
 export async function runDiscovery(request: Request, job: string, work: () => Promise<any>) {
   try {
@@ -20,7 +20,7 @@ export async function runDiscovery(request: Request, job: string, work: () => Pr
       try { return NextResponse.json(await execute()); }
       catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : String(error), job }, { status: 500 }); }
     }
-    waitUntil(execute().catch(() => undefined));
+    runInBackground(execute, { label: `discovery ${job}` });
     return NextResponse.json({ started: true, job }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error), job }, { status: 500 });

@@ -1,4 +1,4 @@
-import { waitUntil } from "@vercel/functions";
+import { runInBackground } from "@/app/lib/background";
 import { ANIVEXA_BASE } from "@/app/lib/anivexa/client";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getWatchEpisodeResult } from "@/app/lib/watch/episode-data";
@@ -17,30 +17,16 @@ import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
 
-const IS_VERCEL = process.env.VERCEL === "1";
-
-async function runBackground(task: PromiseLike<any>) {
-  const promise = Promise.resolve(task).then((result) => {
-    if (result?.error) {
-      console.error("[WATCH] Background database update failed:", result.error);
-    }
-    return result;
-  });
-
-  if (IS_VERCEL) {
-    waitUntil(
-      promise.catch((error) => {
-        console.error("[WATCH] Background task failed:", error);
-      }),
-    );
-    return;
-  }
-
-  try {
-    await promise;
-  } catch (error) {
-    console.error("[WATCH] Background task failed:", error);
-  }
+/** Supabase resolves with `{ error }` instead of throwing, so log the result. */
+function backgroundUpdate(query: PromiseLike<any>) {
+  runInBackground(
+    async () => {
+      const result = await query;
+      if (result?.error)
+        console.error("[WATCH] Background database update failed:", result.error);
+    },
+    { label: "watch db update" },
+  );
 }
 
 export const runtime = "nodejs";
@@ -280,7 +266,7 @@ export async function GET(
     winner = nonEmbed || results.find(Boolean);
   }
   if (!winner) {
-    await runBackground(
+    backgroundUpdate(
       db
         .from("episodes")
         .update({
@@ -377,7 +363,7 @@ export async function GET(
       return json({ error: "proxy_not_configured" }, 500);
     throw error;
   }
-  await runBackground(
+  backgroundUpdate(
     db
       .from("episodes")
       .update({
