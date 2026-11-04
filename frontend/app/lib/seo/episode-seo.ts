@@ -8,6 +8,7 @@
 
 import "server-only";
 import { cache } from "react";
+import { runInBackground } from "@/app/lib/background";
 import { parseEpisodeNumber } from "./titles";
 import { stripHtml } from "./text";
 
@@ -306,11 +307,7 @@ export function defaultEpisodeSeoDeps(): EpisodeSeoDeps {
       return getMediaInfo({ id: anilistId });
     },
     background(task) {
-      void import("@vercel/functions")
-        .then((mod) => {
-          if (typeof mod.waitUntil === "function") mod.waitUntil(task);
-        })
-        .catch(() => {});
+      runInBackground(task, { label: "episode-seo import" });
     },
     now: () => Date.now(),
     budgetMs: TOTAL_BUDGET_MS,

@@ -7,3 +7,5 @@ Success returns `anilistId`, `episode`, `audio`, selected `provider`, `server`, 
 Errors: `400 invalid_episode` or `invalid_audio`; `404 episode_not_found` or `no_providers`; `429 rate_limited`; `500 database_unavailable` or `proxy_not_configured`; `502 no_playable_stream` with `tried` provider reasons.
 
 Tunable constants: `PROVIDER_PRIORITY` controls provider order and `HARDSUB_PROVIDERS` identifies providers allowed to resolve subtitle audio without soft subtitle tracks. Proxy tokens use `PROXY_SIGNING_SECRET`; production values are supplied by Vercel.
+
+The resolver records `resolved_provider`/`needs_resync` writes through `runInBackground`, so the response never waits on them on Render or Railway (see [background.md](./background.md)).

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "NEXT_SHARP_PATH=\"/tmp/node_modules/sharp\" next start",
+    "start": "NEXT_SHARP_PATH=\"/tmp/node_modules/sharp\" NEXT_MANUAL_SIG_HANDLE=true next start",
     "lint": "next lint",
     "test": "TSX_TSCONFIG_PATH=tsconfig.test.json node --import tsx --import ./test-harness/register-dom.mjs --test $(find app -name '*.test.ts' -o -name '*.test.tsx' | sort)"
   },
