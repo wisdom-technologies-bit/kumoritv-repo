@@ -16,6 +16,33 @@ import {
 import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
+
+const IS_VERCEL = process.env.VERCEL === "1";
+
+async function runBackground(task: PromiseLike<any>) {
+  const promise = Promise.resolve(task).then((result) => {
+    if (result?.error) {
+      console.error("[WATCH] Background database update failed:", result.error);
+    }
+    return result;
+  });
+
+  if (IS_VERCEL) {
+    waitUntil(
+      promise.catch((error) => {
+        console.error("[WATCH] Background task failed:", error);
+      }),
+    );
+    return;
+  }
+
+  try {
+    await promise;
+  } catch (error) {
+    console.error("[WATCH] Background task failed:", error);
+  }
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -253,7 +280,7 @@ export async function GET(
     winner = nonEmbed || results.find(Boolean);
   }
   if (!winner) {
-    waitUntil(
+    await runBackground(
       db
         .from("episodes")
         .update({
@@ -350,7 +377,7 @@ export async function GET(
       return json({ error: "proxy_not_configured" }, 500);
     throw error;
   }
-  waitUntil(
+  await runBackground(
     db
       .from("episodes")
       .update({
