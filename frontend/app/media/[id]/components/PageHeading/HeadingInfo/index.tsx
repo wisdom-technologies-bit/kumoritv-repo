@@ -118,11 +118,11 @@ export default function HeadingInfo({
               amountWatchedOrRead={mediaInfo.mediaListEntry?.progress}
             >
               <AddToFavourites.SvgIcon>
-                <PlusSvg fill="var(--white-100)" />
+                <PlusSvg className={styles.plus_icon} fill="currentColor" />
               </AddToFavourites.SvgIcon>
 
               <AddToFavourites.SvgIcon>
-                <PlusSvg fill="var(--brand-color)" />
+                <PlusSvg className={styles.plus_icon} fill="currentColor" />
               </AddToFavourites.SvgIcon>
             </AddToList.Button>
 

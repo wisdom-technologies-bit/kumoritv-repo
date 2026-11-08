@@ -1,6 +1,6 @@
 "use client";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styles from "./component.module.css";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { AnimatePresence, motion } from "framer-motion";
@@ -35,6 +35,9 @@ export function Button({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const [mediaStatus, setMediaStatus] = useState<
     MediaData["mediaListEntry"]["status"] | null
   >(statusOnAnilist || null);
@@ -49,6 +52,34 @@ export function Button({
       void isMediaOnUserLists();
     }
   }, [statusOnAnilist, user, anilistUser]);
+
+  // The open menu closes on Escape and on a tap outside it (button included, so
+  // the button's own toggle does not close and immediately reopen it).
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsMenuOpen(false);
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+
+      if (!target) return;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+
+      setIsMenuOpen(false);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [isMenuOpen]);
 
   // IF MEDIA ID MATCHS ANY RESULT ON DB, IT SETS THIS COMPONENT BUTTON AS ACTIVE
   async function isMediaOnUserLists() {
@@ -157,6 +188,7 @@ export function Button({
   return (
     <React.Fragment>
       <motion.button
+        ref={buttonRef}
         whileTap={{ scale: 0.85 }}
         id={styles.container}
         className={children ? styles.custom_text : ""}
@@ -172,6 +204,7 @@ export function Button({
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
+            ref={menuRef}
             id={styles.user_media_status_list}
             aria-expanded={isMenuOpen}
             data-is-loading={isLoading}

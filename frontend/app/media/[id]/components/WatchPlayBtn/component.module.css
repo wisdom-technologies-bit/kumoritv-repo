@@ -14,16 +14,23 @@
     }
 }
 
+/* Watched progress: a 4px bar along the bottom edge of the pill, clipped by the
+   pill's rounded corners (the pill itself has `overflow: hidden`). It paints
+   nothing at all when the viewer has no progress in this episode. */
 .progress_bar {
 
-    border-radius: 23px;
-
-    background-color: var(--black-25);
     position: absolute;
     bottom: 0;
-    height: 100%;
+    left: 0;
+    right: 0;
+
+    height: 4px;
     width: 100%;
     z-index: 0;
+
+    border-radius: 0;
+
+    background-color: var(--black-25);
 
     overflow: hidden;
 

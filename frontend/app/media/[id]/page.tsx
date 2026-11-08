@@ -1,7 +1,6 @@
 import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
 import React from "react";
 import styles from "./page.module.css";
-import Image from "next/image";
 import parse from "html-react-parser";
 import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import MangaChaptersContainer from "./components/MangaChaptersContainer";
@@ -24,6 +23,7 @@ import { displayTitle } from "@/app/lib/titles";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
 import CommentsSection from "@/app/components/CommentsSection";
+import CastRow from "./components/CastCard";
 import ExpandableText from "@/app/components/ExpandableText";
 import SectionNav, { type SectionNavItem } from "./components/SectionNav";
 import { fillLogoForAnime, readTitleLogo } from "@/app/lib/tmdb/fill";
@@ -262,59 +262,21 @@ export default async function MediaPage({
                   CAST
                 </h2>
 
-                {/* WHEN HOVERING, FLIP IMAGE AND SHOW THE ACTOR */}
+                {/* FRONT = CHARACTER, BACK = VOICE ACTOR (TAP OR HOVER TO FLIP) */}
                 <div>
-                  <ul className="display_flex_row">
-                    {mediaInfo.characters.edges.map((character, key) => (
-                      <li key={key} data-mediatype={mediaInfo.type}>
-                        <div className={styles.character_container}>
-                          <div className={styles.img_container}>
-                            <Image
-                              src={character.node.image.large}
-                              alt={character.node.name.full}
-                              fill
-                              sizes="72px"
-                            />
-                          </div>
-
-                          <h3>{character.node.name.full}</h3>
-                        </div>
-
-                        {/* SHOWS ACTOR ONLY FOR ANIMES  */}
-                        {mediaInfo.type == "ANIME" &&
-                          character.voiceActorRoles[0] && (
-                            <div className={styles.actor_container}>
-                              <div className={styles.img_container}>
-                                <Image
-                                  src={
-                                    character.voiceActorRoles[0] &&
-                                    character.voiceActorRoles[0].voiceActor
-                                      .image.large
-                                  }
-                                  alt={
-                                    `${
-                                      character.voiceActorRoles[0] &&
-                                      character.voiceActorRoles[0].voiceActor
-                                        .name.full
-                                    } voiceover for ${
-                                      character.node.name.full
-                                    }` || "No Name Actor"
-                                  }
-                                  fill
-                                  sizes="72px"
-                                />
-                              </div>
-
-                              <h3>
-                                {character.voiceActorRoles[0] &&
-                                  character.voiceActorRoles[0].voiceActor.name
-                                    .full}
-                              </h3>
-                            </div>
-                          )}
-                      </li>
-                    ))}
-                  </ul>
+                  <CastRow
+                    mediaType={mediaInfo.type}
+                    members={mediaInfo.characters.edges.map((character) => ({
+                      characterName: character.node.name.full,
+                      characterImage: character.node.image.large,
+                      voiceActorName:
+                        character.voiceActorRoles?.[0]?.voiceActor?.name?.full ??
+                        null,
+                      voiceActorImage:
+                        character.voiceActorRoles?.[0]?.voiceActor?.image
+                          ?.large ?? null,
+                    }))}
+                  />
                 </div>
               </section>
             )}
