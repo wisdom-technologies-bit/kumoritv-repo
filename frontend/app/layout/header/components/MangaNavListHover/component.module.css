@@ -4,16 +4,22 @@
    rhythm. Only the grid ratio (1fr 2fr 3fr) is manga-specific. */
 
 #manga_header_nav_container {
-    position: absolute;
-    top: calc(100% + 8px);
+    /* Fixed, not absolute: the panel is as wide as the viewport, so anchoring it
+       to the trigger's own clustering box pushed its right edge past the screen
+       on every desktop width. Fixed keeps it 0..100vw, hanging 8px under the
+       sticky bar, and it can never overflow sideways. */
+    position: fixed;
+    top: calc(var(--header-min-height, 64px) + 8px);
     left: 0;
     right: 0;
     z-index: 50;
 
-    width: min(100vw, var(--breakpoint-xxl));
-    max-width: var(--breakpoint-xxl);
-    margin: 0 auto;
-    padding: 32px 64px 64px;
+    /* full viewport width (never wider), with the shared page gutter so the
+       columns start on the logo's line and end on the avatar's line */
+    width: 100vw;
+    max-width: 100vw;
+    margin: 0;
+    padding: 32px var(--page-gutter) 64px;
     box-sizing: border-box;
     background-color: var(--black-100);
 
@@ -25,9 +31,9 @@
     grid-template-columns: 1fr 2fr 3fr;
     gap: 32px;
 
-    max-width: var(--breakpoint-xxl);
+    max-width: none;
     width: 100%;
-    margin: 0 auto;
+    margin: 0;
 
     list-style: none;
 }

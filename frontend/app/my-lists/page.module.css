@@ -7,16 +7,11 @@
 
     display: grid;
     grid-template-columns: 1fr;
-    max-width: var(--breakpoint-sm);
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
     gap: 32px;
 
-}
-
-@media((min-width: 768px)) {
-    #container {
-        max-width: var(--breakpoint-md);
-    }
 }
 
 @media((min-width: 860px)) {
@@ -24,20 +19,6 @@
         margin: auto;
         margin-top: 64px;
         margin-bottom: 64px;
-    }
-}
-
-@media((min-width: 1020px)) {
-    #container {
-        max-width: var(--breakpoint-xl);
-    }
-}
-
-@media((min-width: 1480px)) {
-    #container {
-
-        max-width: var(--breakpoint-xxl);
-
     }
 }
 

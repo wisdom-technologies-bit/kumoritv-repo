@@ -13,6 +13,7 @@ import EyeSlashSvg from "@/public/assets/eye-slash-fill.svg";
 import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { SwiperSlide } from "swiper/react";
 import { displayTitle } from "@/app/lib/titles";
+import Image from "next/image";
 
 const framerMotionVariants = {
   enter: (direction: number) => {
@@ -35,16 +36,28 @@ const framerMotionVariants = {
   },
 };
 
+/** The stored TMDB wordmark for a title, keyed by AniList id. */
+export type HeroTitleLogos = Record<
+  number,
+  { url: string; aspectRatio: number; width: number }
+>;
+
 function HeroCarousel({
   animesList,
   isOnMobileScreen,
+  titleLogos,
 }: {
   animesList: MediaData[];
   isOnMobileScreen: boolean;
+  titleLogos?: HeroTitleLogos;
 }) {
   const [[page, direction], setPage] = useState([0, 0]);
 
   const [autoPlayTrailer, setAutoPlayTrailer] = useState<boolean>(true);
+
+  // A logo that fails to load falls back to the text title (one failed id, so
+  // the next slide still tries its own logo).
+  const [failedLogoId, setFailedLogoId] = useState<number | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("autoPlayTrailer") == undefined) {
@@ -68,6 +81,12 @@ function HeroCarousel({
   const paginate = (newDirection: number) => {
     setPage([page + newDirection, newDirection]);
   };
+
+  const currentId = Number(animesList[currMediaOnScreenIndex]?.id);
+  const currentTitleLogo =
+    titleLogos && Number.isInteger(currentId) && failedLogoId !== currentId
+      ? titleLogos[currentId]
+      : undefined;
 
   const backgroundImageStyle = {
     background: isOnMobileScreen
@@ -156,7 +175,38 @@ function HeroCarousel({
                     <Link
                       href={`/media/${animesList[currMediaOnScreenIndex]?.id}`}
                     >
-                      {displayTitle(animesList[currMediaOnScreenIndex]?.title)}
+                      {currentTitleLogo ? (
+                        <>
+                          {/* The artwork replaces the text visually; the real
+                              title stays in the DOM for the heading, the link
+                              text, SEO and screen readers. */}
+                          <Image
+                            className={styles.title_logo}
+                            src={currentTitleLogo.url}
+                            alt={displayTitle(
+                              animesList[currMediaOnScreenIndex]?.title
+                            )}
+                            unoptimized
+                            width={720}
+                            height={Math.max(
+                              1,
+                              Math.round(720 / currentTitleLogo.aspectRatio)
+                            )}
+                            onError={() =>
+                              setFailedLogoId(
+                                Number(animesList[currMediaOnScreenIndex]?.id)
+                              )
+                            }
+                          />
+                          <span className={styles.title_text_hidden}>
+                            {displayTitle(
+                              animesList[currMediaOnScreenIndex]?.title
+                            )}
+                          </span>
+                        </>
+                      ) : (
+                        displayTitle(animesList[currMediaOnScreenIndex]?.title)
+                      )}
                     </Link>
                   </h2>
 

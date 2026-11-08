@@ -54,8 +54,16 @@ header#background > div#container {
     align-items: center;
     justify-content: flex-start;
     gap: var(--header-control-gap);
-    margin: auto;
+
+    /* EDGE TO EDGE. The row is no longer a centred 1200/1440px box: it fills
+       the header and carries the shared page gutter, so the logo sits flush
+       with the left gutter and the avatar flush with the right one, matching
+       the content columns below at every desktop width. */
     width: 100%;
+    max-width: none;
+    margin: 0;
+    padding-inline: var(--page-gutter);
+
     min-height: var(--header-min-height);
     box-sizing: border-box;
 }
@@ -334,27 +342,3 @@ header#background .header-icon-btn svg {
     }
 }
 
-/* TABLET CONTENT WIDTH */
-
-@media (min-width: 576px) and (max-width: 768px) {
-    header#background > div#container {
-        width: var(--breakpoint-sm);
-        max-width: 100%;
-    }
-}
-
-/* DESKTOP CONTENT WIDTHS */
-
-@media (min-width: 1201px) and (max-width: 1400px) {
-    header#background > div#container {
-        width: var(--breakpoint-xl);
-        max-width: 100%;
-    }
-}
-
-@media (min-width: 1441px) {
-    header#background > div#container {
-        width: var(--breakpoint-xxl);
-        max-width: 100%;
-    }
-}

@@ -13,6 +13,7 @@ import * as AddToPlaylistButton from "./components/Buttons/AddToFavourites";
 import { checkDeviceIsMobile } from "./lib/checkMobileOrDesktop";
 import { cookies, headers } from "next/headers";
 import KeepWatchingSection from "./components/HomePage/KeepWatchingSection";
+import { readTitleLogos } from "./lib/tmdb/fill";
 import PopularMediaSection from "./components/HomePage/PopularMediaSection";
 import JsonLd from "./lib/seo/JsonLd";
 import { buildHomeJsonLd } from "./lib/seo/jsonld";
@@ -72,6 +73,12 @@ export default async function Home() {
   const listAnimesTrendingWithBackground = listAnimesTrending.filter(
     (item) => item.bannerImage
   );
+
+  // The hero shows the stored TMDB wordmark when there is one. ONE batched read
+  // for the whole list; the cron fills the column, nothing is fetched here.
+  const titleLogos = await readTitleLogos(
+    listAnimesTrendingWithBackground.map((item) => item.id)
+  ).catch(() => ({}));
 
   // section 2
   const listAnimesReleasingByPopularity = await anilist
@@ -144,6 +151,7 @@ export default async function Home() {
       <HeroCarousel
         animesList={listAnimesTrendingWithBackground}
         isOnMobileScreen={isOnMobileScreen || false}
+        titleLogos={titleLogos}
       />
 
       {/* Keep Watching  */}

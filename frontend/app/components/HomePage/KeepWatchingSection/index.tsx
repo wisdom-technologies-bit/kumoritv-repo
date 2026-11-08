@@ -1,17 +1,12 @@
 "use client";
-import { useUser } from "@/app/lib/supabase/AuthProvider";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import SwiperCarouselContainer from "../../SwiperCarouselContainer";
 import styles from "./component.module.css";
 import { AnimatePresence, motion } from "framer-motion";
 import KeepWatchingEpisodeInfo from "./components/KeepWatchingEpisodeInfo";
 import { SwiperSlide } from "swiper/react";
-import { useAppSelector } from "@/app/lib/redux/hooks";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
-import {
-  listContinueWatchingFromServer,
-  subscribe,
-} from "@/app/lib/user-data/progress";
+import { listContinueWatchingFromServer } from "@/app/lib/user-data/progress";
 import { imageKey } from "@/app/lib/episodes/images";
 import { useRefreshOnReturn } from "./useRefreshOnReturn";
 
@@ -58,11 +53,35 @@ const framerMotionVariants = {
   },
 };
 
+/** Cards in the grid before the toggle: one or two rows, never a full screen. */
+export const KEEP_WATCHING_INITIAL_COUNT = 6;
+/** The toggle stops here, however long the list is. */
+export const KEEP_WATCHING_MAX_COUNT = 12;
+
+/** True from the tablet layout up, where the cluster grid replaces the swiper.
+ *  Server render and first paint answer `false` (the phone scroller), then the
+ *  effect settles it, so hydration stays clean. */
+function useWideLayout() {
+  const [isWide, setIsWide] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const query = window.matchMedia("(min-width: 768px)");
+    const apply = () => setIsWide(Boolean(query.matches));
+
+    apply();
+    query.addEventListener?.("change", apply);
+
+    return () => query.removeEventListener?.("change", apply);
+  }, []);
+
+  return isWide;
+}
+
 function KeepWatchingSection() {
-  const anilistUser = useAppSelector((state) => state.UserInfo.value);
-
-  const { user } = useUser();
-
   const [watchingList, setWatchingList] = useState<KeepWatchingMediaData[]>([]);
   // Episode thumbnails already resolved this page load: a refresh must not ask
   // for them again.
@@ -70,6 +89,9 @@ function KeepWatchingSection() {
   const [deletedFromWatchingList, setDeletedFromWatchingList] = useState<
     KeepWatchingMediaData[]
   >([]);
+
+  const isWide = useWideLayout();
+  const [visibleCount, setVisibleCount] = useState(KEEP_WATCHING_INITIAL_COUNT);
 
   useEffect(() => {
     const filterAvailableMedias = deletedFromWatchingList.map((mediaRemoved) =>
@@ -120,39 +142,93 @@ function KeepWatchingSection() {
           initial={"initial"}
           animate={"animate"}
         >
-          <h2>Keep Watching</h2>
+          <h2>
+            Keep Watching
+            <span className={styles.media_count} data-keep-watching-count="true">
+              {watchingList.length}
+            </span>
+          </h2>
 
           <div>
-            <SwiperCarouselContainer
-              // Fixed-width cards: the slide width comes from the card CSS
-              // (280px on phones, 320px from 741px up), so the swiper must not
-              // stretch them. Swiper still snaps, drags and handles a11y.
-              options={{
-                slidesPerView: "auto",
-                bp480: "auto",
-                bp740: "auto",
-                bp1275: "auto",
-              }}
-            >
-              {watchingList.map((media) => (
-                <SwiperSlide
-                  key={media.id}
-                  className="custom_swiper_list_item"
-                  role="listitem"
+            {isWide ? (
+              <>
+                <ul
+                  id="keep-watching-list"
+                  className={styles.grid}
+                  data-keep-watching-grid="true"
+                  aria-label="Continue watching"
                 >
-                  <KeepWatchingEpisodeInfo
-                    animeInfo={media}
-                    darkMode
-                    deleteFromListHook={() =>
-                      setDeletedFromWatchingList((currMedias) => [
-                        ...currMedias,
-                        media,
-                      ])
+                  {watchingList
+                    .slice(0, Math.min(visibleCount, KEEP_WATCHING_MAX_COUNT))
+                    .map((media) => (
+                      <li key={media.id} role="listitem">
+                        <KeepWatchingEpisodeInfo
+                          animeInfo={media}
+                          darkMode
+                          layout="grid"
+                          deleteFromListHook={() =>
+                            setDeletedFromWatchingList((currMedias) => [
+                              ...currMedias,
+                              media,
+                            ])
+                          }
+                        />
+                      </li>
+                    ))}
+                </ul>
+
+                {watchingList.length > KEEP_WATCHING_INITIAL_COUNT && (
+                  <button
+                    type="button"
+                    className={styles.show_more_btn}
+                    data-keep-watching-toggle="true"
+                    aria-controls="keep-watching-list"
+                    onClick={() =>
+                      setVisibleCount((current) =>
+                        current > KEEP_WATCHING_INITIAL_COUNT
+                          ? KEEP_WATCHING_INITIAL_COUNT
+                          : KEEP_WATCHING_MAX_COUNT,
+                      )
                     }
-                  />
-                </SwiperSlide>
-              ))}
-            </SwiperCarouselContainer>
+                  >
+                    {visibleCount > KEEP_WATCHING_INITIAL_COUNT
+                      ? "Show less"
+                      : "Show more"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <SwiperCarouselContainer
+                // Fixed-width cards: the slide width comes from the card CSS
+                // (240px on phones), so the swiper must not stretch them.
+                // Swiper still snaps, drags and handles a11y.
+                options={{
+                  slidesPerView: "auto",
+                  bp480: "auto",
+                  bp740: "auto",
+                  bp1275: "auto",
+                }}
+              >
+                {watchingList.map((media) => (
+                  <SwiperSlide
+                    key={media.id}
+                    className="custom_swiper_list_item"
+                    role="listitem"
+                  >
+                    <KeepWatchingEpisodeInfo
+                      animeInfo={media}
+                      darkMode
+                      deleteFromListHook={() =>
+                        setDeletedFromWatchingList((currMedias) => [
+                          ...currMedias,
+                          media,
+                        ])
+                      }
+                    />
+                  </SwiperSlide>
+                ))}
+              </SwiperCarouselContainer>
+            )}
           </div>
         </motion.section>
       )}

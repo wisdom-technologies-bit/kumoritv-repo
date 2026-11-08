@@ -48,12 +48,16 @@ test("manga dropdown uses the same anchoring rules as the anime dropdown", () =>
   const anime = read("app/layout/header/components/AnimeNavListHover/component.module.css");
   const manga = read("app/layout/header/components/MangaNavListHover/component.module.css");
 
+  // Prompt 29 moved both panels onto the shared page gutter: full viewport
+  // width, inner padding from --page-gutter, so the columns start on the logo's
+  // line instead of inside a 1440px box.
   for (const rule of [
-    "position: absolute",
-    "top: calc(100% + 8px)",
+    "position: fixed",
+    "top: calc(var(--header-min-height, 64px) + 8px)",
     "z-index: 50",
-    "width: min(100vw, var(--breakpoint-xxl))",
-    "padding: 32px 64px 64px",
+    "width: 100vw",
+    "max-width: 100vw",
+    "padding: 32px var(--page-gutter) 64px",
     "box-sizing: border-box",
   ]) {
     assert.ok(anime.includes(rule), `anime dropdown should define ${rule}`);

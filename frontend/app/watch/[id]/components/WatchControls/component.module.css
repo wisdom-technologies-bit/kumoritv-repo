@@ -5,9 +5,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 14px;
-  width: 96%;
-  max-width: var(--breakpoint-sm);
-  margin: 16px auto 0;
+  width: min(100% - 2 * var(--page-gutter), var(--page-max));
+  max-width: none;
+  margin-inline: auto;
+  margin-top: 16px;
+  margin-bottom: 0;
   border-radius: 6px;
   overflow: hidden;
 }
@@ -124,22 +126,6 @@
 .sync .button {
   padding: 4px 8px;
   min-height: 30px;
-}
-@media (min-width: 768px) {
-  .wrapper {
-    max-width: var(--breakpoint-md);
-  }
-}
-@media (min-width: 980px) {
-  .wrapper {
-    max-width: var(--breakpoint-xl);
-  }
-}
-@media (min-width: 1480px) {
-  .wrapper {
-    width: 100%;
-    max-width: var(--breakpoint-xxl);
-  }
 }
 @media (max-width: 600px) {
   .wrapper {

@@ -3,27 +3,17 @@
    look bolted on. */
 
 #container {
-    width: 96%;
-    max-width: var(--breakpoint-sm);
-    margin: 32px auto 64px;
+    /* Same page shell as the rest of the site (globals.css --page-gutter), but
+       a prose page keeps a 1200px reading measure instead of --page-max. */
+    width: min(100% - 2 * var(--page-gutter), 1200px);
+    margin-inline: auto;
+    margin-top: 32px;
+    margin-bottom: 64px;
 }
 
 @media (min-width: 768px) {
     #container {
-        max-width: var(--breakpoint-md);
         margin-top: 48px;
-    }
-}
-
-@media (min-width: 1020px) {
-    #container {
-        max-width: var(--breakpoint-xl);
-    }
-}
-
-@media (min-width: 1480px) {
-    #container {
-        max-width: var(--breakpoint-xxl);
     }
 }
 

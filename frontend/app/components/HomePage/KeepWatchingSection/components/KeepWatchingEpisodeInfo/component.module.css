@@ -9,14 +9,14 @@
     flex-direction: column;
     gap: 10px;
 
-    width: 280px;
+    width: 240px;
     max-width: 100%;
 
     padding: 8px;
 
     background: var(--white-05);
     border: 1px solid var(--white-25);
-    border-radius: 16px;
+    border-radius: 14px;
 
     box-sizing: border-box;
     transition: border-color 150ms ease-in-out, background-color 150ms ease-in-out;
@@ -30,10 +30,32 @@
     border-color: var(--brand-color);
 }
 
-@media (min-width: 741px) {
-    .media_item_container {
-        width: 320px;
-    }
+/* COMPACT ROW: the desktop/tablet cluster card. Thumbnail on the left, text on
+   the right, 112px tall. Only rendered by the section's grid layout. */
+.media_item_container.compact {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 12px;
+
+    width: 100%;
+
+    min-height: 112px;
+
+    padding: 8px;
+
+    border-radius: 14px;
+}
+
+.media_item_container.compact .card_link {
+    flex: 0 0 160px;
+    width: 160px;
+    border-radius: 10px;
+}
+
+.media_item_container.compact #img_container {
+    /* keeps its own 16:9 box: 160 x 90 inside the 112px row */
+    aspect-ratio: 16 / 9;
+    height: auto;
 }
 
 /* 16:9 THUMBNAIL */
@@ -152,6 +174,19 @@
     pointer-events: none;
 }
 
+/* The compact card shows the play circle only while hovered or focused, so a
+   row of six cards stays quiet. */
+.media_item_container.compact .play_circle {
+    opacity: 0;
+    transition: opacity 150ms ease-in-out, transform 150ms ease-in-out,
+        background-color 150ms ease-in-out;
+}
+
+.media_item_container.compact:hover .play_circle,
+.media_item_container.compact:focus-within .play_circle {
+    opacity: 1;
+}
+
 /* DELETE: 44px target over the top-right corner, above the link. */
 .delete_btn {
     position: absolute;
@@ -191,7 +226,7 @@
     outline-offset: 2px;
 }
 
-/* PROGRESS: thin accent bar flush with the bottom edge. */
+/* PROGRESS: accent bar flush with the bottom edge of the thumbnail. */
 .progress_bar {
     position: absolute;
     left: 0;
@@ -268,4 +303,49 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     line-height: 1.4;
+}
+
+/* COMPACT TEXT COLUMN */
+.media_item_container.compact .info_bottom {
+    flex: 1 1 auto;
+    justify-content: center;
+
+    padding: 0 30px 0 0;
+    min-width: 0;
+}
+
+.media_item_container.compact .card_title {
+    -webkit-line-clamp: 2;
+
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+}
+
+.media_item_container.compact .meta_line {
+    font-size: var(--font-size--small-2);
+}
+
+.media_item_container.compact .progress_bar {
+    height: 4px;
+}
+
+/* 32px trash button in the corner; 44px tap target where the pointer is coarse. */
+.media_item_container.compact .delete_btn {
+    top: 6px;
+    right: 6px;
+
+    width: 32px;
+    height: 32px;
+}
+
+.media_item_container.compact .delete_btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+@media (pointer: coarse) {
+    .media_item_container.compact .delete_btn {
+        width: 44px;
+        height: 44px;
+    }
 }
