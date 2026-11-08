@@ -4,9 +4,10 @@
     top: 64px;
     z-index: 3;
 
-    width: 96%;
-    max-width: var(--breakpoint-md);
-    margin: 12px auto 0;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
+    margin-top: 12px;
+    margin-bottom: 0;
 
     padding: 0;
 
@@ -20,18 +21,6 @@
     #container {
         background-color: color-mix(in srgb, var(--background) 88%, transparent);
         backdrop-filter: blur(10px);
-    }
-}
-
-@media (min-width: 1020px) {
-    #container {
-        max-width: var(--breakpoint-xl);
-    }
-}
-
-@media (min-width: 1480px) {
-    #container {
-        max-width: var(--breakpoint-xxl);
     }
 }
 

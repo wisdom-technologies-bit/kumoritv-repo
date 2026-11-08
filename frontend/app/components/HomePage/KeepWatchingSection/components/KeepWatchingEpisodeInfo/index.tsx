@@ -31,6 +31,9 @@ type ComponentTypes = {
   animeInfo: KeepWatchingMediaData;
   deleteFromListHook: () => void;
   darkMode?: boolean;
+  /** "grid" is the compact horizontal row used in the desktop cluster;
+   *  "carousel" (default) is the phone card with the thumbnail on top. */
+  layout?: "carousel" | "grid";
 };
 
 /** /watch/{id}?ep=N&t={seconds}&audio={sub|dub} (legacy params dropped). */
@@ -70,6 +73,7 @@ function KeepWatchingEpisodeInfo({
   animeInfo,
   darkMode,
   deleteFromListHook,
+  layout = "carousel",
 }: ComponentTypes) {
   const [wasDeleted, setWasDeleted] = useState<boolean>(false);
   const [imageFailed, setImageFailed] = useState<boolean>(false);
@@ -98,7 +102,10 @@ function KeepWatchingEpisodeInfo({
     <AnimatePresence>
       {!wasDeleted && (
         <motion.div
-          className={`${styles.media_item_container} ${darkMode ? styles.darkMode : ""}`}
+          className={`${styles.media_item_container} ${darkMode ? styles.darkMode : ""} ${
+            layout === "grid" ? styles.compact : ""
+          }`}
+          data-keep-watching-layout={layout}
           data-deleted={wasDeleted}
           animate={{ transition: { duration: 0.2 } }}
           exit={{ opacity: 0, scale: 0 }}
@@ -122,7 +129,7 @@ function KeepWatchingEpisodeInfo({
                   blurDataURL="https://upload.wikimedia.org/wikipedia/commons/8/8d/ERR0R_NO_IMAGE_FOUND.jpg"
                   alt={title}
                   fill
-                  sizes="(max-width: 640px) 280px, 320px"
+                  sizes="(max-width: 767px) 240px, 160px"
                   onError={() => setImageFailed(true)}
                 />
               )}

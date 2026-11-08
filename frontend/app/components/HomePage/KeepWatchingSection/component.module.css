@@ -1,52 +1,126 @@
-/* KEEP WATCHING */
+/* KEEP WATCHING
+   A compact cluster of rows on desktop and tablets instead of one huge card,
+   and the same horizontal scroller as before on phones (just smaller cards).
+   The layout switch lives in index.tsx (`isWide` -> grid vs swiper), so the
+   grid rules here need no media queries of their own. */
+
 #keep_watching_container {
-    width: 96%;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
-    margin: auto;
+    margin-bottom: 40px;
 
-    margin-bottom: 56px;
-
-    padding-top: 32px;
-
-    /* justify-items: center; */
-    /* justify-content: center; */
-
+    padding-top: 24px;
 }
 
-@media((min-width: 576px) and (max-width: 768px)) {
-    #keep_watching_container {
-        width: var(--breakpoint-sm);
-    }
-}
+#keep_watching_container > h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 
-@media((min-width: 992px) and (max-width: 1200px)) {
-    #keep_watching_container {
-        width: var(--breakpoint-md);
-    }
-}
-
-@media((min-width: 1201px) and (max-width: 1400px)) {
-    #keep_watching_container {
-        width: var(--breakpoint-xl);
-    }
-}
-
-@media((min-width: 1441px)) {
-    #keep_watching_container {
-        width: var(--breakpoint-xxl);
-    }
-}
-
-#keep_watching_container>h2 {
-    font-size: var(--font-size--h3);
+    font-size: var(--font-size--h5);
+    font-weight: 600;
 
     color: var(--white-100);
 
-    margin-bottom: 24px;
+    margin-bottom: 12px;
 }
 
-#keep_watching_container>div {
+.media_count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    background: var(--white-05);
+
+    color: var(--white-75);
+
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+    line-height: 1;
+}
+
+#keep_watching_container > div {
     width: inherit;
+}
 
+/* THE CLUSTER: 3 per row at 1366-1440px, more on a wide monitor. */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+
+    /* One row of compact cards is reserved, so the section appearing after the
+       data load does not push the sections below it down by a full card. */
+    min-height: 112px;
+
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.grid > li {
+    display: flex;
+    min-width: 0;
+}
+
+/* Tablet: two columns. */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* SHOW MORE / SHOW LESS */
+.show_more_btn {
+    display: block;
+
+    margin: 12px auto 0;
+    padding: 7px 18px;
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    color: var(--white-75);
+
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+
+    cursor: pointer;
+    transition: border-color 150ms ease-in-out, color 150ms ease-in-out;
+}
+
+.show_more_btn:hover,
+.show_more_btn:focus-visible {
+    border-color: var(--white-50);
+    color: var(--white-100);
+    outline: none;
+}
+
+.show_more_btn:focus-visible {
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+}
+
+/* PHONE SCROLLER
+   The slide takes the card's own 240px so a second card peeks in from the
+   right. Without this the global `.custom_swiper_list_item > * { width: inherit
+   !important }` (globals.css) stretches the card to the full container. */
+#keep_watching_container :global(.custom_swiper_list_item) {
+    width: 240px;
+    flex: 0 0 240px;
+}
+
+#keep_watching_container :global(.custom_swiper_list_item) > * {
+    width: 240px !important;
+    height: auto;
 }

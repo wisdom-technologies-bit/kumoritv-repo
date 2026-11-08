@@ -2,28 +2,12 @@
 
     scroll-behavior: smooth;
 
-    width: 96%;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
-    max-width: var(--breakpoint-md);
     margin-top: 40px;
     margin-bottom: 40px;
-    margin-left: auto;
-    margin-right: auto;
 
-}
-
-@media((min-width: 1020px)) {
-    #container {
-        max-width: var(--breakpoint-xl);
-    }
-}
-
-@media((min-width: 1480px)) {
-    #container {
-
-        max-width: var(--breakpoint-xxl);
-
-    }
 }
 
 /* HEADING */

@@ -104,41 +104,11 @@
 /*  */
 #media_info_container {
 
-    margin: 32px auto;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
-    width: 96%;
-
-    max-width: var(--breakpoint-sm);
-
-}
-
-@media(min-width: 768px) {
-
-    #media_info_container {
-
-        max-width: var(--breakpoint-md);
-
-    }
-
-}
-
-@media(min-width: 980px) {
-
-    #media_info_container {
-
-        max-width: var(--breakpoint-xl);
-
-    }
-
-}
-
-@media(min-width: 1480px) {
-
-    #media_info_container {
-        width: 100%;
-        max-width: var(--breakpoint-xxl);
-
-    }
+    margin-top: 32px;
+    margin-bottom: 32px;
 
 }
 
@@ -346,9 +316,10 @@
 /* Current episode synopsis panel, directly under the player */
 .episode_panel {
 
-    width: 96%;
-    max-width: var(--breakpoint-sm);
-    margin: 12px auto 0;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
+    margin-top: 12px;
+    margin-bottom: 0;
 
     background: var(--white-05);
     border-radius: 6px;
@@ -381,14 +352,3 @@
 
 }
 
-@media (min-width: 768px) {
-    .episode_panel {
-        max-width: var(--breakpoint-md);
-    }
-}
-
-@media (min-width: 980px) {
-    .episode_panel {
-        max-width: var(--breakpoint-xl);
-    }
-}

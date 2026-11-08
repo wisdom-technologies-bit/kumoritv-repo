@@ -18,32 +18,13 @@ footer#footer .logo {
     }
 }
 
-/* RESPONSIVE WIDTHS */
-@media ((min-width: 576px) and (max-width: 768px)) {
-    footer > section#info_container,
-    section#copyright_section > div {
-        max-width: var(--breakpoint-sm);
-    }
-}
-
-@media ((min-width: 1201px) and (max-width: 1400px)) {
-    footer > section#info_container,
-    section#copyright_section > div {
-        max-width: var(--breakpoint-xl);
-    }
-}
-
-@media (min-width: 1541px) {
-    footer > section#info_container,
-    section#copyright_section > div {
-        max-width: var(--breakpoint-xxl);
-    }
-}
+/* One shared content column (see --page-gutter / --page-max in globals.css):
+   the footer lines up with the header and every section above it. */
 
 /* FIRST SECTION */
 #info_container {
-    margin: 0 auto;
-    width: 96%;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 }
 
 #info_container h5 {
@@ -362,8 +343,8 @@ section#copyright_section {
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    width: 96%;
-    margin: 0 auto;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 }
 
 @media (min-width: 680px) {

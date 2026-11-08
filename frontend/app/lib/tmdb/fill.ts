@@ -132,6 +132,66 @@ async function claimRow(db: Db, row: AnimeRow, force: boolean): Promise<boolean>
   }
 }
 
+/** ONE batched read of the stored logos for a page that shows several titles
+ *  at once (the home hero). Never throws: any error means "no logos", and the
+ *  caller falls back to the text title. */
+export async function readTitleLogos(
+  anilistIds: Array<number | string>,
+): Promise<Record<number, TitleLogoValue>> {
+  const logos: Record<number, TitleLogoValue> = {};
+
+  const ids = Array.from(
+    new Set(
+      (anilistIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    ),
+  );
+
+  if (!ids.length) return logos;
+
+  const db = createAdminClient() as Db | null;
+  if (!db) return logos;
+
+  try {
+    const { data, error } = await db
+      .from("anime")
+      .select("anilist_id, logo_path, logo_aspect_ratio, logo_width")
+      .in("anilist_id", ids)
+      .not("logo_path", "is", null);
+
+    if (error || !Array.isArray(data)) return logos;
+
+    for (const value of data) {
+      const row = value as {
+        anilist_id?: number | string | null;
+        logo_path?: string | null;
+        logo_aspect_ratio?: number | string | null;
+        logo_width?: number | string | null;
+      };
+
+      const anilistId = Number(row.anilist_id);
+      if (!Number.isInteger(anilistId) || anilistId <= 0) continue;
+
+      const url = logoUrl(row.logo_path, "w500");
+      if (!url) continue;
+
+      const aspectRatio = Number(row.logo_aspect_ratio);
+      const width = Number(row.logo_width);
+
+      logos[anilistId] = {
+        url,
+        aspectRatio: Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 3,
+        width: Number.isFinite(width) && width > 0 ? width : 500,
+      };
+    }
+  } catch {
+    return logos;
+  }
+
+  return logos;
+}
+
 type Single = "found" | "none" | "error" | "skipped" | "rate_limited";
 
 async function processOne(

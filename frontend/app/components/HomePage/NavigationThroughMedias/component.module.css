@@ -1,8 +1,7 @@
 #nav_tabs_container {
 
-    width: 96%;
-    max-width: var(--breakpoint-xxl);
-    margin: auto;
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
     margin-bottom: 24px;
 
@@ -68,11 +67,8 @@
 
     align-items: center;
 
-    width: 96%;
-    max-width: var(--breakpoint-xxl);
-
-    margin: auto;
-
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
 
 }
 
