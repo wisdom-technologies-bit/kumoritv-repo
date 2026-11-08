@@ -353,6 +353,110 @@ test("a single row can be targeted with anilist_id", async () => {
   assert.match(seen[0], /\/tv\/200\//);
 });
 
+// ------------------------------------------------- stale claims (killed run)
+
+const HOUR = 60 * 60 * 1000;
+
+function ago(ms: number) {
+  return new Date(Date.now() - ms).toISOString();
+}
+
+test("a row left behind by a killed run is selected, claimed and processed", async () => {
+  // The claim was written, the result never was: checked 2 hours ago, no status.
+  const rows: Row[] = [
+    {
+      anilist_id: 7,
+      score: 50,
+      mappings: { themoviedbId: 700 },
+      format: "TV",
+      logo_path: null,
+      logo_status: null,
+      logo_checked_at: ago(2 * HOUR),
+    },
+  ];
+
+  const db = createDb(rows);
+  const calls: string[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    calls.push(String(input));
+    return json(LOGO_BODY);
+  }) as typeof fetch;
+
+  const stats = await processLogoCandidates({ db, batch: 10 });
+
+  assert.equal(stats.claimed, 1, "the stale claim is claimed again");
+  assert.equal(stats.skipped, 0, "and it is not discarded as already taken");
+  assert.equal(stats.found, 1);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /\/tv\/700\//);
+
+  const row = rows[0];
+  assert.equal(row.logo_path, "/one-piece.png", "the result is written this time");
+  assert.equal(row.logo_status, "found");
+
+  // And it is not picked up again now that it has a result.
+  const second = await processLogoCandidates({ db, batch: 10 });
+  assert.equal(second.claimed, 0);
+  assert.equal(calls.length, 1);
+});
+
+test("a claim made 5 minutes ago is still left alone", async () => {
+  // Some other run is probably still working on it.
+  const rows: Row[] = [
+    {
+      anilist_id: 8,
+      score: 50,
+      mappings: { themoviedbId: 800 },
+      logo_path: null,
+      logo_status: null,
+      logo_checked_at: ago(5 * 60 * 1000),
+    },
+  ];
+
+  const db = createDb(rows);
+  let calls = 0;
+
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return json(LOGO_BODY);
+  }) as typeof fetch;
+
+  const stats = await processLogoCandidates({ db, batch: 10 });
+
+  assert.equal(stats.claimed, 0, "a fresh claim is not a candidate");
+  assert.equal(calls, 0);
+  assert.equal(rows[0].logo_path ?? null, null);
+});
+
+test("a 'none' row checked 2 hours ago is not pulled in by the stale group", async () => {
+  // It answered, it just had no logo: it waits for the 30-day recheck.
+  const rows: Row[] = [
+    {
+      anilist_id: 9,
+      score: 50,
+      mappings: { themoviedbId: 900 },
+      logo_path: null,
+      logo_status: "none",
+      logo_checked_at: ago(2 * HOUR),
+    },
+  ];
+
+  const db = createDb(rows);
+  let calls = 0;
+
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return json(LOGO_BODY);
+  }) as typeof fetch;
+
+  const stats = await processLogoCandidates({ db, batch: 10 });
+
+  assert.equal(stats.claimed, 0);
+  assert.equal(calls, 0);
+  assert.equal(rows[0].logo_status, "none");
+});
+
 // ------------------------------------------------------------- route: auth
 
 test("the logo cron refuses a missing secret", async () => {
