@@ -24,6 +24,11 @@ import { displayTitle } from "@/app/lib/titles";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
 import CommentsSection from "@/app/components/CommentsSection";
+import ExpandableText from "@/app/components/ExpandableText";
+import SectionNav, { type SectionNavItem } from "./components/SectionNav";
+import { fillLogoForAnime, readTitleLogo } from "@/app/lib/tmdb/fill";
+import { tmdbConfigured } from "@/app/lib/tmdb/logos";
+import { runInBackground } from "@/app/lib/background";
 
 export const maxDuration = 60;
 
@@ -95,6 +100,17 @@ export default async function MediaPage({
     (item: any) => showAdultContent || item?.isAdult !== true,
   );
 
+  // Stylised title logo from our own database. Never blocks the page: a missing
+  // column, a missing row or a Supabase hiccup all just mean "text title".
+  const logoRow = await readTitleLogo(mediaInfo.id);
+  const titleLogo = logoRow.logo;
+
+  // Lazy fill: the first visit renders the text title immediately and the logo
+  // is fetched after the response is sent.
+  if (logoRow.pending && tmdbConfigured()) {
+    runInBackground(() => fillLogoForAnime(mediaInfo.id), { label: "logo fill" });
+  }
+
   function randomizeBcgImg() {
     const backgroundImgs: { url: string }[] = [];
 
@@ -140,6 +156,35 @@ export default async function MediaPage({
     comments: commentSummary,
   });
 
+  // Jump bar: only the sections this title actually renders.
+  const isManga = mediaInfo.type == "MANGA";
+  const castCount = mediaInfo.characters?.edges?.length || 0;
+  const reviewsCount = mediaInfo.reviews?.nodes?.length || 0;
+
+  const jumpSections: SectionNavItem[] = [];
+
+  if (castCount > 0) jumpSections.push({ id: "cast", label: "Cast" });
+
+  if (isManga) {
+    // The chapter count is already on the AniList payload, so it is free.
+    jumpSections.push({
+      id: "chapters",
+      label: mediaInfo.chapters ? `Chapters (${mediaInfo.chapters})` : "Chapters",
+    });
+  } else {
+    jumpSections.push({
+      id: "episodes",
+      label: mediaInfo.episodes ? `Episodes (${mediaInfo.episodes})` : "Episodes",
+    });
+  }
+
+  if (relatedNodes.length > 0) jumpSections.push({ id: "related", label: "Related" });
+  if (reviewsCount > 0) jumpSections.push({ id: "reviews", label: "Reviews" });
+
+  jumpSections.push({ id: "comments", label: "Comments" });
+
+  if (recommendationEdges.length > 0) jumpSections.push({ id: "similar", label: "Similar" });
+
   return (
     <main id={styles.container}>
       <JsonLd data={structuredData} />
@@ -149,28 +194,31 @@ export default async function MediaPage({
         style={{ background: bcgImgBasedOnScreenDisplay() }}
       />
 
-      <div
-        id={styles.media_info_container}
+      <div id={styles.media_info_container}>
+        <PageHeading
+          searchParams={searchParams}
+          titleLogo={titleLogo}
+          mediaInfo={{
+            ...mediaInfo,
+            title: {
+              ...mediaInfo.title,
+              userPreferred: displayTitle(mediaInfo.title),
+            },
+          }}
+        />
 
-      >
-      <PageHeading
-  searchParams={searchParams}
-  mediaInfo={{
-    ...mediaInfo,
-    title: {
-      ...mediaInfo.title,
-      userPreferred: displayTitle(mediaInfo.title),
-    },
-  }}
-/>
+        <SectionNav items={jumpSections} />
 
+        {/* The page body. The description/cast copy rule below is scoped to
+            this region so it cannot reach into the episode list. */}
+        <div id={styles.description_episodes_related_container}>
         <section id={styles.info_container}>
-          <div id={styles.description_episodes_related_container}>
+          <div id={styles.main_column}>
             {/* NEXT EPISODE */}
             {isOnMobileScreen == true &&
               mediaInfo.nextAiringEpisode &&
               mediaInfo.format != "MOVIE" && (
-                <div id={styles.next_episode_container}>
+                <div id={styles.next_episode_container} className={styles.section}>
                   <h2 className={styles.heading_style}>NEXT EPISODE</h2>
 
                   <p>
@@ -187,18 +235,32 @@ export default async function MediaPage({
               )}
 
             {/* DESCRIPTION */}
-            <section id={styles.description_container}>
-              <h2 className={styles.heading_style}>DESCRIPTION</h2>
+            <section
+              id={styles.description_container}
+              className={`${styles.section} ${styles.description_container}`}
+            >
+              <h2 id="description" className={styles.heading_style}>
+                DESCRIPTION
+              </h2>
 
               {mediaInfo.description && (
-                <span>{parse(mediaInfo.description) || "Not Available"}</span>
+                <div className={styles.description_text}>
+                  <ExpandableText id="media-description">
+                    {parse(mediaInfo.description)}
+                  </ExpandableText>
+                </div>
               )}
             </section>
 
             {/* CAST */}
-            {mediaInfo.characters.edges[0] && (
-              <section id={styles.cast_container}>
-                <h2 className={styles.heading_style}>CAST</h2>
+            {castCount > 0 && (
+              <section
+                id={styles.cast_container}
+                className={`${styles.section} ${styles.cast_container}`}
+              >
+                <h2 id="cast" className={styles.heading_style}>
+                  CAST
+                </h2>
 
                 {/* WHEN HOVERING, FLIP IMAGE AND SHOW THE ACTOR */}
                 <div>
@@ -211,7 +273,7 @@ export default async function MediaPage({
                               src={character.node.image.large}
                               alt={character.node.name.full}
                               fill
-                              sizes="90px"
+                              sizes="72px"
                             />
                           </div>
 
@@ -239,7 +301,7 @@ export default async function MediaPage({
                                     }` || "No Name Actor"
                                   }
                                   fill
-                                  sizes="90px"
+                                  sizes="72px"
                                 />
                               </div>
 
@@ -257,8 +319,11 @@ export default async function MediaPage({
               </section>
             )}
 
-            {mediaInfo.type == "ANIME" && (
-              <section id={styles.episodes_container}>
+            {!isManga && (
+              <section
+                id="episodes"
+                className={styles.section}
+              >
                 <Suspense fallback={<p>Episodes are being prepared. Check back soon.</p>}>
                   <EpisodesSection anilistId={Number(params.id)} format={mediaInfo.format} cover={mediaInfo.coverImage.extraLarge || mediaInfo.coverImage.large} />
                 </Suspense>
@@ -266,9 +331,11 @@ export default async function MediaPage({
             )}
 
             {/* CHAPTERS - ONLY FOR MANGAS */}
-            {mediaInfo.type == "MANGA" && (
-              <section>
-                <h2 className={styles.heading_style}>CHAPTERS</h2>
+            {isManga && (
+              <section className={styles.section}>
+                <h2 id="chapters" className={styles.heading_style}>
+                  CHAPTERS
+                </h2>
 
                 <MangaChaptersContainer
                   mediaInfo={mediaInfo}
@@ -281,9 +348,11 @@ export default async function MediaPage({
 
             {/* RELATIONED TO THIS MEDIA */}
             {relatedNodes[0] && (
-              <section id={styles.related_container}>
+              <section
+                className={`${styles.section} ${styles.related_container}`}
+              >
                 <div className="display_flex_row space_beetween align_items_center display_wrap">
-                  <h2 className={styles.heading_style}>
+                  <h2 id="related" className={styles.heading_style}>
                     RELATED TO {displayTitle(mediaInfo.title).toUpperCase()}
                   </h2>
                 </div>
@@ -297,13 +366,17 @@ export default async function MediaPage({
             )}
 
             {/* REVIEWS SECTION */}
-            {mediaInfo.reviews?.nodes.length > 0 && (
-              <Reviews reviews={mediaInfo.reviews.nodes} />
+            {reviewsCount > 0 && (
+              <div id="reviews" className={styles.section}>
+                <Reviews reviews={mediaInfo.reviews.nodes} />
+              </div>
             )}
 
             {/* COMMENTS SECTION */}
-            <section>
-              <h2 className={styles.heading_style}>COMMENTS</h2>
+            <section className={styles.section}>
+              <h2 id="comments" className={styles.heading_style}>
+                COMMENTS
+              </h2>
 
               <CommentsSection
                 mediaInfo={{
@@ -316,8 +389,10 @@ export default async function MediaPage({
 
             {/* RECOMMENDATIONS ACCORDING TO THIS MEDIA */}
             {recommendationEdges[0] && (
-              <section id={styles.similar_container}>
-                <h2 className={styles.heading_style}>
+              <section
+                className={`${styles.section} ${styles.similar_container}`}
+              >
+                <h2 id="similar" className={styles.heading_style}>
                   SIMILAR {mediaInfo.type.toUpperCase()}S YOU MAY LIKE
                 </h2>
 
@@ -362,7 +437,7 @@ export default async function MediaPage({
             )}
           </div>
 
-          <div id={styles.hype_container}>
+          <aside id={styles.hype_container}>
             {/* NEXT EPISODE */}
             {isOnMobileScreen == false &&
               mediaInfo.nextAiringEpisode &&
@@ -396,7 +471,7 @@ export default async function MediaPage({
                         source="anilist"
                       />
 
-                      <span style={{ marginLeft: "64px" }}>
+                      <span className={styles.score_value}>
                         {`(${mediaInfo.averageScore / 2 / 10}/5)`}
                       </span>
                     </li>
@@ -486,8 +561,9 @@ export default async function MediaPage({
                 )}
               </ul>
             </div>
-          </div>
+          </aside>
         </section>
+        </div>
       </div>
     </main>
   );

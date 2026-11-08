@@ -38,6 +38,18 @@ function Footer() {
           server. All contents are provided by non-affiliated third parties, and
           KumoriTV is not responsible for their availability, quality or legality.
         </p>
+
+        <p className={styles.tmdb_credit}>
+          This product uses the TMDB API but is not endorsed or certified by
+          TMDB.{" "}
+          <a
+            href="https://www.themoviedb.org"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            themoviedb.org
+          </a>
+        </p>
       </section>
     </footer>
   );

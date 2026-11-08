@@ -69,6 +69,13 @@ const nextConfig = {
         pathname: "/**",
       },
       {
+        // TMDB title logos (`https://image.tmdb.org/t/p/w500/<file>`)
+        protocol: "https",
+        hostname: "image.tmdb.org",
+        port: "",
+        pathname: "/t/p/**",
+      },
+      {
         protocol: "https",
         hostname: "**", // so many new SOURCES that i had to just allow any 
         port: "",

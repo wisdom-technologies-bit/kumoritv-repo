@@ -496,3 +496,29 @@ div.list_container .grid_template li.list_item_placeholder {
         opacity: 0.25;
     }
 }
+
+/* TMDB attribution: same quiet treatment as the disclaimer, one step dimmer. */
+.tmdb_credit {
+    width: 92%;
+    max-width: var(--breakpoint-xl);
+    margin: 8px auto 0;
+    text-align: center;
+    font-size: var(--font-size--small-2);
+    line-height: 1.6;
+    color: var(--white-50);
+}
+
+.tmdb_credit a {
+    color: var(--white-75);
+    text-decoration: underline;
+}
+
+.tmdb_credit a:hover {
+    color: var(--white-100);
+}
+
+@media (max-width: 768px) {
+    .tmdb_credit {
+        width: 88%;
+    }
+}

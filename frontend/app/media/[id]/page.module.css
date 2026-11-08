@@ -2,20 +2,44 @@
 
     background-color: var(--background);
 
+    /* nothing may spill sideways at 320px */
+    overflow-x: clip;
+
     padding-bottom: 1px;
 
+    /* room for the sticky jump bar under the sticky header */
+    --media-sticky-top: 76px;
+
 }
+
+/* ==========================================================================
+   SECTION HEADINGS
+   One consistent style: a short brand bar on the left instead of grey caps.
+   ========================================================================== */
 
 h2.heading_style {
 
     font-family: var(--font-family-sans-serif);
 
-    margin: 8px 0;
+    margin: 0 0 12px;
+    padding-left: 10px;
 
-    color: var(--white-50);
+    border-left: 3px solid var(--brand-color);
+
+    color: var(--white-100);
 
     font-size: var(--font-size--h5);
+    font-weight: 600;
+    line-height: 1.25;
+
+    /* the DOM keeps the original casing; this only tidies long labels */
+    letter-spacing: 0.01em;
+
 }
+
+/* ==========================================================================
+   BANNER
+   ========================================================================== */
 
 #banner_background_container {
 
@@ -23,9 +47,9 @@ h2.heading_style {
     background-repeat: no-repeat !important;
     background-size: cover !important;
 
-    min-height: 400px;
-    height: calc(400px + 5vw);
-    max-height: 60vh;
+    min-height: 260px;
+    height: calc(260px + 8vw);
+    max-height: 52vh;
 
 }
 
@@ -33,18 +57,19 @@ h2.heading_style {
 
     position: relative;
 
-    top: calc(-140px - 2vw);
+    /* pull the hero up over the faded bottom of the banner */
+    margin-top: calc(-96px - 3vw);
 
-    background: linear-gradient(transparent, var(--background) 17%);
+    background: linear-gradient(transparent, var(--background) 14%);
 
 }
 
-@media((min-width: 620px)) {
-    #media_info_container.custom_position {
+@media (min-width: 1024px) {
 
-        top: calc(-180px - 2vw);
-
+    #media_info_container {
+        margin-top: calc(-120px - 2vw);
     }
+
 }
 
 #media_info_container>section {
@@ -57,13 +82,13 @@ h2.heading_style {
 
 }
 
-@media((min-width: 1020px)) {
+@media (min-width: 1020px) {
     #media_info_container>section {
-        max-width: var(--breakpoint-xl);
+        max-width: 1280px;
     }
 }
 
-@media((min-width: 1480px)) {
+@media (min-width: 1480px) {
     #media_info_container>section {
 
         max-width: var(--breakpoint-xxl);
@@ -71,52 +96,89 @@ h2.heading_style {
     }
 }
 
-/* DESCRIPTION and RATING SCORE */
-#info_container {
+/* ==========================================================================
+   CONTENT GRID
+   Mobile: one column. Desktop: content + a 320px sticky side column.
+   ========================================================================== */
 
-    margin-top: 32px;
-    margin-bottom: 32px;
+#media_info_container #info_container {
+
+    width: 96%;
+    max-width: var(--breakpoint-md);
+
+    margin: 20px auto 32px;
 
 }
 
-@media(min-width: 700px) {
-    #info_container {
+@media (min-width: 1020px) {
+
+    #media_info_container #info_container {
+        max-width: 1280px;
+    }
+
+}
+
+@media (min-width: 1480px) {
+
+    #media_info_container #info_container {
+        max-width: var(--breakpoint-xxl);
+    }
+
+}
+
+#main_column {
+
+    min-width: 0;
+
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+
+}
+
+@media (min-width: 1024px) {
+
+    #media_info_container #info_container {
         display: grid;
-        grid-template-columns: 65% 1fr;
-        gap: 0 32px;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 40px;
+
+        align-items: start;
     }
-}
 
-@media(min-width: 1020px) {
-    #info_container {
-        gap: 0 64px;
+    #main_column {
+        gap: 28px;
     }
-}
-
-#description_episodes_related_container #description_container {
-
-    margin-bottom: 32px;
 
 }
 
-#description_episodes_related_container #description_container span * {
+/* Every anchor target clears the sticky header + jump bar. */
+.section,
+h2.heading_style {
+    scroll-margin-top: 128px;
+}
+
+/* --- DESCRIPTION ---------------------------------------------------------- */
+
+#main_column .description_text * {
+
     font-family: var(--font-family-sans-serif);
     color: var(--white-100);
-}
-
-#description_episodes_related_container #cast_container,
-#description_episodes_related_container #episodes_container,
-#description_episodes_related_container #related_container,
-#description_episodes_related_container #similar_container {
-
-    margin: 32px 0;
 
 }
 
-#description_episodes_related_container:last-child {
+#main_column #description_container,
+#main_column #cast_container,
+#main_column .related_container,
+#main_column .similar_container {
 
-    margin-top: 32px;
+    margin: 0;
 
+}
+
+/* The page body: description, episodes, cast, related and the side column. */
+#description_episodes_related_container {
+    display: block;
 }
 
 /* Only the description/cast copy needs the plain white text colour. This used
@@ -133,52 +195,76 @@ h2.heading_style {
 
 }
 
-#hype_container ul li {
+/* ==========================================================================
+   CAST
+   ========================================================================== */
 
-    color: var(--white-100);
-    font-size: var(--font-size--h5)
-}
+#main_column #cast_container ul {
 
-/* CAST */
-#cast_container ul {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 0 16px;
 
     overflow-x: auto;
     overflow-y: hidden;
 
-    margin-top: 24px;
-    padding-bottom: 24px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
 
-    gap: 0 32px;
-    display: flex;
+    margin: 0;
+    padding-bottom: 12px;
+
+    list-style: none;
+
 }
 
-/* CAST - SCROLLBAR */
-#cast_container ul::-webkit-scrollbar {
-    height: 8px;
+#main_column #cast_container ul::-webkit-scrollbar {
+    height: 6px;
 }
 
-@media(max-width:700px) {
-    #cast_container ul::-webkit-scrollbar {
-        height: 0px;
+@media (max-width: 700px) {
+    #main_column #cast_container ul::-webkit-scrollbar {
+        height: 0;
+        display: none;
     }
 }
 
-#cast_container ul::-webkit-scrollbar-track {
-    box-shadow: inset 0 0 8px var(--white-25);
+#main_column #cast_container ul::-webkit-scrollbar-track {
+    background: var(--white-05);
     border-radius: 10px;
 }
 
-#cast_container ul::-webkit-scrollbar-thumb {
-    background: var(--white-50);
+#main_column #cast_container ul::-webkit-scrollbar-thumb {
+    background: var(--white-25);
     border-radius: 6px;
 }
 
-#cast_container ul li {
+#main_column #cast_container ul li {
+
     position: relative;
     top: 0;
+
+    flex: 0 0 auto;
+    width: 72px;
+
+    scroll-snap-align: start;
+
 }
 
-#cast_container ul li>div {
+@media (max-width: 400px) {
+
+    #main_column #cast_container ul {
+        gap: 0 12px;
+    }
+
+    #main_column #cast_container ul li {
+        width: 64px;
+    }
+
+}
+
+#main_column #cast_container ul li>div {
 
     transition: all ease-in-out 130ms;
 
@@ -190,18 +276,20 @@ h2.heading_style {
 
 }
 
-#cast_container ul li h3 {
+#main_column #cast_container ul li h3 {
 
     text-align: center;
 
-    margin-top: 8px;
+    margin-top: 6px;
 
     color: var(--white-100);
-    font-size: var(--font-size--p);
+    font-size: 0.85rem;
     font-weight: 400;
+    line-height: 1.25;
+
 }
 
-#cast_container ul li h3 {
+#main_column #cast_container ul li h3 {
 
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -210,103 +298,158 @@ h2.heading_style {
 
 }
 
-#cast_container ul li .actor_container {
+#main_column #cast_container ul li .actor_container {
     visibility: hidden;
     position: absolute;
     top: 0;
+    left: 0;
+    right: 0;
 }
 
-#cast_container ul li:hover .actor_container {
-    visibility: initial;
+/* Only devices that can actually hover get the voice-actor swap: on touch a
+   tap would otherwise leave the card flipped. */
+@media (hover: hover) {
+
+    #main_column #cast_container ul li:hover .actor_container {
+        visibility: initial;
+    }
+
+    #main_column #cast_container ul li[data-mediatype="ANIME"]:hover .character_container {
+
+        filter: brightness(20%);
+
+    }
+
+    #main_column #cast_container ul li[data-mediatype="ANIME"]:hover .character_container h3 {
+        visibility: hidden;
+    }
+
 }
 
-#cast_container ul li[data-mediatype="ANIME"]:hover .character_container {
-
-    filter: brightness(20%);
-
-}
-
-#cast_container ul li[data-mediatype="ANIME"]:hover .character_container h3 {
-    visibility: hidden;
-}
-
-#cast_container .img_container {
+#main_column #cast_container .img_container {
 
     position: relative;
     top: 0;
-    height: 90px;
-    width: 90px;
+
+    height: 72px;
+    width: 72px;
 
 }
 
-#cast_container .img_container img {
+@media (max-width: 400px) {
+
+    #main_column #cast_container .img_container {
+        height: 64px;
+        width: 64px;
+    }
+
+}
+
+#main_column #cast_container .img_container img {
     border-radius: 50%;
     object-fit: cover;
 }
 
-#cast_container ul li .actor_container img {
+#main_column #cast_container ul li .actor_container img {
 
     border: 2px solid var(--brand-color);
 
 }
 
-#cast_container p {
+/* ==========================================================================
+   EPISODES / CHAPTERS
+   ========================================================================== */
+
+/* ==========================================================================
+   RELATED + SIMILAR GRIDS
+   ========================================================================== */
+
+#main_column .related_container>div>h2,
+#main_column .similar_container>h2 {
+
+    margin-bottom: 12px;
+
+}
+
+#main_column .related_container>div>a {
 
     color: var(--white-75);
 
 }
 
-/* EPISODES */
-#episodes_container {
-
-    margin: 16px 0;
-
-}
-
-/* GRID LIST */
-#related_container>div>h2,
-#similar_container>h2 {
-
-    margin-bottom: 16px;
-
-}
-
-#related_container>div>a {
-
-    color: var(--white-75);
-
-}
-
-#related_container>div>a:hover {
+#main_column .related_container>div>a:hover {
 
     color: var(--white-100);
 
 }
 
-#similar_container>ul {
-
-    /* overflow: auto; */
+#main_column .similar_container>ul {
 
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
 
-    justify-content: center;
     gap: 16px;
+
+    list-style: none;
 
 }
 
-@media(min-width:700px) {
+@media (min-width: 700px) {
 
-    #similar_container>ul {
-        justify-content: initial;
+    #main_column .similar_container>ul {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     }
 
 }
 
-@media(min-width:900px) {
+/* ==========================================================================
+   SIDE COLUMN
+   ========================================================================== */
 
-    #similar_container>ul {
-        grid-template-columns: repeat(auto-fill, minmax(141px, 1fr));
+#hype_container {
+
+    min-width: 0;
+
+    margin-top: 24px;
+
+}
+
+#hype_container ul li {
+
+    color: var(--white-100);
+    font-size: var(--font-size--small-1);
+
+}
+
+@media (min-width: 1024px) {
+
+    #hype_container {
+
+        position: sticky;
+        top: 88px;
+
+        align-self: start;
+
+        margin-top: 0;
+
+        /* a very tall column must never be cut off */
+        max-height: calc(100vh - 104px);
+        overflow-y: auto;
+
+        padding: 20px;
+
+        background-color: var(--white-05);
+        border: 1px solid var(--white-25);
+        border-radius: 16px;
+
+        scrollbar-width: thin;
+    }
+
+    /* hairline between the blocks instead of large empty margins */
+    #hype_container>div+div {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--white-25);
     }
 
 }
@@ -314,8 +457,14 @@ h2.heading_style {
 /* NEXT EPISODE */
 #next_episode_container {
 
-    margin-bottom: 32px;
+    margin-bottom: 20px;
 
+}
+
+@media (min-width: 1024px) {
+    #next_episode_container {
+        margin-bottom: 0;
+    }
 }
 
 #next_episode_container p {
@@ -323,11 +472,12 @@ h2.heading_style {
     color: var(--white-100);
     font-weight: 600;
 
+    font-size: var(--font-size--small-1);
+
 }
 
 #next_episode_container p span {
 
-    font-size: var(--font-size--p);
     color: var(--brand-color);
 
 }
@@ -335,58 +485,92 @@ h2.heading_style {
 /* SCORE */
 #score_container {
 
-    margin-top: 32px;
-    margin-bottom: 32px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+
+}
+
+@media (min-width: 1024px) {
+
+    #score_container {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
 
 }
 
 #score_container ul {
 
-    padding-top: 8px;
+    padding-top: 4px;
 
     display: flex;
     flex-wrap: wrap;
-    gap: 16px 32px;
+    gap: 8px 16px;
+
+    list-style: none;
 
 }
 
 #score_container ul li {
     flex-wrap: wrap;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
 }
 
 #score_container ul li span:first-child span:first-child svg {
 
-    width: 32px;
-    height: 32px;
+    width: 20px;
+    height: 20px;
 
 }
 
-#score_container ul li span:last-child {
+#score_container ul li .score_value {
 
     font-size: var(--font-size--small-2);
     width: max-content;
-    /* margin-left: 32px; */
+
+    color: var(--white-75);
 
 }
 
 /* YT EMBEDED VIDEO */
 #yt_video_container {
     margin: auto;
-    margin-top: 32px;
+    margin-top: 20px;
 }
 
-@media(min-width:700px) {
+@media (min-width: 1024px) {
     #yt_video_container {
         margin-top: 0;
     }
 }
 
+#yt_video_container iframe,
+#yt_video_container :global(iframe) {
+
+    aspect-ratio: 16 / 9;
+    width: 100%;
+
+    border: 0;
+    border-radius: 12px;
+
+}
 
 /* MORE INFO */
 #more_info_container {
 
-    margin-top: 32px;
+    margin-top: 20px;
+
+}
+
+@media (min-width: 1024px) {
+
+    #more_info_container {
+        margin-top: 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--white-25);
+    }
 
 }
 
@@ -394,16 +578,19 @@ h2.heading_style {
 
     display: flex;
     flex-direction: column;
-    gap: 8px 0;
+    gap: 0;
+
+    list-style: none;
 
 }
 
 #more_info_container ul li {
 
-    padding-bottom: 16px;
-    padding-top: 8px;
+    padding: 8px 0;
 
     color: var(--white-100);
+
+    font-size: 0.9rem;
 
 }
 
@@ -415,14 +602,24 @@ h2.heading_style {
 
 #more_info_container ul li p {
 
-    font-size: var(--font-size--small-1);
-    font-weight: 600;
+    font-size: 0.9rem;
+    font-weight: 500;
 
     display: flex;
     flex-wrap: wrap;
     flex-direction: row;
 
     justify-content: space-between;
+    gap: 4px 12px;
+
+    color: var(--white-50);
+
+}
+
+#more_info_container ul li span {
+
+    color: var(--white-100);
+    text-align: right;
 
 }
 

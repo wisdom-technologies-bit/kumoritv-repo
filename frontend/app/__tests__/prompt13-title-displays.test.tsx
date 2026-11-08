@@ -9,7 +9,7 @@ import * as MediaCard from "@/app/components/MediaCards/MediaCard";
 import KeepWatchingEpisodeInfo from "@/app/components/HomePage/KeepWatchingSection/components/KeepWatchingEpisodeInfo";
 import MediaRelatedContainer from "@/app/media/[id]/components/MediaRelatedContainer";
 import HeadingTextAndMediaLogo from "@/app/media/[id]/components/PageHeading/HeadingInfo/MediaTitleOrLogo";
-import GridHeadingMediaInfo from "@/app/media/[id]/components/PageHeading/GridInfo";
+import PlayBtn from "@/app/media/[id]/components/WatchPlayBtn";
 import ResultsContainer from "@/app/search/components/ResultsContainer";
 import NotificationsContainer from "@/app/layout/header/components/Notifications";
 import { searchCatalog } from "@/app/lib/anilist/medias.server";
@@ -247,12 +247,15 @@ test("the related row shows english titles", async () => {
 
 // -------------------------------------------------------------- media heading
 
-test("the media heading is the english title in uppercase with the native title above it", async () => {
+test("the media heading is the english title with the native title above it", async () => {
   const tree = await mount(<HeadingTextAndMediaLogo imdbMediaLogos={undefined} mediaTitles={TITLE as never} />);
   const heading = tree.container.querySelector("h1");
   const small = tree.container.querySelector("small");
 
-  assert.equal(heading?.textContent, "FRIEREN: BEYOND JOURNEY'S END");
+  // Prompt 25 stopped forcing `.toUpperCase()` on the string: the DOM keeps the
+  // natural title (better for snippets and screen readers) and casing is a CSS
+  // decision. The native line above the heading is unchanged.
+  assert.equal(heading?.textContent, ENGLISH);
   assert.equal(small?.textContent, NATIVE);
 
   await tree.unmount();
@@ -263,7 +266,7 @@ test("the media heading hides a secondary line that would repeat the heading", a
     <HeadingTextAndMediaLogo imdbMediaLogos={undefined} mediaTitles={{ romaji: ROMAJI, native: "", english: "" } as never} />,
   );
 
-  assert.equal(tree.container.querySelector("h1")?.textContent, "SOUSOU NO FRIEREN");
+  assert.equal(tree.container.querySelector("h1")?.textContent, ROMAJI);
   assert.equal(tree.container.querySelector("small"), null);
 
   await tree.unmount();
@@ -277,7 +280,7 @@ test("the logo variant keeps the english title as the image alt", async () => {
     />,
   );
 
-  assert.equal(tree.container.querySelector("h1")?.textContent, "FRIEREN: BEYOND JOURNEY'S END");
+  assert.equal(tree.container.querySelector("h1")?.textContent, ENGLISH);
   assert.equal(tree.container.querySelector("img")?.getAttribute("alt"), ENGLISH);
 
   await tree.unmount();
@@ -285,14 +288,18 @@ test("the logo variant keeps the english title as the image alt", async () => {
 
 // ------------------------------------------------------------- grid info tile
 
-test("the grid info tile labels the play button in english", async () => {
-  const tree = await mount(<GridHeadingMediaInfo mediaInfo={MEDIA} />);
+test("the play button labels the episode in english", async () => {
+  // Prompt 25 moved the play pill out of the info strip and into the hero
+  // actions row, so the button is mounted directly instead of through the tile.
+  const tree = await mount(
+    <PlayBtn mediaId={154587} mediaTitle={ENGLISH} mediaFormat="TV" mediaEpisodes={28} />,
+  );
   const button = tree.container.querySelector<HTMLButtonElement>("li.action_btn button");
 
-  assert.ok(button, "the action tile renders the original button");
+  assert.ok(button, "the action button renders");
   assert.equal(button.getAttribute("title"), `Watch ${ENGLISH}`);
   assert.equal(button.getAttribute("aria-label"), "Watch Episode 1");
-  assertNoRomaji(JSON.stringify([...tree.container.querySelectorAll("[title]")].map((el) => el.getAttribute("title"))), "the grid titles");
+  assertNoRomaji(JSON.stringify([...tree.container.querySelectorAll("[title]")].map((el) => el.getAttribute("title"))), "the play titles");
 
   await tree.unmount();
 });
