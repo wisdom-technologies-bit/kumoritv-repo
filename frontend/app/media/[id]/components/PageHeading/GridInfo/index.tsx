@@ -5,14 +5,26 @@ import stringToOnlyAlphabetic from "@/app/lib/convertStrings";
 import { ImdbEpisode } from "@/app/ts/interfaces/imdb";
 import { getMediaReleaseDate } from "@/app/lib/formatDateUnix";
 import { displayTitle } from "@/app/lib/titles";
+import {
+  ChaptersIcon,
+  EpisodesIcon,
+  LengthIcon,
+  ReleaseIcon,
+  SourceIcon,
+  StatusIcon,
+  VolumesIcon,
+} from "./icons";
 
-// Compact metadata strip: one small chip per fact (status/source, episodes,
-// volumes, release, length or chapters). Same data and the same conditions as
-// the old tall tiles, just readable at a glance.
+// The media facts strip: status/source, episodes, volumes, release, length or
+// chapters. Same facts, same conditions, same order as before.
 //
-// The rotated labels and the faded background icons are gone, and the play
-// button no longer lives here: it is a primary action and sits in the hero row
-// next to the round icon buttons.
+// Placement: it is rendered once, from inside the hero body (PageHeading passes
+// it to HeadingInfo as `infoSlot`), directly under the Play pill and the round
+// icon buttons. Phones keep the wrapping chip layout, desktop turns the same
+// list into a compact two-column, two-line icon grid.
+//
+// Every icon is decorative (`aria-hidden`), so the text label is still the only
+// thing a screen reader announces for each fact.
 export default function GridHeadingMediaInfo({
   mediaInfo,
   imdbEpisodes,
@@ -39,7 +51,11 @@ export default function GridHeadingMediaInfo({
       <ul aria-label={`${displayTitle(mediaInfo.title)} details`}>
         {mediaInfo.format == "MOVIE" ? (
           <li className={`${styles.info_item}`}>
-            <span className={styles.label}>SOURCE</span>
+            <span className={styles.label}>
+              <SourceIcon className={styles.icon} />
+
+              <span className={styles.label_text}>SOURCE</span>
+            </span>
 
             <p>
               {stringToOnlyAlphabetic(mediaInfo.source?.toUpperCase()) ||
@@ -48,7 +64,11 @@ export default function GridHeadingMediaInfo({
           </li>
         ) : (
           <li className={`${styles.info_item}`}>
-            <span className={styles.label}>STATUS</span>
+            <span className={styles.label}>
+              <StatusIcon className={styles.icon} />
+
+              <span className={styles.label_text}>STATUS</span>
+            </span>
 
             <p>{convertMediaStatus(mediaInfo.status || "Not Available")}</p>
           </li>
@@ -58,7 +78,11 @@ export default function GridHeadingMediaInfo({
           mediaInfo.format != "MOVIE" &&
           mediaInfo.status != "NOT_YET_RELEASED" && (
             <li className={`${styles.info_item}`}>
-              <span className={styles.label}>EPISODES</span>
+              <span className={styles.label}>
+                <EpisodesIcon className={styles.icon} />
+
+                <span className={styles.label_text}>EPISODES</span>
+              </span>
 
               <p>{getEpisodesQuantity()}</p>
             </li>
@@ -66,16 +90,26 @@ export default function GridHeadingMediaInfo({
 
         {mediaInfo.type == "MANGA" && (
           <li className={`${styles.info_item}`}>
-            <span className={styles.label}>VOLUMES</span>
+            <span className={styles.label}>
+              <VolumesIcon className={styles.icon} />
+
+              <span className={styles.label_text}>VOLUMES</span>
+            </span>
 
             <p>{mediaInfo.volumes || "Not Available"}</p>
           </li>
         )}
 
         <li className={`${styles.info_item}`}>
-          <span className={styles.label}>RELEASE</span>
+          <span className={styles.label}>
+            <ReleaseIcon className={styles.icon} />
 
-          <p className={styles.width_min_content}>
+            <span className={styles.label_text}>RELEASE</span>
+          </span>
+
+          {/* A long date ("October 20, 1999") wraps inside its own cell instead
+              of widening the grid. */}
+          <p>
             {getMediaReleaseDate(
               mediaInfo.startDate && mediaInfo.endDate.year
                 ? mediaInfo.endDate
@@ -87,7 +121,11 @@ export default function GridHeadingMediaInfo({
         <li className={`${styles.info_item}`}>
           {mediaInfo.type == "ANIME" && (
             <React.Fragment>
-              <span className={styles.label}>LENGTH</span>
+              <span className={styles.label}>
+                <LengthIcon className={styles.icon} />
+
+                <span className={styles.label_text}>LENGTH</span>
+              </span>
 
               <p>
                 {mediaInfo.duration == null
@@ -99,7 +137,11 @@ export default function GridHeadingMediaInfo({
 
           {mediaInfo.type == "MANGA" && (
             <React.Fragment>
-              <span className={styles.label}>CHAPTERS</span>
+              <span className={styles.label}>
+                <ChaptersIcon className={styles.icon} />
+
+                <span className={styles.label_text}>CHAPTERS</span>
+              </span>
 
               <p>{mediaInfo.chapters || "Not Available"}</p>
             </React.Fragment>

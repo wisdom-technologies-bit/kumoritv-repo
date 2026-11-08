@@ -41,15 +41,96 @@ h2.heading_style {
    BANNER
    ========================================================================== */
 
+/* The artwork is a real <picture> image now, not a CSS background, so phones
+   can be sent the portrait cover and everything else the wide banner.
+
+   The box height is written in CSS only: the image is absolutely positioned
+   inside it, so nothing jumps while the artwork downloads. */
 #banner_background_container {
 
-    background-position: 100% 30% !important;
-    background-repeat: no-repeat !important;
-    background-size: cover !important;
+    position: relative;
+
+    overflow: hidden;
+
+    /* fallback colour while the image loads */
+    background-color: var(--background);
 
     min-height: 260px;
     height: calc(260px + 8vw);
     max-height: 52vh;
+
+}
+
+#banner_background_container picture {
+
+    display: block;
+
+    position: absolute;
+    inset: 0;
+
+}
+
+#banner_background_container img {
+
+    display: block;
+
+    width: 100%;
+    height: 100%;
+
+    /* never stretch: crop instead, keeping the faces in frame */
+    object-fit: cover;
+    object-position: 100% 30%;
+
+}
+
+/* The gradient that carries the artwork into the page background. It used to
+   ride on the same `background` shorthand as the image. */
+#banner_background_container::after {
+
+    content: "";
+
+    position: absolute;
+    inset: 0;
+
+    pointer-events: none;
+
+    background: linear-gradient(rgba(0, 0, 0, 0.05), var(--background) 100%);
+
+}
+
+/* PHONES (the same 767px breakpoint as the <picture> source)
+   A tall portrait hero: roughly 56% of the viewport, so the artwork is finally
+   visible instead of being a narrow slice behind the title. */
+@media (max-width: 767px) {
+
+    #banner_background_container {
+
+        min-height: 400px;
+        height: clamp(400px, 56vh, 540px);
+        max-height: none;
+
+    }
+
+    #banner_background_container img {
+        object-position: center top;
+    }
+
+    /* Nothing sits on the artwork until ~55% of its height, and the fade into
+       the page background is deep enough for the title and the chips that
+       overlap the bottom quarter to stay WCAG AA. */
+    #banner_background_container::after {
+
+        background: linear-gradient(
+            180deg,
+            rgba(0, 0, 0, 0.12) 0%,
+            rgba(0, 0, 0, 0) 30%,
+            rgba(0, 0, 0, 0.12) 55%,
+            rgba(0, 0, 0, 0.55) 74%,
+            rgba(0, 0, 0, 0.72) 86%,
+            var(--background) 100%
+        );
+
+    }
 
 }
 
@@ -61,6 +142,20 @@ h2.heading_style {
     margin-top: calc(-96px - 3vw);
 
     background: linear-gradient(transparent, var(--background) 14%);
+
+}
+
+/* Phones: the hero starts about 70% of the way down the artwork, so the first
+   ~65% of the banner is free of text and the title only overlaps the bottom
+   quarter, where the gradient is already dark. */
+@media (max-width: 767px) {
+
+    #media_info_container {
+        /* 30% of the banner height, written against the same clamp so it holds
+           at every phone size (a percentage margin would resolve against the
+           width, not the height) */
+        margin-top: calc(-1 * clamp(120px, 16.8vh, 162px));
+    }
 
 }
 
