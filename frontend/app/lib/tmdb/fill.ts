@@ -110,10 +110,14 @@ async function claimRow(db: Db, row: AnimeRow, force: boolean): Promise<boolean>
     let query = db.from("anime").update({ logo_checked_at: new Date().toISOString() }).eq("anilist_id", row.anilist_id);
 
     if (!force) {
-      // Same staleness window the row was selected under.
+      // Same staleness window the row was selected under. A row with a
+      // `logo_checked_at` but no `logo_status` is a claim whose run died before
+      // it could write a result, so it retries on the short (error) window - not
+      // the 30-day one, which would strand it for a month.
       if (!row.logo_checked_at) query = query.is("logo_checked_at", null);
-      else if (row.logo_status === "error") query = query.lt("logo_checked_at", isoBefore(ERROR_RETRY_MS));
-      else query = query.lt("logo_checked_at", isoBefore(MISSING_RECHECK_MS));
+      else if (row.logo_status === "error" || row.logo_status == null) {
+        query = query.lt("logo_checked_at", isoBefore(ERROR_RETRY_MS));
+      } else query = query.lt("logo_checked_at", isoBefore(MISSING_RECHECK_MS));
 
       query = query.is("logo_path", null);
     }
@@ -254,10 +258,22 @@ async function candidates(
     ),
   );
 
+  // A claim whose run was killed before it wrote a result: `logo_checked_at` is
+  // set, `logo_status` never got written. Without this group such a row would
+  // never be looked at again.
+  const stale = await selectRows(db, (query) =>
+    order(
+      query
+        .is("logo_path", null)
+        .is("logo_status", null)
+        .lt("logo_checked_at", isoBefore(ERROR_RETRY_MS)),
+    ),
+  );
+
   const seen = new Set<number>();
   const merged: AnimeRow[] = [];
 
-  for (const row of [...fresh, ...errored, ...missing]) {
+  for (const row of [...fresh, ...errored, ...missing, ...stale]) {
     if (!row || typeof row.anilist_id !== "number") continue;
     if (seen.has(row.anilist_id)) continue;
 
