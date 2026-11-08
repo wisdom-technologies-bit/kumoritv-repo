@@ -188,7 +188,7 @@
     border-radius: 0 0 8px 8px;
     border: 0;
     background-color: var(--background);
-    z-index: 100;
+    z-index: var(--z-header-popover);
     position: absolute;
     top: 60px;
     right: 0;

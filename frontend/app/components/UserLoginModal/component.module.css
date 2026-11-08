@@ -1,6 +1,6 @@
 #backdrop {
 
-    z-index: 100;
+    z-index: var(--z-modal);
 
     position: fixed;
     height: 100vh;

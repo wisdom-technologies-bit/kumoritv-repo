@@ -23,6 +23,11 @@ import {
   skipLabel,
 } from "@/app/lib/watch/skip";
 import { usePrefs } from "@/app/lib/user-data/prefs";
+import {
+  friendlyWatchError,
+  watchErrorCode,
+  WATCH_ERROR_GENERIC,
+} from "@/app/lib/watch/errors";
 import { useWatchState } from "../WatchState";
 
 const HLS_CONFIG = {
@@ -161,6 +166,64 @@ export default function VideoPlayer({
   const { prefs } = usePrefs();
   const data: any = watch.status === "ready" ? watch.data : null;
   let error = watch.status === "error" ? watch.errorMessage : playbackError;
+
+  // The overlay only ever renders friendly copy. The raw text stays available
+  // for debugging through `data-error-code` and a console warning.
+  const friendlyError = error
+    ? friendlyWatchError(error, {
+        audio,
+        hasSubAlternative: Boolean(watch.availableAudio?.sub),
+      })
+    : "";
+
+  useEffect(() => {
+    if (!error) return;
+    console.warn(
+      "[watch] playback error",
+      watchErrorCode(error),
+      String(error).slice(0, 300),
+    );
+  }, [error]);
+
+  // DUB fallback. A dub that cannot play anywhere falls back to SUB once per
+  // episode; the ref makes a loop impossible even if SUB fails too.
+  const autoSubRef = useRef(false);
+  const [switchingToSub, setSwitchingToSub] = useState(false);
+  const hasSubAlternative = watch.availableAudio?.sub !== false;
+  const showSwitchToSub = audio === "dub" && hasSubAlternative && Boolean(error);
+  const allServersExhausted =
+    watch.servers.length === 0 ||
+    watch.tried.length >= watch.servers.length;
+
+  const watchUrlWithAudio = (nextAudio: "sub" | "dub") => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("audio", nextAudio);
+    return `/watch/${anilistId}?${params.toString()}`;
+  };
+
+  const switchToSub = (replace: boolean) => {
+    const url = watchUrlWithAudio("sub");
+    if (replace) router.replace(url);
+    else window.location.assign(url);
+  };
+
+  useEffect(() => {
+    if (!error || audio !== "dub" || !hasSubAlternative) return;
+    if (autoSubRef.current || !allServersExhausted) return;
+    autoSubRef.current = true;
+    setSwitchingToSub(true);
+    const timer = setTimeout(() => switchToSub(true), 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, audio, hasSubAlternative, allServersExhausted, anilistId]);
+
+  // "Try another server" walks to the next server in the list.
+  const nextServer = (() => {
+    const list = watch.servers || [];
+    if (list.length < 2) return null;
+    const index = list.findIndex((server) => server.id === watch.activeServerId);
+    return list[(index + 1) % list.length] || null;
+  })();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -450,13 +513,10 @@ export default function VideoPlayer({
 
   return (
     <div className={styles.container}>
-      <div
-        style={{
-          position: "relative",
-          aspectRatio: "16 / 9",
-          background: "#000",
-        }}
-      >
+      {/* The stage is a plain box: `#video_container` owns the 16:9 ratio and
+          the height cap, and an inline aspect-ratio here used to overflow it by
+          a few pixels and push the control bar out of view. */}
+      <div className={styles.stage}>
         {!data && !error && (
           <img
             src="/assets/Eclipse-1s-200px-custom-color.svg"
@@ -592,6 +652,21 @@ export default function VideoPlayer({
                   setVisibleSkip(null);
                 }}
               >
+                <svg
+                  aria-hidden="true"
+                  focusable="false"
+                  viewBox="0 0 24 24"
+                  width={16}
+                  height={16}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 4l10 8-10 8V4z" fill="currentColor" stroke="none" />
+                  <path d="M19 5v14" />
+                </svg>
                 <span className={styles.btn_text}>
                   {skipLabel(visibleSkip.key)}
                 </span>
@@ -602,28 +677,83 @@ export default function VideoPlayer({
         {error && (
           <div
             role="alert"
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "grid",
-              placeItems: "center",
-              color: "white",
-              background: "#000",
-            }}
+            className={styles.error_overlay}
+            data-error-code={watchErrorCode(error)}
           >
-            <div>
-              <p>{error}</p>
+            <svg
+              className={styles.error_icon}
+              aria-hidden="true"
+              focusable="false"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6.5 17.5A4.5 4.5 0 0 1 6 8.6a5.5 5.5 0 0 1 10.6-1.4A4 4 0 0 1 17.5 17.5" />
+              <path d="M3 3l18 18" />
+            </svg>
+
+            <p className={styles.error_message}>{friendlyError}</p>
+
+            <div className={styles.error_actions}>
               <button
                 type="button"
+                className={styles.error_pill}
+                aria-label="Retry"
                 onClick={() => {
                   setPlaybackError("");
                   watch.retry();
                 }}
               >
-                Retry
+                Try again
               </button>
+
+              {nextServer && (
+                <button
+                  type="button"
+                  className={styles.error_pill}
+                  onClick={() => {
+                    setPlaybackError("");
+                    watch.selectServer(nextServer.id);
+                  }}
+                >
+                  Try another server
+                </button>
+              )}
+
+              {watch.hasBackup && (
+                <button
+                  type="button"
+                  className={styles.error_pill}
+                  onClick={() => {
+                    setPlaybackError("");
+                    watch.backupServer();
+                  }}
+                >
+                  Backup server
+                </button>
+              )}
+
+              {showSwitchToSub && (
+                <button
+                  type="button"
+                  className={styles.error_pill}
+                  data-primary="true"
+                  onClick={() => switchToSub(false)}
+                >
+                  Switch to Sub
+                </button>
+              )}
             </div>
           </div>
+        )}
+
+        {switchingToSub && (
+          <p className={styles.error_banner} role="status">
+            Dub isn&apos;t available for this episode, switching to Sub…
+          </p>
         )}
         {waiting && source && (
           <span className="sr-only" role="status">

@@ -400,8 +400,12 @@ test("the results panel is opaque, scrollable, capped and above page content", (
   assert.match(panel, /background:\s*var\(--background\)/);
   assert.match(panel, /border:\s*1px solid var\(--white-25\)/);
   assert.match(panel, /border-radius:\s*16px/);
-  const zIndex = Number(panel.match(/z-index:\s*(\d+)/)![1]);
-  assert.ok(zIndex > 10, "the panel sits above the hero and trailer blocks");
+  // Prompt 31: stacking is a documented token scale, not a bare number.
+  assert.match(
+    panel,
+    /z-index:\s*var\(--z-header-popover\)/,
+    "the panel sits above the hero and trailer blocks",
+  );
   assert.match(panel, /left:\s*12px/);
   assert.match(panel, /right:\s*12px/);
 });

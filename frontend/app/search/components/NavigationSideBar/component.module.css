@@ -30,7 +30,7 @@
 @media(max-width: 599px) {
     #backdrop {
 
-        z-index: 100;
+        z-index: var(--z-page-popover);
 
         position: fixed;
         height: 100%;

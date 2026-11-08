@@ -99,7 +99,7 @@ span#notifications_badge {
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
 
     color: var(--white-100);
-    z-index: 120;
+    z-index: var(--z-header-popover);
 }
 
 #results_container:focus {
@@ -448,7 +448,7 @@ span#notifications_badge {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
-    z-index: 110;
+    z-index: calc(var(--z-header-popover) - 1);
 }
 
 @media (max-width: 640px) {

@@ -192,6 +192,13 @@ function HeroCarousel({
                               1,
                               Math.round(720 / currentTitleLogo.aspectRatio)
                             )}
+                            /* Reserve the box before the image loads so the
+                               meta line never jumps when the logo arrives. */
+                            style={{
+                              aspectRatio: currentTitleLogo.aspectRatio
+                                ? String(currentTitleLogo.aspectRatio)
+                                : undefined,
+                            }}
                             onError={() =>
                               setFailedLogoId(
                                 Number(animesList[currMediaOnScreenIndex]?.id)

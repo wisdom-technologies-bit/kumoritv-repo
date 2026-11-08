@@ -54,7 +54,7 @@ test("manga dropdown uses the same anchoring rules as the anime dropdown", () =>
   for (const rule of [
     "position: fixed",
     "top: calc(var(--header-min-height, 64px) + 8px)",
-    "z-index: 50",
+    "z-index: var(--z-header-popover)",
     "width: 100vw",
     "max-width: 100vw",
     "padding: 32px var(--page-gutter) 64px",

@@ -316,13 +316,14 @@ export default async function WatchPage({
                   </Link>
 
                   <div className={styles.round_actions}>
-                    <AddToNotificationsButton mediaInfo={media as any} />
+                    <AddToNotificationsButton mediaInfo={media as any} variant="round" />
 
                     <AddToList.Button
                       statusOnAnilist={media.mediaListEntry?.status}
                       listEntryId={media.mediaListEntry?.id}
                       mediaInfo={media as any}
                       amountWatchedOrRead={media.mediaListEntry?.progress}
+                      variant="round"
                     >
                       <AddToFavourites.SvgIcon>
                         <PlusSvg
@@ -344,6 +345,7 @@ export default async function WatchPage({
                     <AddToFavourites.Button
                       isActiveOnAnilist={media.isFavourite}
                       mediaInfo={media as any}
+                      variant="round"
                     >
                       <AddToFavourites.SvgIcon>
                         <FavouriteSvg

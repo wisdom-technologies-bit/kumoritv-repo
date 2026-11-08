@@ -21,13 +21,17 @@ export function Button({
   svgOnlyColor,
   isActiveOnAnilist,
   customText,
+  variant = "pill",
 }: {
   mediaInfo: MediaData | MediaOnJSONFile | KeepWatchingMediaData;
   children?: React.ReactNode[];
   svgOnlyColor?: string;
   isActiveOnAnilist?: boolean;
   customText?: string;
+  /** "round" = the shared icon circle (media hero / watch card). */
+  variant?: "pill" | "round";
 }) {
+  const isRound = variant === "round";
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [wasAddedToFavourites, setWasAddedToFavourites] = useState<boolean>(
     isActiveOnAnilist || false
@@ -106,8 +110,10 @@ export function Button({
   return (
     <motion.button
       whileTap={{ scale: 0.85 }}
-      id={styles.container}
-      className={children ? styles.custom_text : ""}
+      id={isRound ? undefined : styles.container}
+      className={
+        isRound ? "kumori-round" : children ? styles.custom_text : ""
+      }
       onClick={() => handleMediaOnFavourites()}
       disabled={isLoading}
       data-added={wasAddedToFavourites}

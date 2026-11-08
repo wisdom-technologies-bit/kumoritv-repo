@@ -120,7 +120,7 @@
    any more - the black lives inside the player box only. */
 #container .background {
 
-    z-index: 2;
+    z-index: var(--z-content);
     position: sticky;
     top: 60px;
 
@@ -146,7 +146,7 @@
 /* Lights off: the player sits ABOVE the scrim so its own controls still work. */
 #media_info_container[data-lights-off="true"] .background {
 
-    z-index: 60;
+    z-index: var(--z-scrim-player);
 
 }
 
@@ -170,17 +170,51 @@
 }
 
 /* The player's own tree fills the box, so a capped height never clips its
-   controls off the bottom. */
+   controls off the bottom. Width matters as much as height: without it a
+   narrower media element pillarboxes itself inside a perfectly good 16:9 box. */
 #video_container>* {
 
+    width: 100%;
     height: 100%;
+
+    max-width: 100%;
     max-height: 100%;
 
+    margin: 0;
+    padding: 0;
+
+    /* no inner aspect-ratio / min-width can shrink the media element */
+    aspect-ratio: auto;
+    min-width: 0;
 }
 
-#video_container>*>* {
 
+
+#video_container media-player,
+#video_container media-provider,
+#video_container .vds-poster,
+#video_container poster,
+#video_container video,
+#video_container iframe {
+
+    display: block;
+
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
     max-height: 100%;
+
+    aspect-ratio: auto;
+
+    margin: 0;
+    padding: 0;
+}
+
+/* Letterboxing is only ever correct when the STREAM's own ratio differs from
+   16:9 - never because a wrapper is narrower than the box. */
+#video_container video {
+
+    object-fit: contain;
 
 }
 
@@ -207,7 +241,9 @@
 #video_container video {
 
     position: absolute;
-    top: 0;
+    inset: 0;
+
+    width: 100%;
     height: 100%;
 
 }
@@ -471,94 +507,21 @@
 
 }
 
-/* Round action buttons: the same set the media page hero uses (bell, "+",
-   heart), restated here because the hero's rules are scoped to its own id. */
+/* Round action row. The buttons themselves are the shared `.kumori-round`
+   class (globals.css) - the same one the media hero uses, so the bell, "+" and
+   heart are identical on both pages. Only the row layout lives here. */
 .round_actions {
 
     display: flex;
     align-items: center;
     gap: 8px;
 
+    /* "isolation: isolate" keeps the open "+" menu inside this row's stacking
+       context, so it can never paint over the header. */
+    isolation: isolate;
+
     position: relative;
-    z-index: 10;
-
-}
-
-.round_actions>button {
-
-    flex: 0 0 auto !important;
-
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-
-    width: 36px !important;
-    min-width: 36px !important;
-    height: 36px !important;
-    min-height: 36px !important;
-
-    padding: 0 !important;
-
-    border: 1px solid var(--white-25) !important;
-    border-radius: 50% !important;
-
-    background-color: var(--white-05) !important;
-    color: var(--white-100) !important;
-
-    box-shadow: none !important;
-
-    cursor: pointer;
-
-    transition: background-color 150ms ease, border-color 150ms ease;
-
-}
-
-.round_actions>button:hover {
-
-    background-color: var(--white-25) !important;
-    border-color: var(--white-50) !important;
-
-}
-
-.round_actions>button:focus-visible {
-
-    outline: 2px solid var(--brand-color);
-    outline-offset: 2px;
-
-}
-
-.round_actions>button[data-added="true"],
-.round_actions>button[data-has-value="true"] {
-
-    background-color: var(--brand-color) !important;
-    border-color: var(--brand-color) !important;
-
-}
-
-.round_actions>button[data-added="true"] svg,
-.round_actions>button[data-has-value="true"] svg {
-
-    fill: var(--white-100) !important;
-
-}
-
-.round_actions>button svg {
-
-    display: block;
-
-    width: 16px;
-    height: 16px;
-
-    margin: 0 !important;
-
-    transform: none;
-
-}
-
-.plus_icon {
-
-    width: 16px;
-    height: 16px;
+    z-index: var(--z-page-popover);
 
 }
 
@@ -633,7 +596,7 @@
     position: fixed;
     inset: 0;
 
-    z-index: 40;
+    z-index: var(--z-scrim);
 
     background: rgba(0, 0, 0, 0.85);
 

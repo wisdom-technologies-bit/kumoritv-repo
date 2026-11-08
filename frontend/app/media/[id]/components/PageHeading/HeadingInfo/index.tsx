@@ -112,7 +112,7 @@ export default function HeadingInfo({
           </ul>
 
           <div id={styles.btns_actions_container}>
-            <AddToNotificationsButton mediaInfo={mediaInfo} />
+            <AddToNotificationsButton mediaInfo={mediaInfo} variant="round" />
 
             <AddToList.Button
               statusOnAnilist={mediaInfo.mediaListEntry?.status}
@@ -120,6 +120,7 @@ export default function HeadingInfo({
               mediaInfo={mediaInfo as MediaData}
               imdbEpisodesList={imdbEpisodes}
               amountWatchedOrRead={mediaInfo.mediaListEntry?.progress}
+              variant="round"
             >
               <AddToFavourites.SvgIcon>
                 <PlusSvg
@@ -141,6 +142,7 @@ export default function HeadingInfo({
             <AddToFavourites.Button
               isActiveOnAnilist={mediaInfo.isFavourite}
               mediaInfo={mediaInfo as MediaData}
+              variant="round"
             >
               <AddToFavourites.SvgIcon>
                 <FavouriteSvg fill="var(--white-100)" viewBox="0 0 16 16" />
