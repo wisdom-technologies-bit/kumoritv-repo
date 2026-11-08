@@ -1,9 +1,19 @@
-/* COMPACT INFO STRIP
-   One 12px-radius chip per fact. Two per row on phones, a single line from
-   tablet up. No rotated labels, no faded background icons. */
+/* MEDIA FACTS STRIP
+   Rendered once, inside the hero body, under the Play pill and the round icon
+   buttons.
+
+   Phones and tablets: one 12px-radius chip per fact, label above the value, two
+   per row at phone widths. From 640px the chips sit on a single line.
+   Desktop (>=1024px): the same list becomes a compact two-column grid, two
+   lines high, each line `[icon] LABEL  value` - no boxes, no borders, clearly
+   smaller than the Play pill (48px) and the round buttons (40px). */
+
 #info_list_container {
-    margin-top: 16px;
+    /* the hero body's flex gap already separates it from the actions row */
+    margin-top: 0;
     margin-bottom: 16px;
+
+    min-width: 0;
 }
 
 #info_list_container>ul {
@@ -11,6 +21,9 @@
     flex-direction: row;
     flex-wrap: wrap;
     gap: 8px;
+
+    margin: 0;
+    padding: 0;
 
     list-style: none;
 }
@@ -43,7 +56,16 @@
     }
 }
 
+/* ICON + LABEL
+   The icon rides with the label so the label text stays a single text node and
+   the two are read/measured together. */
 #info_list_container .label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    min-width: 0;
+
     font-family: var(--font-family-sans-serif);
     font-size: var(--font-size--small-2);
     font-weight: 600;
@@ -53,6 +75,18 @@
     color: var(--white-50);
 
     white-space: nowrap;
+}
+
+/* `display: block` keeps the svg off the text baseline, so the icon and the
+   label share one optical centre. */
+#info_list_container .icon {
+    display: block;
+    flex: 0 0 auto;
+
+    width: 14px;
+    height: 14px;
+
+    color: var(--white-50);
 }
 
 #info_list_container .info_item>p {
@@ -67,10 +101,73 @@
     overflow-wrap: anywhere;
 }
 
-/* The release date needs room to wrap instead of stretching the strip. */
-#info_list_container .info_item>p.width_min_content {
-    min-width: max-content;
-    max-width: 100%;
+/* DESKTOP: compact icon grid, two lines, two facts per line */
+@media (min-width: 1024px) {
+    #info_list_container {
+        /* separates the facts from the buttons above without drawing a box */
+        margin-top: 0;
+        margin-bottom: 0;
+
+        padding-top: 12px;
+
+        border-top: 1px solid var(--white-05);
+
+        max-width: 460px;
+    }
+
+    #info_list_container>ul {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+
+        column-gap: 28px;
+        row-gap: 8px;
+
+        flex-wrap: nowrap;
+
+        max-width: 460px;
+    }
+
+    #info_list_container .info_item {
+        flex: initial;
+
+        min-width: 0;
+        min-height: 30px;
+        max-width: none;
+
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 6px;
+
+        padding: 0;
+
+        background-color: transparent;
+        border: 0;
+        border-radius: 0;
+    }
+
+    #info_list_container .label {
+        /* the label keeps its own width so values line up inside each column */
+        flex: 0 0 auto;
+
+        gap: 6px;
+    }
+
+    #info_list_container .icon {
+        width: 16px;
+        height: 16px;
+    }
+
+    #info_list_container .info_item>p {
+        /* long release dates wrap inside the cell, they never widen the grid */
+        min-width: 0;
+
+        font-size: var(--font-size--small-1);
+        font-weight: 600;
+
+        /* a wrapped date keeps the whole item inside the 28-32px band */
+        line-height: 1.1;
+    }
 }
 
 /* Kept for the play button markup (WatchPlayBtn imports these class names).

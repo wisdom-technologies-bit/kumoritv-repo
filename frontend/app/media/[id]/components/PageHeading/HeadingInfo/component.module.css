@@ -466,12 +466,33 @@
 
 /* Bell, plus and heart share one size and one weight. The components scale their
    own glyphs differently (bell 1.4, plus/heart 1.3); an explicit width/height is
-   the only way to make the three read as a set. */
+   the only way to make the three read as a set.
+
+   Centring: the button is an inline-flex box with `align-items/justify-content:
+   center`, so the glyph is centred by the box alone. Anything from an icon's own
+   module that moves the drawing inside that box - a scale/rotate transform, a
+   margin, absolute offsets, or the inline-svg baseline gap - is reset here, and
+   `transform-origin` is pinned so the open-state rotation stays concentric.
+   Each icon also passes `viewBox="0 0 16 16"` explicitly, because SVGR drops it
+   and without it the 16-unit artwork is drawn 1:1 in the top-left of the box
+   (which is exactly the few-pixel offset to the up-left this fixes). */
 #btns_actions_container>button svg {
+    display: block;
+
     width: 20px;
     height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+
+    margin: 0;
+
+    position: static;
+    inset: auto;
+
+    vertical-align: top;
 
     transform: none;
+    transform-origin: 50% 50%;
 }
 
 /* bi-plus-lg is a 1-unit cross: filled only, it looks lighter than the bell and
@@ -487,6 +508,8 @@
     #btns_actions_container>button svg {
         width: 18px;
         height: 18px;
+        min-width: 18px;
+        min-height: 18px;
     }
 }
 
@@ -502,6 +525,26 @@
 #btns_actions_container>button[data-active="true"] svg,
 #btns_actions_container>button[data-active="true"] svg path {
     fill: var(--white-100) !important;
+}
+
+/* The bell's artwork is not symmetric inside its 16x16 viewBox: measured at
+   20px, the drawn glyph's centre sits 0.42px right of and 0.97px below the
+   circle's centre (0.34 / 0.78 viewBox units), which is what made it look low
+   and to the right in the screenshot. A percentage translate keeps that
+   correction proportional when the icon shrinks to 18px on desktop, so the glyph
+   centre lands on the circle centre at both sizes. The plus and the heart need
+   no correction: their measured offset is 0px and 0.56px. */
+#btns_actions_container>button svg[data-icon="bell"] {
+    transform: translate(-2%, -4.85%);
+}
+
+/* The "+" becomes an X by turning a quarter turn. AddToList's module scales it
+   1.3x as well, which makes the X a different size from the idle plus and is
+   beaten here on purpose: `rotate(45deg)` about the circle's centre keeps the
+   glyph dead centre in every state, at the same optical size. */
+#btns_actions_container>button[data-active="true"] svg {
+    transform: rotate(45deg) !important;
+    transform-origin: 50% 50% !important;
 }
 
 @media (min-width: 1024px) {

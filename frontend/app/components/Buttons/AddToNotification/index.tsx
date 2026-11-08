@@ -99,9 +99,19 @@ function AddToNotificationsButton({
 
         {!isLoading &&
           (wasAddedToNotifications ? (
-            <BellFillSvg width={16} height={16} />
+            <BellFillSvg
+              width={16}
+              height={16}
+              viewBox="0 0 16 16"
+              data-icon="bell"
+            />
           ) : (
-            <BellSvg width={16} height={16} />
+            <BellSvg
+              width={16}
+              height={16}
+              viewBox="0 0 16 16"
+              data-icon="bell"
+            />
           ))}
       </motion.button>
     );

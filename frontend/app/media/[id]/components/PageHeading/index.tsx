@@ -1,4 +1,3 @@
-import React from "react";
 import GridHeadingMediaInfo from "./GridInfo";
 import HeadingInfo from "./HeadingInfo";
 import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
@@ -20,16 +19,19 @@ export default function PageHeading({
   titleLogo?: TitleLogo;
 }) {
   return (
-    <React.Fragment>
-      <HeadingInfo
-        mediaInfo={mediaInfo}
-        imdbMediaInfo={imdbMediaInfo}
-        searchParams={searchParams}
-        imdbEpisodes={imdbEpisodes}
-        titleLogo={titleLogo}
-      />
-
-      <GridHeadingMediaInfo mediaInfo={mediaInfo} imdbEpisodes={imdbEpisodes} />
-    </React.Fragment>
+    <HeadingInfo
+      mediaInfo={mediaInfo}
+      imdbMediaInfo={imdbMediaInfo}
+      searchParams={searchParams}
+      imdbEpisodes={imdbEpisodes}
+      titleLogo={titleLogo}
+      /* The facts strip is rendered ONCE and handed to the hero, which places
+         it right under the Play pill and the round icon buttons. It used to be
+         a sibling of the hero, which is why it could not sit under the actions
+         row on desktop without a second copy of the facts in the DOM. */
+      infoSlot={
+        <GridHeadingMediaInfo mediaInfo={mediaInfo} imdbEpisodes={imdbEpisodes} />
+      }
+    />
   );
 }

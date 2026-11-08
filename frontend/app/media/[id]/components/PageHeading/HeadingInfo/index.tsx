@@ -24,12 +24,16 @@ export default function HeadingInfo({
   imdbMediaInfo,
   imdbEpisodes,
   titleLogo,
+  infoSlot,
 }: {
   mediaInfo: MediaDataFullInfo;
   searchParams: { lang?: string };
   imdbMediaInfo?: ImdbMediaInfo;
   imdbEpisodes?: ImdbEpisode[];
   titleLogo?: TitleLogo;
+  /** The facts strip (STATUS / EPISODES / RELEASE / ...). Rendered once, here,
+      under the actions row so desktop can read it as one compact block. */
+  infoSlot?: React.ReactNode;
 }) {
   // Poster card for the desktop hero. Hidden with CSS below 1024px, where the
   // banner already carries the artwork.
@@ -118,11 +122,19 @@ export default function HeadingInfo({
               amountWatchedOrRead={mediaInfo.mediaListEntry?.progress}
             >
               <AddToFavourites.SvgIcon>
-                <PlusSvg className={styles.plus_icon} fill="currentColor" />
+                <PlusSvg
+                  className={styles.plus_icon}
+                  fill="currentColor"
+                  viewBox="0 0 16 16"
+                />
               </AddToFavourites.SvgIcon>
 
               <AddToFavourites.SvgIcon>
-                <PlusSvg className={styles.plus_icon} fill="currentColor" />
+                <PlusSvg
+                  className={styles.plus_icon}
+                  fill="currentColor"
+                  viewBox="0 0 16 16"
+                />
               </AddToFavourites.SvgIcon>
             </AddToList.Button>
 
@@ -131,15 +143,19 @@ export default function HeadingInfo({
               mediaInfo={mediaInfo as MediaData}
             >
               <AddToFavourites.SvgIcon>
-                <FavouriteSvg fill="var(--white-100)" />
+                <FavouriteSvg fill="var(--white-100)" viewBox="0 0 16 16" />
               </AddToFavourites.SvgIcon>
 
               <AddToFavourites.SvgIcon>
-                <FavouriteFillSvg fill="var(--brand-color)" />
+                <FavouriteFillSvg fill="var(--brand-color)" viewBox="0 0 16 16" />
               </AddToFavourites.SvgIcon>
             </AddToFavourites.Button>
           </div>
         </div>
+
+        {/* FACTS STRIP: STATUS/SOURCE, EPISODES, VOLUMES, RELEASE, LENGTH/CHAPTERS.
+            Comes from PageHeading as a prop so it exists exactly once in the DOM. */}
+        {infoSlot}
       </div>
     </section>
   );

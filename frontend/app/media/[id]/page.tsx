@@ -111,25 +111,19 @@ export default async function MediaPage({
     runInBackground(() => fillLogoForAnime(mediaInfo.id), { label: "logo fill" });
   }
 
-  function randomizeBcgImg() {
-    const backgroundImgs: { url: string }[] = [];
+  // BANNER ARTWORK
+  // Phones get the portrait cover (2:3), which fills a tall phone hero without
+  // cutting faces away; from 768px up the wide banner keeps its old framing.
+  // A media with no cover falls back to the banner everywhere, and one with no
+  // banner uses the cover everywhere. A <picture> source switch means a phone
+  // only downloads the cover.
+  const coverImage = mediaInfo.coverImage?.extraLarge || mediaInfo.coverImage?.large || null;
+  const bannerImage = mediaInfo.bannerImage || null;
 
-    if (mediaInfo?.bannerImage)
-      backgroundImgs.push({ url: mediaInfo?.bannerImage });
-    const randomNumber = Math.floor(Math.random() * backgroundImgs?.length);
-
-    return backgroundImgs[randomNumber]?.url;
-  }
-
-  function bcgImgBasedOnScreenDisplay() {
-    if (isOnMobileScreen) {
-      return `linear-gradient(rgba(0, 0, 0, 0.05), var(--background) 100%), url(${mediaInfo?.coverImage?.extraLarge})`;
-    } else {
-      return `linear-gradient(rgba(0, 0, 0, 0.05), var(--background) 100%), url(${
-        mediaInfo!.format == "MANGA" ? mediaInfo!.bannerImage : randomizeBcgImg()
-      })`;
-    }
-  }
+  // Phones: the portrait cover, falling back to the banner.
+  const phoneImage = coverImage || bannerImage;
+  // Tablet and desktop: the wide banner, falling back to the cover.
+  const wideImage = bannerImage || coverImage;
 
   const canonical = buildMediaCanonical(params.id);
 
@@ -188,11 +182,21 @@ export default async function MediaPage({
   return (
     <main id={styles.container}>
       <JsonLd data={structuredData} />
-      {/* BANNER or BACKGROUND COLOR*/}
-      <div
-        id={styles.banner_background_container}
-        style={{ background: bcgImgBasedOnScreenDisplay() }}
-      />
+      {/* BANNER ARTWORK: portrait cover on phones, wide banner from 768px up */}
+      {wideImage ? (
+        <div id={styles.banner_background_container}>
+          <picture>
+            {phoneImage !== wideImage ? (
+              <source media="(max-width: 767px)" srcSet={phoneImage!} />
+            ) : null}
+
+            {/* Purely decorative: the title is the real heading. */}
+            <img src={wideImage} alt="" aria-hidden="true" decoding="async" />
+          </picture>
+        </div>
+      ) : (
+        <div id={styles.banner_background_container} />
+      )}
 
       <div id={styles.media_info_container}>
         <PageHeading
