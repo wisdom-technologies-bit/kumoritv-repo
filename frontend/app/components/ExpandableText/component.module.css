@@ -5,8 +5,8 @@
 .content {
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
+    -webkit-line-clamp: var(--expandable-lines, 4);
+    line-clamp: var(--expandable-lines, 4);
     overflow: hidden;
 
     /* long-form copy stays readable: cap the measure, not the width */
@@ -15,8 +15,8 @@
 
 @media (min-width: 768px) {
     .content {
-        -webkit-line-clamp: 5;
-        line-clamp: 5;
+        -webkit-line-clamp: var(--expandable-lines, 5);
+        line-clamp: var(--expandable-lines, 5);
     }
 }
 

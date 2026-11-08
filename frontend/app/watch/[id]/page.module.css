@@ -1,8 +1,13 @@
-/* Nothing on this page may widen the document. The player, the controls and the
-   episode list all sit in tracks that could otherwise be pushed wider than the
-   viewport by a long title or a wide control row, which showed up as a
-   horizontally scrollable page on phones. `clip` (not `hidden`) keeps the
-   sticky player and the fixed header working. */
+/* Watch page, Prompt 30.
+ *
+ * Desktop (>= 1024px): one content column for the player + info + comments and
+ * a sticky 380px episodes sidebar. Below that: a single column, in the same
+ * order, with the player sticky at the top on phones.
+ *
+ * Nothing here may widen the document: `overflow-x: clip` on #container keeps
+ * the sticky player and the fixed header working (hidden would make the page a
+ * scroll container and break both). */
+
 #container {
 
     width: 100%;
@@ -30,24 +35,119 @@
 
 }
 
+/* THE GRID ------------------------------------------------------------ */
+
+#media_info_container {
+
+    width: min(100% - 2 * var(--page-gutter), var(--page-max));
+    margin-inline: auto;
+
+    padding-block: 16px 48px;
+
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+
+}
+
+@media(min-width: 1024px) {
+
+    #media_info_container {
+
+        grid-template-columns: minmax(0, 1fr) 380px;
+        grid-template-areas:
+            "stage sidebar"
+            "comments sidebar";
+
+    }
+
+    #stage {
+        grid-area: stage;
+    }
+
+    #sidebar {
+        grid-area: sidebar;
+    }
+
+    #comments_zone {
+        grid-area: comments;
+    }
+
+    /* Theater: the player spans the whole content width and the episodes panel
+       becomes a normal block under it. */
+    #media_info_container[data-theater="true"] {
+
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "stage"
+            "sidebar"
+            "comments";
+
+    }
+
+}
+
+@media(min-width: 1536px) {
+
+    #media_info_container {
+
+        grid-template-columns: minmax(0, 1fr) 400px;
+
+    }
+
+    #media_info_container[data-theater="true"] {
+
+        grid-template-columns: minmax(0, 1fr);
+
+    }
+
+}
+
+#stage {
+
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    min-width: 0;
+
+}
+
+/* PLAYER -------------------------------------------------------------- */
+
+/* Phones: the player is sticky at the top and runs edge to edge. No black band
+   any more - the black lives inside the player box only. */
 #container .background {
 
-    z-index: 1;
-
+    z-index: 2;
     position: sticky;
     top: 60px;
 
-    background: black;
+    margin-inline: calc(-1 * var(--page-gutter));
+
+    background: transparent;
 
 }
 
 @media(min-width: 768px) {
+
     #container .background {
 
         position: relative;
         top: 0;
 
+        margin-inline: 0;
+
     }
+
+}
+
+/* Lights off: the player sits ABOVE the scrim so its own controls still work. */
+#media_info_container[data-lights-off="true"] .background {
+
+    z-index: 60;
+
 }
 
 #video_container {
@@ -58,21 +158,46 @@
 
     width: 100%;
     min-height: 180px;
-    height: inherit;
-
-    scrollbar-width: 0;
 
     overflow: hidden;
 
-    aspect-ratio: 16/ 9;
+    background: #000;
+
+    aspect-ratio: 16 / 9;
+
+    scrollbar-width: none;
 
 }
 
-@media(min-width: 840px) {
+/* The player's own tree fills the box, so a capped height never clips its
+   controls off the bottom. */
+#video_container>* {
+
+    height: 100%;
+    max-height: 100%;
+
+}
+
+#video_container>*>* {
+
+    max-height: 100%;
+
+}
+
+@media(min-width: 1024px) {
 
     #video_container {
 
-        max-width: 65vw;
+        border-radius: 12px;
+
+        /* A short laptop screen must never push the controls out of view. */
+        max-height: min(78vh, calc((100vw - 380px - 3 * var(--page-gutter)) * 9 / 16));
+
+    }
+
+    #media_info_container[data-theater="true"] #video_container {
+
+        max-height: min(78vh, calc((100vw - 2 * var(--page-gutter)) * 9 / 16));
 
     }
 
@@ -87,6 +212,466 @@
 
 }
 
+/* EPISODE INFO -------------------------------------------------------- */
+
+#episode_info {
+
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    min-width: 0;
+
+    padding-top: 4px;
+
+}
+
+#episode_info h1 {
+
+    display: block;
+
+    font-size: clamp(1.15rem, 1rem + 0.6vw, 1.6rem);
+    font-weight: 700;
+    line-height: 1.28;
+
+    color: var(--white-100);
+
+    white-space: break-spaces;
+
+}
+
+#episode_info .synopsis {
+
+    color: var(--white-75);
+
+    font-size: var(--font-size--small-1);
+    line-height: 1.6;
+
+}
+
+#episode_info .chips {
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+
+    margin-top: 2px;
+
+}
+
+.episode_chip {
+
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 3px 10px;
+
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+
+    color: var(--white-75);
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+}
+
+.episode_chip svg {
+
+    display: block;
+    flex: 0 0 auto;
+
+    color: var(--white-50);
+
+}
+
+/* ANIME CARD ---------------------------------------------------------- */
+
+#anime_card {
+
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 14px;
+
+    padding: 12px;
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 12px;
+
+}
+
+@media(min-width: 1280px) {
+
+    #anime_card {
+
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 16px;
+
+    }
+
+}
+
+#anime_card .poster {
+
+    position: relative;
+
+    width: 100%;
+    aspect-ratio: 46 / 65;
+
+    overflow: hidden;
+
+    background: var(--white-25);
+    border-radius: 8px;
+
+}
+
+#anime_card .poster img {
+
+    object-fit: cover;
+
+}
+
+#anime_card .card_body {
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    min-width: 0;
+
+}
+
+#anime_card .card_title {
+
+    font-size: var(--font-size--p);
+    font-weight: 700;
+    line-height: 1.25;
+
+    color: var(--white-100);
+
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+
+}
+
+#anime_card .card_title a {
+
+    color: inherit;
+    text-decoration: none;
+
+}
+
+#anime_card .card_title a:hover {
+
+    color: var(--brand-color);
+
+}
+
+#anime_card .card_native {
+
+    font-size: var(--font-size--small-2);
+
+    color: var(--white-50);
+
+}
+
+#anime_card .card_chips {
+
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+
+}
+
+#anime_card .card_chips>span {
+
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+
+    padding: 2px 8px;
+
+    font-size: var(--font-size--small-2);
+
+    color: var(--white-75);
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 6px;
+
+}
+
+#anime_card .card_chips svg {
+
+    display: block;
+    flex: 0 0 auto;
+
+    color: var(--white-50);
+
+}
+
+#anime_card .card_description {
+
+    font-size: var(--font-size--small-1);
+    line-height: 1.55;
+
+    color: var(--white-75);
+
+}
+
+#anime_card .card_actions {
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+
+    margin-top: 2px;
+
+}
+
+.details_link {
+
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    height: 36px;
+    padding: 0 14px;
+
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+    text-decoration: none;
+
+    color: var(--white-100);
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
+
+    transition: background-color 150ms ease, border-color 150ms ease;
+
+}
+
+.details_link:hover {
+
+    border-color: var(--brand-color);
+
+}
+
+.details_link:focus-visible {
+
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+
+}
+
+/* Round action buttons: the same set the media page hero uses (bell, "+",
+   heart), restated here because the hero's rules are scoped to its own id. */
+.round_actions {
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    position: relative;
+    z-index: 10;
+
+}
+
+.round_actions>button {
+
+    flex: 0 0 auto !important;
+
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+
+    padding: 0 !important;
+
+    border: 1px solid var(--white-25) !important;
+    border-radius: 50% !important;
+
+    background-color: var(--white-05) !important;
+    color: var(--white-100) !important;
+
+    box-shadow: none !important;
+
+    cursor: pointer;
+
+    transition: background-color 150ms ease, border-color 150ms ease;
+
+}
+
+.round_actions>button:hover {
+
+    background-color: var(--white-25) !important;
+    border-color: var(--white-50) !important;
+
+}
+
+.round_actions>button:focus-visible {
+
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+
+}
+
+.round_actions>button[data-added="true"],
+.round_actions>button[data-has-value="true"] {
+
+    background-color: var(--brand-color) !important;
+    border-color: var(--brand-color) !important;
+
+}
+
+.round_actions>button[data-added="true"] svg,
+.round_actions>button[data-has-value="true"] svg {
+
+    fill: var(--white-100) !important;
+
+}
+
+.round_actions>button svg {
+
+    display: block;
+
+    width: 16px;
+    height: 16px;
+
+    margin: 0 !important;
+
+    transform: none;
+
+}
+
+.plus_icon {
+
+    width: 16px;
+    height: 16px;
+
+}
+
+/* EPISODES SIDEBAR ---------------------------------------------------- */
+
+#sidebar {
+
+    min-width: 0;
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 16px;
+
+    overflow: hidden;
+
+}
+
+@media(min-width: 1024px) {
+
+    #sidebar {
+
+        position: sticky;
+        top: calc(var(--header-min-height, 64px) + 12px);
+
+        max-height: calc(100vh - var(--header-min-height, 64px) - 24px);
+
+        overflow: auto;
+        overscroll-behavior: contain;
+
+        scrollbar-width: thin;
+        scrollbar-color: var(--white-25) transparent;
+
+    }
+
+    #sidebar::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    #sidebar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    #sidebar::-webkit-scrollbar-thumb {
+        background: var(--white-25);
+        border-radius: 999px;
+    }
+
+    /* Theater: a normal block, no sticky, no inner scroll. */
+    #media_info_container[data-theater="true"] #sidebar {
+
+        position: static;
+        max-height: none;
+
+        overflow: visible;
+
+    }
+
+}
+
+/* COMMENTS ------------------------------------------------------------ */
+
+#comments_zone {
+
+    min-width: 0;
+
+}
+
+/* "LIGHTS OFF" SCRIM --------------------------------------------------- */
+
+.lights_overlay {
+
+    position: fixed;
+    inset: 0;
+
+    z-index: 40;
+
+    background: rgba(0, 0, 0, 0.85);
+
+    animation: lights_fade 150ms ease;
+
+}
+
+@keyframes lights_fade {
+
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .lights_overlay {
+
+        animation: none;
+
+    }
+
+    .details_link,
+    .round_actions>button {
+
+        transition: none;
+
+    }
+
+}
+
+/* LEGACY HELPERS still referenced by tests and other blocks */
+
 /* DESKTOP */
 @media(max-width: 767px) {
     .only_desktop {
@@ -99,97 +684,6 @@
     .only_mobile {
         display: none;
     }
-}
-
-/*  */
-#media_info_container {
-
-    width: min(100% - 2 * var(--page-gutter), var(--page-max));
-    margin-inline: auto;
-
-    margin-top: 32px;
-    margin-bottom: 32px;
-
-}
-
-#media_info_container {
-
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 32px;
-
-}
-
-@media(min-width: 768px) {
-    #media_info_container {
-        grid-template-columns: 1fr 40%;
-    }
-}
-
-@media(min-width: 1020px) {
-    #media_info_container {
-        grid-template-columns: 1fr 30%;
-    }
-}
-
-#heading_info_container {
-
-    margin-bottom: 32px;
-
-}
-
-#heading_info_container h1 {
-
-    display: block;
-
-    margin-bottom: 24px;
-
-    font-size: var(--font-size--h4);
-    font-weight: 400;
-
-    color: var(--brand-color);
-    white-space: break-spaces;
-
-}
-
-#heading_info_container h1 span:nth-child(1) {
-
-    width: fit-content;
-    font-weight: 400;
-    color: var(--white-75);
-
-}
-
-#heading_info_container h1 span:nth-child(2) {
-
-    width: fit-content;
-    font-weight: 400;
-    color: var(--white-75);
-
-}
-
-#heading_info_container>div {
-
-    background-color: var(--black-50);
-
-}
-
-#heading_info_container>div>a {
-    box-shadow: 7px 0px 13px 0px rgb(0 0 0 / 75%);
-}
-
-.comment_container {
-
-    margin-top: 32px;
-
-}
-
-.comment_container h2 {
-
-    font-size: var(--font-size--h4);
-    font-weight: 600;
-    color: var(--white-100);
-
 }
 
 /* ERROR */
@@ -313,42 +807,17 @@
     margin-bottom: 24px;
 
 }
-/* Current episode synopsis panel, directly under the player */
-.episode_panel {
 
-    width: min(100% - 2 * var(--page-gutter), var(--page-max));
-    margin-inline: auto;
-    margin-top: 12px;
-    margin-bottom: 0;
+.comment_container {
 
-    background: var(--white-05);
-    border-radius: 6px;
-    padding: 12px 16px;
+    margin-top: 32px;
 
 }
 
-.episode_panel h2 {
+.comment_container h2 {
 
-    font-size: var(--font-size--body-2);
+    font-size: var(--font-size--h4);
+    font-weight: 600;
     color: var(--white-100);
-    margin-bottom: 6px;
 
 }
-
-.episode_panel p {
-
-    font-size: var(--font-size--small-1);
-    color: var(--white-75);
-    line-height: 1.5;
-
-}
-
-.episode_panel small {
-
-    display: block;
-    margin-top: 8px;
-    font-size: var(--font-size--small-2);
-    color: var(--white-50);
-
-}
-

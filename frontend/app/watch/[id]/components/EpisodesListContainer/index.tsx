@@ -72,17 +72,18 @@ export default function EpisodesListContainer({
       markWatched(mediaId, activeEpisodeNumber, true);
   }, [episodes.length, activeEpisodeNumber, mediaId]);
 
+  // The next-airing line rides on the panel header as a small chip (same text).
+  const nextAiringChip = nextAiringEpisodeInfo ? (
+    <span className={styles.next_episode}>
+      Next episode {nextAiringEpisodeInfo.episode}
+      {nextAiringEpisodeInfo.airingAt
+        ? ` · ${convertFromUnix(nextAiringEpisodeInfo.airingAt)}`
+        : ""}
+    </span>
+  ) : undefined;
+
   return (
     <div id={styles.episodes_list_container}>
-      {nextAiringEpisodeInfo && (
-        <p className={styles.next_episode}>
-          Next episode {nextAiringEpisodeInfo.episode}
-          {nextAiringEpisodeInfo.airingAt
-            ? ` · ${convertFromUnix(nextAiringEpisodeInfo.airingAt)}`
-            : ""}
-        </p>
-      )}
-
       {state?.status === "unavailable" ? (
         <div className={styles.filler_alert_text}>
           No episodes available yet{" "}
@@ -100,7 +101,9 @@ export default function EpisodesListContainer({
           activeEpisode={activeEpisodeNumber}
           watched={watched}
           format={format}
-          title={audio === "dub" ? "Episodes (DUB)" : "Episodes"}
+          title="Episodes"
+          variant="sidebar"
+          headerSlot={nextAiringChip}
         />
       )}
     </div>
