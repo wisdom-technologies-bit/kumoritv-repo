@@ -96,7 +96,7 @@ test("no progress opens episode 1 with no label", async () => {
   assert.equal(button.hasAttribute("disabled"), false);
 
   await click(button);
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1&audio=sub`]);
 
   await unmount();
 });
@@ -113,7 +113,7 @@ test("a part-watched episode resumes with its label, progress bar and timestamp"
 
   await click(button);
 
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5&t=300`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5&t=300&audio=sub`]);
 
   await unmount();
 });
@@ -138,7 +138,7 @@ test("an almost finished episode does not resume, it continues to the next one",
 
   await click(playButton(container));
 
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=6`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=6&audio=sub`]);
 
   await unmount();
 });
@@ -153,7 +153,7 @@ test("a watched episode opens the next one", async () => {
 
   await click(playButton(container));
 
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5&audio=sub`]);
 
   await unmount();
 });
@@ -167,7 +167,7 @@ test("the next episode is capped at the total episode count", async () => {
 
   await click(playButton(container));
 
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=28`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=28&audio=sub`]);
 
   await unmount();
 });
@@ -184,7 +184,7 @@ test("an unknown total is capped at the aired episode count", async () => {
 
   await click(playButton(container));
 
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=5&audio=sub`]);
 
   await unmount();
 });
@@ -214,7 +214,7 @@ test("movies: CONTINUE on resume and the dub toggle changes the destination", as
 
   assert.equal(label(plain.container), null);
   await click(playButton(plain.container));
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1&audio=sub`]);
   await plain.unmount();
 
   resetNavigation();
@@ -225,7 +225,7 @@ test("movies: CONTINUE on resume and the dub toggle changes the destination", as
 
   assert.equal(movieLabels?.textContent, "CONTINUE");
   await click(playButton(resumed.container));
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1&t=600`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=1&t=600&audio=sub`]);
   await resumed.unmount();
 
   // The dub checkbox lives in the movie options tile and flips the destination.
@@ -275,7 +275,7 @@ test("signed-in users resume from the hydrated server progress", async () => {
   const { container, unmount } = await mount();
   assert.equal(label(container), "EPISODE 6");
   await click(playButton(container));
-  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=6&t=240`]);
+  assert.deepEqual(pushed(), [`/watch/${MEDIA_ID}?ep=6&t=240&audio=sub`]);
 
   await unmount();
 });

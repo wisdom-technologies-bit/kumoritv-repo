@@ -24,6 +24,7 @@ export function Button({
   imdbEpisodesList,
   amountWatchedOrRead,
   children,
+  variant = "pill",
 }: {
   mediaInfo: MediaData;
   imdbEpisodesList?: ImdbEpisode[];
@@ -31,6 +32,8 @@ export function Button({
   listEntryId?: number;
   amountWatchedOrRead?: number;
   children?: React.ReactNode[];
+  /** "round" = the shared icon circle (media hero / watch card). */
+  variant?: "pill" | "round";
 }) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -190,8 +193,10 @@ export function Button({
       <motion.button
         ref={buttonRef}
         whileTap={{ scale: 0.85 }}
-        id={styles.container}
-        className={children ? styles.custom_text : ""}
+        id={variant === "round" ? undefined : styles.container}
+        className={
+          variant === "round" ? "kumori-round" : children ? styles.custom_text : ""
+        }
         onClick={() => setIsMenuOpen(!isMenuOpen)}
         aria-label={isMenuOpen ? "Close List" : "Open List"}
         title={isMenuOpen ? "Close List" : "Open List"}

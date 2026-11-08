@@ -245,7 +245,7 @@ test("the lights-off scrim is a fixed 85% black layer with reduced motion", asyn
   assert.match(css, /prefers-reduced-motion[\s\S]{0,200}\.lights_overlay/);
   assert.match(
     css,
-    /\[data-lights-off="true"\] \.background[\s\S]{0,80}z-index:\s*60/,
+    /\[data-lights-off="true"\] \.background[\s\S]{0,120}z-index:\s*var\(--z-scrim-player\)/,
     "the player stays above the scrim so its controls still work",
   );
 });
@@ -275,7 +275,12 @@ test("the controls keep their ids, texts and a disabled-audio title", async () =
   assert.match(source, /state\.backupServer/);
   assert.match(source, />SUB</);
   assert.match(source, />DUB</);
-  assert.match(source, /Retry \(\{state\.errorMessage\}\)/);
+  // Prompt 31: the pill says only "Retry"; the raw message is never rendered.
+  assert.match(source, />\s*Retry\s*</);
+  assert.ok(
+    !/Retry \(\{state\.errorMessage\}\)/.test(source),
+    "the raw error message is no longer printed in the pill",
+  );
   assert.match(source, /role="group"[\s\S]{0,80}aria-label="Audio"/);
   assert.match(source, /No dub available for this episode/);
   assert.match(source, /aria-pressed=/);

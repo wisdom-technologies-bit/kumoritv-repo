@@ -15,18 +15,41 @@ import styles from "./component.module.css";
 import { usePrefs } from "@/app/lib/user-data/prefs";
 import { useWatchUI } from "../WatchLayout";
 
-function Icon({ path }: { path: string }) {
+/** One size for every toolbar glyph (16px), filled or stroked. */
+function Icon({
+  path,
+  children,
+}: {
+  path?: string;
+  children?: React.ReactNode;
+}) {
+  const stroked = Boolean(children);
   return (
     <svg
       viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="currentColor"
+      width="16"
+      height="16"
+      fill={stroked ? "none" : "currentColor"}
+      stroke={stroked ? "currentColor" : "none"}
+      strokeWidth={stroked ? 1.3 : undefined}
+      strokeLinecap={stroked ? "round" : undefined}
+      strokeLinejoin={stroked ? "round" : undefined}
       aria-hidden="true"
       focusable="false"
     >
-      <path d={path} />
+      {path ? <path d={path} /> : children}
     </svg>
+  );
+}
+
+/** Theater: an outlined 16:9 screen with outward widen arrows - not a block. */
+function TheaterIcon() {
+  return (
+    <Icon>
+      <rect x="1.35" y="4.3" width="13.3" height="7.4" rx="1.4" />
+      <path d="M5.4 8H3.6m1.05-1.15L3.2 8l1.45 1.15" />
+      <path d="M10.6 8h1.8m-1.05-1.15L12.8 8l-1.45 1.15" />
+    </Icon>
   );
 }
 
@@ -34,7 +57,6 @@ const ICON = {
   autoNext:
     "M2 3.5a.5.5 0 0 1 .77-.42l7 4.5a.5.5 0 0 1 0 .84l-7 4.5A.5.5 0 0 1 2 12.5zm11 .5a.5.5 0 0 1 1 0v8a.5.5 0 0 1-1 0z",
   autoSkip: "M2 3.5a.5.5 0 0 1 .8-.4l6 4.5a.5.5 0 0 1 0 .8l-6 4.5a.5.5 0 0 1-.8-.4z",
-  theater: "M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v9A1.5 1.5 0 0 1 13.5 14h-11A1.5 1.5 0 0 1 1 12.5z",
   lights: "M6 .278a.8.8 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278",
   prev: "M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0",
   next: "M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708",
@@ -87,7 +109,7 @@ export default function PlayerToolbar({
         title="Widen the player to the full page"
         onClick={() => ui?.toggleTheater()}
       >
-        <Icon path={ICON.theater} />
+        <TheaterIcon />
         <span>Theater</span>
       </button>
 

@@ -2,7 +2,7 @@
 #container {
     position: sticky;
     top: 64px;
-    z-index: 3;
+    z-index: var(--z-sticky-subnav);
 
     width: min(100% - 2 * var(--page-gutter), var(--page-max));
     margin-inline: auto;

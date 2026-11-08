@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import styles from "./component.module.css";
@@ -12,7 +12,7 @@ import {
   isProgressCompleted,
   subscribe,
 } from "@/app/lib/user-data/progress";
-import { usePrefs } from "@/app/lib/user-data/prefs";
+import { readPrefs, usePrefs } from "@/app/lib/user-data/prefs";
 import { displayTitle } from "@/app/lib/titles";
 
 type PlayTarget = {
@@ -165,15 +165,25 @@ export default function PlayBtn({
     return subscribe(apply);
   }, [mediaId, mediaFormat, anilistLastEpisodeWatched, mediaEpisodes, nextAiringEpisode]);
 
+  // The preference decides the audio the button opens. `usePrefs` resolves the
+  // signed-in profile after hydration, so a guest (or a fast click right after
+  // load) reads the saved value synchronously first, before paint.
+  useLayoutEffect(() => {
+    setIsDubbedActive(readPrefs().dubEpisodes);
+  }, []);
+
   useEffect(() => {
     setIsDubbedActive(prefs.dubEpisodes);
   }, [prefs.dubEpisodes]);
 
   const isMovie = mediaFormat === "MOVIE";
-  const dubbed = isDubbedActive || target.dub;
+  // A resume record's own audio wins; otherwise the saved preference does.
+  const dubbed = target.dub || isDubbedActive;
+  // The audio is ALWAYS explicit, so the destination never depends on what the
+  // watch page would have guessed.
   const destination = `/watch/${mediaId}?ep=${target.episode}${
     target.time > 0 ? `&t=${target.time}` : ""
-  }${dubbed ? "&audio=dub" : ""}`;
+  }&audio=${dubbed ? "dub" : "sub"}`;
 
   // Movies say CONTINUE, series say EPISODE N, and nothing is shown at all until
   // there is something to continue from.

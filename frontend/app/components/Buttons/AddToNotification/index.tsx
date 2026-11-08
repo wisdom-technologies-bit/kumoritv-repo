@@ -21,8 +21,11 @@ import { displayTitle } from "@/app/lib/titles";
 
 function AddToNotificationsButton({
   mediaInfo,
+  variant = "pill",
 }: {
   mediaInfo: MediaData | MediaDataFullInfo;
+  /** "round" = the shared icon circle (media hero / watch card). */
+  variant?: "pill" | "round";
 }) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [wasAddedToNotifications, setWasAddedToNotifications] =
@@ -80,7 +83,8 @@ function AddToNotificationsButton({
     return (
       <motion.button
         whileTap={{ scale: 0.85 }}
-        id={styles.container}
+        id={variant === "round" ? undefined : styles.container}
+        className={variant === "round" ? "kumori-round" : undefined}
         onClick={() => handleMediaOnNotifications()}
         disabled={isLoading}
         data-added={wasAddedToNotifications}

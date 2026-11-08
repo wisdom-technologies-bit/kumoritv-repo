@@ -13,7 +13,9 @@ ul.carousel_container {
 
 }
 
-ul.carousel_container img {
+/* Slide thumbnails are decorative overlays; the title logo is real content and
+   stays in the document flow (Prompt 31). */
+ul.carousel_container img:not([class*="title_logo"]) {
 
     position: absolute;
     max-width: 100vw;
@@ -208,9 +210,29 @@ ul.carousel_container li.carousel_item div.item_info {
 
 ul.carousel_container li.carousel_item div.item_info {
 
-    display: grid;
-    gap: 16px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 
+    gap: 14px;
+
+}
+
+@media((min-width: 1440px)) {
+    ul.carousel_container li.carousel_item div.item_info {
+        align-items: flex-start;
+    }
+}
+
+@media((max-width: 767px)) {
+    ul.carousel_container li.carousel_item div.item_info {
+        align-items: center;
+
+        text-align: center;
+
+        /* Push the block down a little so the artwork stays visible above it. */
+        padding-block-start: 12px;
+    }
 }
 
 @media((min-width: 1440px)) {
@@ -218,6 +240,20 @@ ul.carousel_container li.carousel_item div.item_info {
         gap: 24px 0;
 
     }
+}
+
+/* With a logo the heading is a plain block: the artwork is a real image in the
+   flow, never a clipped two-line text box. */
+ul.carousel_container li.carousel_item h2:has(img.title_logo) {
+    display: block;
+
+    /* A definite width: without it the logo's `max-width: min(100%, 420px)`
+       resolves against a shrink-to-fit heading and collapses to zero. */
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+
+    -webkit-line-clamp: unset;
 }
 
 ul.carousel_container li.carousel_item h2 {
@@ -613,6 +649,9 @@ ul.carousel_container li.carousel_item div.item_info .item_buttons>button {
 ul.carousel_container li.carousel_item h2 img.title_logo {
     display: block;
 
+    /* Never absolutely positioned: the logo sits above the meta line. */
+    position: static;
+
     width: auto;
     height: auto;
 
@@ -629,7 +668,7 @@ ul.carousel_container li.carousel_item h2 img.title_logo {
 
 @media (max-width: 767px) {
     ul.carousel_container li.carousel_item h2 img.title_logo {
-        max-height: 64px;
+        max-height: 72px;
     }
 }
 

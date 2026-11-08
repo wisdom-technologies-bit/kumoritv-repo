@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import { useWatchState } from "../WatchState";
+import { friendlyWatchError, watchErrorCode } from "@/app/lib/watch/errors";
 
 export const SERVER_NOTICE_KEY = "kumori:server-notice-dismissed";
 
@@ -202,8 +203,16 @@ export default function WatchControls({
         ) : null}
 
         {state.status === "error" ? (
-          <button type="button" className={styles.retry} onClick={state.retry}>
-            Retry ({state.errorMessage})
+          /* Friendly label only - the raw message lives in the title attribute
+             and a data attribute, never in the visible text. */
+          <button
+            type="button"
+            className={styles.retry}
+            onClick={state.retry}
+            data-error-code={watchErrorCode(state.errorMessage)}
+            title={friendlyWatchError(state.errorMessage)}
+          >
+            Retry
           </button>
         ) : null}
       </div>
