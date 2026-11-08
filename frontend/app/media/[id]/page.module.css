@@ -298,30 +298,85 @@ h2.heading_style {
 
 }
 
+/* ---------------------------------------------------------------- flip card
+   Front = character, back = voice actor. Both faces are stacked in the same
+   fixed 72px image box and rotated, so flipping never changes the card's size or
+   pushes its neighbours. Tap/click/Enter/Space set `data-flipped` on the <li>;
+   on a device that can hover, hovering flips it too. */
+
+#main_column #cast_container ul li {
+    perspective: 800px;
+}
+
+#main_column #cast_container ul li .character_container,
 #main_column #cast_container ul li .actor_container {
-    visibility: hidden;
+
+    width: 100%;
+
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+
+    transform-style: preserve-3d;
+    transition: transform 350ms ease;
+
+}
+
+#main_column #cast_container ul li .character_container {
+    transform: rotateY(0deg);
+}
+
+#main_column #cast_container ul li .actor_container {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
+
+    transform: rotateY(-180deg);
+
+    /* the back hides the front behind it mid-flip */
+    background-color: var(--background);
+
 }
 
-/* Only devices that can actually hover get the voice-actor swap: on touch a
-   tap would otherwise leave the card flipped. */
+#main_column #cast_container ul li[data-flipped="true"] .character_container {
+    transform: rotateY(180deg);
+}
+
+#main_column #cast_container ul li[data-flipped="true"] .actor_container {
+    transform: rotateY(0deg);
+}
+
+#main_column #cast_container ul li[data-interactive="true"] {
+    cursor: pointer;
+
+    -webkit-tap-highlight-color: transparent;
+}
+
+#main_column #cast_container ul li[data-interactive="true"]:focus-visible {
+    outline: 2px solid var(--brand-color);
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+/* Same flip on devices that can hover. */
 @media (hover: hover) {
 
-    #main_column #cast_container ul li:hover .actor_container {
-        visibility: initial;
-    }
-
     #main_column #cast_container ul li[data-mediatype="ANIME"]:hover .character_container {
-
-        filter: brightness(20%);
-
+        transform: rotateY(180deg);
     }
 
-    #main_column #cast_container ul li[data-mediatype="ANIME"]:hover .character_container h3 {
-        visibility: hidden;
+    #main_column #cast_container ul li[data-mediatype="ANIME"]:hover .actor_container {
+        transform: rotateY(0deg);
+    }
+
+}
+
+/* An instant swap, no animation. */
+@media (prefers-reduced-motion: reduce) {
+
+    #main_column #cast_container ul li .character_container,
+    #main_column #cast_container ul li .actor_container {
+        transition: none;
     }
 
 }
