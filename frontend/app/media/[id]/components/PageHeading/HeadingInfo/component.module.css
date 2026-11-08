@@ -1,127 +1,469 @@
-#media_title_container small,
-#media_title_container h1 {
+/* HERO
+   Mobile: banner, native title, title, chips, Watch + icon actions.
+   Desktop (>=1024px): poster card on the left, the same stack on the right. */
 
-    color: var(--white-100);
-    font-weight: 500;
+#hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
 
-    font-size: var(--font-size--small-1);
-
+    align-items: start;
 }
 
-.heading_img_container {
+#hero_body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 
-    position: relative;
-    max-width: 280px;
-    margin: 24px auto;
-
+    min-width: 0;
 }
 
-@media((min-width: 620px)) {
-    .heading_img_container {
-        margin: 24px 0;
-        max-height: 120px;
+#poster {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    #hero {
+        grid-template-columns: 200px minmax(0, 1fr);
+        gap: 24px;
+    }
+
+    #poster {
+        display: block;
+        position: relative;
+
+        width: 200px;
+        aspect-ratio: 2 / 3;
+
+        border-radius: 12px;
+        overflow: hidden;
+
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    }
+
+    #poster img {
+        object-fit: cover;
     }
 }
 
-#media_title_container h1#heading_title {
+@media (min-width: 1440px) {
+    #hero {
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 32px;
+    }
 
-    font-size: var(--font-size--h1);
-
+    #poster {
+        width: 240px;
+    }
 }
 
-#media_title_container h1 {
-
-    margin: 8px 0;
-
-    font-weight: 600;
-
+/* TITLE */
+#media_title_container {
+    min-width: 0;
 }
 
-#media_title_container #btns_actions_container {
+#media_title_container small {
+    display: block;
 
-    position: relative;
+    color: var(--white-50);
 
-    margin-left: auto;
+    font-size: var(--font-size--small-2);
+    font-weight: 500;
 
-    display: flex;
-    flex-direction: row;
+    margin-bottom: 2px;
+}
+
+/* `#heading_title` is the id the heading carries (kept: other rules and tests
+   point at it), `#media_title_container h1` also covers the sr-only heading. */
+#media_title_container h1,
+#heading_title {
+    color: var(--white-100);
+
+    font-weight: 700;
+
+    font-size: clamp(1.5rem, 1.1rem + 1.8vw, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+
+    margin: 0;
+
+    /* long titles never push the hero taller than three lines */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+
+    overflow-wrap: anywhere;
+}
+
+/* The heading text is still the accessible/SEO heading, just shown as the logo.
+   Clipped, never display:none. */
+.sr_only {
+    position: absolute;
+
+    width: 1px;
+    height: 1px;
+
+    margin: -1px;
+    padding: 0;
+
+    overflow: hidden;
+
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+
+    white-space: nowrap;
+
+    border: 0;
+}
+
+.heading_img_container {
+    margin: 6px 0 2px;
+    max-width: min(100%, 420px);
+}
+
+.heading_logo {
+    display: block;
+
+    width: auto;
+    height: auto;
+
+    max-width: min(100%, 420px);
+    max-height: 72px;
+
+    object-fit: contain;
+
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+}
+
+@media (min-width: 1024px) {
+    .heading_logo {
+        max-height: 110px;
+    }
+}
+
+/* GENRE + FORMAT CHIPS */
+#genres_and_type_container {
+    gap: 12px;
+    justify-content: flex-start;
+    align-items: center;
+
+    flex-wrap: wrap;
+}
+
+#genres_container {
     gap: 8px;
-
+    flex-wrap: wrap;
 }
 
-#media_title_container #btns_actions_container>button {
-
-    box-shadow: 3px 3px 4px var(--black-75);
-
-    display: flex;
-
-    border: 1px solid var(--white-100);
-
-    text-align: center;
-
-    padding: 16px;
-    background-color: transparent;
-
-    border-radius: 8px;
-
-}
-
-#media_title_container #btns_actions_container>button[data-added=true] {
-
-    background-color: var(--brand-color);
-
-}
-
-#media_title_container #genres_container ul {
+#genres_container ul {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     gap: 8px;
+
+    list-style: none;
 }
 
-#media_title_container #genres_container ul li {
+#genres_container ul li {
+    border: 1px solid var(--white-25);
+    border-radius: 999px;
 
-    border: 2px solid var(--white-75);
-    border-radius: 8px;
-
-    background-color: var(--white-25);
+    background-color: var(--white-05);
 
     color: var(--white-100);
 
+    transition: background-color 150ms ease, border-color 150ms ease;
 }
 
-#media_title_container #genres_container ul li a {
+#genres_container ul li:hover {
+    background-color: var(--white-25);
+    border-color: var(--white-50);
+}
 
-    padding: 8px;
-
+#genres_container ul li a {
     display: block;
-    font-size: var(--font-size--small-1);
+
+    padding: 4px 12px;
+
+    font-size: var(--font-size--small-2);
+    font-weight: 500;
+
+    color: inherit;
+    text-decoration: none;
 }
 
-#media_title_container #genres_and_type_container {
+#genres_container ul li a:focus-visible {
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+    border-radius: 999px;
+}
 
-    gap: 16px;
-    justify-content: space-between;
+#format_chip {
+    display: inline-flex;
+    align-items: center;
+
+    padding: 4px 12px;
+
+    border: 1px solid var(--brand-color);
+    border-radius: 999px;
+
+    background-color: transparent;
+
+    color: var(--brand-color);
+
+    font-size: var(--font-size--small-2);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+
+    white-space: nowrap;
+}
+
+/* ACTIONS: primary Watch pill + round icon buttons */
+#hero_actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     align-items: flex-start;
 
+    min-width: 0;
 }
 
-#media_title_container #genres_and_type_container>div:not(#btns_actions_container) {
+/* PlayBtn keeps its own `li.action_btn` markup so its behaviour is untouched;
+   only the wrapper and the pill around it are new. */
+#watch_action {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 
-    margin: auto 0;
+    width: 100%;
 
-    gap: 16px;
+    margin: 0;
+    padding: 0;
 
-    white-space: break-spaces;
+    list-style: none;
+}
+
+#watch_action li {
+    list-style: none;
+
+    /* anchors the movie dub toggle popover */
+    position: relative;
+}
+
+#watch_action li:not(:first-child) {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    min-height: 40px;
+    padding: 0 4px;
+}
+
+#watch_action li:not(:first-child)>div {
+    position: static;
+    margin-left: 0;
+}
+
+#watch_action li:not(:first-child) h2 {
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size--small-2);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+
+    color: var(--white-50);
+}
+
+/* The pill itself. WatchPlayBtn's own stylesheet may not carry layout rules
+   (a guard test pins it), so the button is themed from here. */
+#watch_action button {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+
+    width: 100%;
+    min-height: 48px;
+
+    padding: 0 20px;
+
+    border: 0;
+    border-radius: 999px;
+
+    background-color: var(--brand-color);
+    color: var(--white-100);
+
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size--small-1);
+    font-weight: 700;
+
+    cursor: pointer;
+
+    transition: background-color 150ms ease, transform 150ms ease;
+}
+
+#watch_action button:hover {
+    background-color: #6a49f0;
+}
+
+#watch_action button:active {
+    transform: scale(0.99);
+}
+
+#watch_action button:focus-visible {
+    outline: 2px solid var(--white-100);
+    outline-offset: 2px;
+}
+
+#watch_action button[disabled] {
+    opacity: 0.55;
+
+    background-color: var(--brand-color);
+
+    cursor: not-allowed;
+}
+
+/* the label and the play glyph sit above the progress bar */
+#watch_action button>svg {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+}
+
+/* WatchPlayBtn absolutely positions the episode label for the old tall tile.
+   Inside the pill it joins the normal row instead (the guard test still pins
+   that rule in its own stylesheet, it simply no longer applies here). */
+#watch_action button>span {
+    position: relative;
+    z-index: 1;
+}
+
+@media (max-width: 680px) {
+    #watch_action button {
+        padding-right: 52px;
+    }
+
+    #watch_action button>svg {
+        position: absolute;
+        right: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+}
+
+@media (min-width: 1024px) {
+    #watch_action {
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        width: auto;
+
+        min-width: 180px;
+    }
+
+    #watch_action button {
+        width: auto;
+        min-width: 180px;
+        padding: 0 24px;
+    }
+}
+
+#btns_actions_container {
+    position: relative;
+
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+
     flex-wrap: wrap;
 }
 
-#media_title_container #genres_and_type_container span {
+@media (min-width: 1024px) {
+    #hero_actions {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+    }
+}
 
-    margin: auto 0;
+/* Round icon buttons. The inner components (bell, add-to-list, favourite)
+   bring their own `#container` rules with !important, so the override has to be
+   scoped to this row and just as strong. */
+#btns_actions_container>button {
+    flex: 0 0 auto !important;
 
-    color: var(--white-75);
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 
-    font-weight: 500;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
 
+    padding: 0 !important;
+
+    border: 1px solid var(--white-25) !important;
+    border-radius: 50% !important;
+
+    background-color: var(--white-05) !important;
+    color: var(--white-100) !important;
+
+    box-shadow: none !important;
+
+    cursor: pointer;
+
+    transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+#btns_actions_container>button:hover {
+    background-color: var(--white-25) !important;
+    border-color: var(--white-50) !important;
+
+    transform: translateY(-1px);
+}
+
+#btns_actions_container>button:focus-visible {
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+}
+
+#btns_actions_container>button[data-added="true"],
+#btns_actions_container>button[data-has-value="true"] {
+    background-color: var(--brand-color) !important;
+    border-color: var(--brand-color) !important;
+    color: var(--white-100) !important;
+}
+
+#btns_actions_container>button[data-added="true"] svg,
+#btns_actions_container>button[data-has-value="true"] svg {
+    fill: var(--white-100) !important;
+}
+
+#btns_actions_container>button svg {
+    transform: none;
+}
+
+@media (min-width: 1024px) {
+    #btns_actions_container>button {
+        width: 40px !important;
+        min-width: 40px !important;
+        height: 40px !important;
+        min-height: 40px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    #btns_actions_container>button,
+    #watch_action button {
+        transition: none;
+    }
+
+    #btns_actions_container>button:hover {
+        transform: none;
+    }
 }

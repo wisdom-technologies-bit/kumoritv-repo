@@ -161,6 +161,7 @@ export function Button({
         id={styles.container}
         className={children ? styles.custom_text : ""}
         onClick={() => setIsMenuOpen(!isMenuOpen)}
+        aria-label={isMenuOpen ? "Close List" : "Open List"}
         title={isMenuOpen ? "Close List" : "Open List"}
         data-active={isMenuOpen}
         data-has-value={mediaStatus != null}

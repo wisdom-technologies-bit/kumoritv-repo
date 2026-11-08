@@ -1,17 +1,18 @@
 import React from "react";
-import PlaySvg from "@/public/assets/play-circle.svg";
-import BookSvg from "@/public/assets/book.svg";
-import CalendarSvg from "@/public/assets/calendar3.svg";
-import ClockSvg from "@/public/assets/clock.svg";
-import ProgressSvg from "@/public/assets/progress.svg";
 import styles from "./component.module.css";
 import { MediaDataFullInfo } from "@/app/ts/interfaces/anilistMediaData";
-import PlayBtn from "../../WatchPlayBtn";
 import stringToOnlyAlphabetic from "@/app/lib/convertStrings";
 import { ImdbEpisode } from "@/app/ts/interfaces/imdb";
 import { getMediaReleaseDate } from "@/app/lib/formatDateUnix";
 import { displayTitle } from "@/app/lib/titles";
 
+// Compact metadata strip: one small chip per fact (status/source, episodes,
+// volumes, release, length or chapters). Same data and the same conditions as
+// the old tall tiles, just readable at a glance.
+//
+// The rotated labels and the faded background icons are gone, and the play
+// button no longer lives here: it is a primary action and sits in the hero row
+// next to the round icon buttons.
 export default function GridHeadingMediaInfo({
   mediaInfo,
   imdbEpisodes,
@@ -32,40 +33,22 @@ export default function GridHeadingMediaInfo({
   function getEpisodesQuantity() {
     return imdbEpisodes?.length || mediaInfo.episodes || "Not Available";
   }
+
   return (
     <section id={styles.info_list_container}>
-      <ul>
-        {mediaInfo.type != "MANGA" && (
-          <PlayBtn
-            mediaId={mediaInfo.id}
-            mediaTitle={displayTitle(mediaInfo.title)}
-            mediaFormat={mediaInfo.format}
-            anilistLastEpisodeWatched={
-              mediaInfo.mediaListEntry?.status != "COMPLETED"
-                ? mediaInfo.mediaListEntry?.progress
-                : undefined
-            }
-            mediaEpisodes={mediaInfo.episodes}
-            nextAiringEpisode={mediaInfo.nextAiringEpisode}
-          />
-        )}
-
+      <ul aria-label={`${displayTitle(mediaInfo.title)} details`}>
         {mediaInfo.format == "MOVIE" ? (
           <li className={`${styles.info_item}`}>
-            <h2>SOURCE</h2>
+            <span className={styles.label}>SOURCE</span>
 
             <p>
-              {stringToOnlyAlphabetic(mediaInfo.source.toUpperCase()) ||
+              {stringToOnlyAlphabetic(mediaInfo.source?.toUpperCase()) ||
                 "Not Available"}
             </p>
           </li>
         ) : (
           <li className={`${styles.info_item}`}>
-            <span>
-              <ProgressSvg width={16} height={16} alt="Progress" />
-            </span>
-
-            <h2>STATUS</h2>
+            <span className={styles.label}>STATUS</span>
 
             <p>{convertMediaStatus(mediaInfo.status || "Not Available")}</p>
           </li>
@@ -75,11 +58,7 @@ export default function GridHeadingMediaInfo({
           mediaInfo.format != "MOVIE" &&
           mediaInfo.status != "NOT_YET_RELEASED" && (
             <li className={`${styles.info_item}`}>
-              <span>
-                <PlaySvg width={16} height={16} alt="Episodes" />
-              </span>
-
-              <h2>EPISODES</h2>
+              <span className={styles.label}>EPISODES</span>
 
               <p>{getEpisodesQuantity()}</p>
             </li>
@@ -87,22 +66,14 @@ export default function GridHeadingMediaInfo({
 
         {mediaInfo.type == "MANGA" && (
           <li className={`${styles.info_item}`}>
-            <span>
-              <BookSvg width={16} height={16} alt="Volumes" />
-            </span>
-
-            <h2>VOLUMES</h2>
+            <span className={styles.label}>VOLUMES</span>
 
             <p>{mediaInfo.volumes || "Not Available"}</p>
           </li>
         )}
 
         <li className={`${styles.info_item}`}>
-          <span>
-            <CalendarSvg width={16} height={16} alt="Release" />
-          </span>
-
-          <h2>RELEASE</h2>
+          <span className={styles.label}>RELEASE</span>
 
           <p className={styles.width_min_content}>
             {getMediaReleaseDate(
@@ -116,11 +87,7 @@ export default function GridHeadingMediaInfo({
         <li className={`${styles.info_item}`}>
           {mediaInfo.type == "ANIME" && (
             <React.Fragment>
-              <span>
-                <ClockSvg width={16} height={16} alt="Length" />
-              </span>
-
-              <h2>LENGTH</h2>
+              <span className={styles.label}>LENGTH</span>
 
               <p>
                 {mediaInfo.duration == null
@@ -132,11 +99,7 @@ export default function GridHeadingMediaInfo({
 
           {mediaInfo.type == "MANGA" && (
             <React.Fragment>
-              <span>
-                <BookSvg width={16} height={16} alt="Chapters" />
-              </span>
-
-              <h2>CHAPTERS</h2>
+              <span className={styles.label}>CHAPTERS</span>
 
               <p>{mediaInfo.chapters || "Not Available"}</p>
             </React.Fragment>

@@ -26,3 +26,10 @@ anime 1--* episodes
 anime 1--1 episode_check_state
 comments 1--* comments (parent_id)
 ```
+
+## Title logos (prompt 25)
+
+`public.anime` gained `logo_path`, `logo_aspect_ratio`, `logo_width`,
+`logo_status` (`found` | `none` | `error`) and `logo_checked_at`. The migration
+is `supabase/migrations/20261108000000_prompt25_logos.sql`. Read the page code
+tolerates the columns being absent (a missing column simply means "no logo").

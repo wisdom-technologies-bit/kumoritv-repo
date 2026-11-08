@@ -79,6 +79,30 @@ export function buildTermsSections(
     ),
   },
   {
+    id: "credits",
+    heading: "Credits and attribution",
+    body: (
+      <>
+        <p>
+          Some of the artwork on this site is not ours. Title logos are supplied
+          by The Movie Database (TMDB), and catalogue metadata comes from AniList
+          and other public sources.
+        </p>
+        <p>
+          This product uses the TMDB API but is not endorsed or certified by
+          TMDB.{" "}
+          <a
+            href="https://www.themoviedb.org"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            themoviedb.org
+          </a>
+        </p>
+      </>
+    ),
+  },
+  {
     id: "accounts",
     heading: "Your account",
     body: (

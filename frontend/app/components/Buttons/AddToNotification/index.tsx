@@ -84,6 +84,11 @@ function AddToNotificationsButton({
         onClick={() => handleMediaOnNotifications()}
         disabled={isLoading}
         data-added={wasAddedToNotifications}
+        aria-label={
+          wasAddedToNotifications
+            ? `Remove ${displayTitle(mediaInfo.title)} From Notifications`
+            : `Get Notified When ${displayTitle(mediaInfo.title)} Get a New Episode`
+        }
         title={
           wasAddedToNotifications
             ? `Remove ${displayTitle(mediaInfo.title)} From Notifications`

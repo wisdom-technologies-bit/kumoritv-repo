@@ -1,0 +1,81 @@
+.container {
+    position: relative;
+}
+
+.content {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+
+    /* long-form copy stays readable: cap the measure, not the width */
+    max-width: 75ch;
+}
+
+@media (min-width: 768px) {
+    .content {
+        -webkit-line-clamp: 5;
+        line-clamp: 5;
+    }
+}
+
+/* Expanded: drop the clamp entirely and let the full text flow. */
+.container[data-expanded="true"] .content {
+    display: block;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    overflow: visible;
+}
+
+/* Soft fade so a clamped paragraph does not look cut off mid-line. */
+.fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 34px;
+
+    height: 56px;
+
+    pointer-events: none;
+
+    background: linear-gradient(rgba(11, 11, 20, 0), var(--background));
+}
+
+.toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    margin-top: 8px;
+    padding: 6px 4px;
+
+    min-height: 32px;
+
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size--small-1);
+    font-weight: 600;
+    color: var(--brand-color);
+
+    background: none;
+    border: 0;
+    border-radius: 6px;
+
+    cursor: pointer;
+    transition: color 150ms ease;
+}
+
+.toggle:hover {
+    color: var(--white-100);
+}
+
+.toggle:focus-visible {
+    outline: 2px solid var(--brand-color);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toggle {
+        transition: none;
+    }
+}
