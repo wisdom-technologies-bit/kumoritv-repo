@@ -17,10 +17,26 @@ import {
 import { absoluteUrl } from "@/app/lib/seo/text";
 import { episodeExistsInDb, watchRobots } from "@/app/lib/seo/watch-indexability";
 import { loadCommentSummary } from "@/app/lib/seo/comments-jsonld";
+import Link from "next/link";
+import Image from "next/image";
 import VideoPlayer from "./components/VideoPlayer";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
 import CommentsSection from "@/app/components/CommentsSection";
+import WatchLayout from "./components/WatchLayout";
+import PlayerToolbar from "./components/PlayerToolbar";
+import ExpandableText from "@/app/components/ExpandableText";
+import AddToNotificationsButton from "@/app/components/Buttons/AddToNotification";
+import * as AddToFavourites from "@/app/components/Buttons/AddToFavourites";
+import * as AddToList from "@/app/components/Buttons/AddToList";
+import FavouriteSvg from "@/public/assets/heart.svg";
+import FavouriteFillSvg from "@/public/assets/heart-fill.svg";
+import PlusSvg from "@/public/assets/plus-lg.svg";
+import {
+  EpisodesIcon,
+  ReleaseIcon,
+  StatusIcon,
+} from "@/app/media/[id]/components/PageHeading/GridInfo/icons";
 import { WatchState } from "./components/WatchState";
 import { displayTitle } from "@/app/lib/titles";
 import { nextEpisodeNumber } from "@/app/lib/episodes/items";
@@ -166,66 +182,213 @@ export default async function WatchPage({
     >
       <JsonLd data={jsonLd} />
       <main id={styles.container}>
-        <section className={styles.background}>
-          <div id={styles.video_container}>
-            <VideoPlayer
+        <WatchLayout>
+          {/* LEFT COLUMN: player, its toolbar, the controls, this episode and
+              the series card. On phones everything here is a single column. */}
+          <div id={styles.stage}>
+            <section className={styles.background}>
+              <div id={styles.video_container}>
+                <VideoPlayer
+                  anilistId={id}
+                  episode={ep}
+                  audio={audio as "sub" | "dub"}
+                  subtitleLanguage={lang}
+                  initialTime={Number(searchParams.t || 0)}
+                  title={displayTitle(media.title) || name}
+                  episodeImage={episodeSeo?.thumbnailUrl || undefined}
+                  cover={cover || undefined}
+                  nextEpisode={nextEpisode}
+                />
+              </div>
+            </section>
+
+            <PlayerToolbar
               anilistId={id}
               episode={ep}
               audio={audio as "sub" | "dub"}
-              subtitleLanguage={lang}
-              initialTime={Number(searchParams.t || 0)}
-              title={displayTitle(media.title) || name}
-              episodeImage={episodeSeo?.thumbnailUrl || undefined}
-              cover={cover || undefined}
-              nextEpisode={nextEpisode}
+              episodeCount={airedEpisodes}
+            />
+
+            <WatchControls
+              anilistId={id}
+              episode={ep}
+              audio={audio as "sub" | "dub"}
+              episodeCount={airedEpisodes}
+            />
+
+            {/* THIS EPISODE: title, synopsis (clamped), aired + number chips. */}
+            <section id={styles.episode_info}>
+              <h1 id="episode-heading">
+                EP {ep} -{" "}
+                {media.format === "MOVIE"
+                  ? displayTitle(media.title)
+                  : episodeTitle}
+              </h1>
+
+              {episodeSeo?.synopsis ? (
+                <ExpandableText lines={4} className={styles.synopsis}>
+                  {episodeSeo.synopsis}
+                </ExpandableText>
+              ) : null}
+
+              <div className={styles.chips}>
+                <span className={styles.episode_chip}>
+                  <EpisodesIcon />
+                  {media.format === "MOVIE" ? "Movie" : `Episode ${ep}`}
+                </span>
+
+                {episodeSeo?.airedAtISO ? (
+                  <span className={styles.episode_chip}>
+                    <ReleaseIcon />
+                    Aired{" "}
+                    {new Date(episodeSeo.airedAtISO).toLocaleDateString("en-GB")}
+                  </span>
+                ) : null}
+              </div>
+            </section>
+
+            {/* THE SERIES: a compact horizontal card, same data as before. */}
+            <section id={styles.anime_card}>
+              {cover ? (
+                <Link
+                  href={`/media/${id}`}
+                  className={styles.poster}
+                  aria-label={`${displayTitle(media.title)} details`}
+                >
+                  <Image
+                    src={cover}
+                    alt={`Cover Art for ${displayTitle(media.title)}`}
+                    fill
+                    sizes="(max-width: 1279px) 96px, 120px"
+                  />
+                </Link>
+              ) : null}
+
+              <div className={styles.card_body}>
+                <h2 className={styles.card_title}>
+                  <Link href={`/media/${id}`}>{displayTitle(media.title)}</Link>
+                </h2>
+
+                {media.title?.native ? (
+                  <p className={styles.card_native}>{media.title.native}</p>
+                ) : null}
+
+                <div className={styles.card_chips}>
+                  {media.format ? (
+                    <span>{media.format === "TV" ? "Anime" : media.format}</span>
+                  ) : null}
+                  {media.seasonYear ? (
+                    <span>
+                      <ReleaseIcon />
+                      {media.seasonYear}
+                    </span>
+                  ) : null}
+                  {media.format !== "MOVIE" &&
+                  (media.episodes || airedEpisodes) ? (
+                    <span>
+                      <EpisodesIcon />
+                      {media.episodes || airedEpisodes} eps
+                    </span>
+                  ) : null}
+                  {media.status ? (
+                    <span>
+                      <StatusIcon />
+                      {media.status === "RELEASING"
+                        ? "Airing"
+                        : media.status === "FINISHED"
+                          ? "Complete"
+                          : media.status === "NOT_YET_RELEASED"
+                            ? "Upcoming"
+                            : "Hiatus"}
+                    </span>
+                  ) : null}
+                </div>
+
+                <ExpandableText lines={3} className={styles.card_description}>
+                  <MediaCardExpanded.Description
+                    description={media.description}
+                  />
+                </ExpandableText>
+
+                <div className={styles.card_actions}>
+                  <Link href={`/media/${id}`} className={styles.details_link}>
+                    Details
+                  </Link>
+
+                  <div className={styles.round_actions}>
+                    <AddToNotificationsButton mediaInfo={media as any} />
+
+                    <AddToList.Button
+                      statusOnAnilist={media.mediaListEntry?.status}
+                      listEntryId={media.mediaListEntry?.id}
+                      mediaInfo={media as any}
+                      amountWatchedOrRead={media.mediaListEntry?.progress}
+                    >
+                      <AddToFavourites.SvgIcon>
+                        <PlusSvg
+                          className={styles.plus_icon}
+                          fill="currentColor"
+                          viewBox="0 0 16 16"
+                        />
+                      </AddToFavourites.SvgIcon>
+
+                      <AddToFavourites.SvgIcon>
+                        <PlusSvg
+                          className={styles.plus_icon}
+                          fill="currentColor"
+                          viewBox="0 0 16 16"
+                        />
+                      </AddToFavourites.SvgIcon>
+                    </AddToList.Button>
+
+                    <AddToFavourites.Button
+                      isActiveOnAnilist={media.isFavourite}
+                      mediaInfo={media as any}
+                    >
+                      <AddToFavourites.SvgIcon>
+                        <FavouriteSvg
+                          fill="var(--white-100)"
+                          viewBox="0 0 16 16"
+                        />
+                      </AddToFavourites.SvgIcon>
+
+                      <AddToFavourites.SvgIcon>
+                        <FavouriteFillSvg
+                          fill="var(--brand-color)"
+                          viewBox="0 0 16 16"
+                        />
+                      </AddToFavourites.SvgIcon>
+                    </AddToFavourites.Button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* RIGHT COLUMN (desktop): the episodes panel, sticky. */}
+          <aside id={styles.sidebar} aria-label="Episodes">
+            <EpisodesListContainer
+              mediaId={id}
+              activeEpisodeNumber={ep}
+              audio={audio as "sub" | "dub"}
+              nextAiringEpisodeInfo={media.nextAiringEpisode || undefined}
+            />
+          </aside>
+
+          {/* COMMENTS FOR THIS EPISODE (keyed by episode so ?ep= reloads them) */}
+          <div id={styles.comments_zone}>
+            <CommentsSection
+              key={`comments-${ep}`}
+              mediaInfo={{
+                id: media.id,
+                title: media.title,
+                format: media.format,
+              }}
+              isOnWatchPage
+              episodeNumber={ep}
             />
           </div>
-        </section>
-        <WatchControls
-          anilistId={id}
-          episode={ep}
-          audio={audio as "sub" | "dub"}
-          episodeCount={airedEpisodes}
-        />
-
-        {/* The current episode's own synopsis, under the player. */}
-        {episodeSeo && (episodeSeo.episodeTitle || episodeSeo.synopsis) && (
-          <section className={styles.episode_panel}>
-            <h2>{episodeSeo.episodeTitle || `Episode ${ep}`}</h2>
-            {episodeSeo.synopsis ? <p>{episodeSeo.synopsis}</p> : null}
-            {episodeSeo.airedAtISO ? (
-              <small>
-                Aired {new Date(episodeSeo.airedAtISO).toLocaleDateString("en-GB")}
-              </small>
-            ) : null}
-          </section>
-        )}
-        <section id={styles.media_info_container}>
-          <div id={styles.heading_info_container}>
-            <h1>
-              EP {ep} -{" "}
-              {media.format === "MOVIE"
-                ? displayTitle(media.title)
-                : episodeTitle}
-            </h1>
-            <MediaCardExpanded.Container mediaInfo={media as any}>
-              <MediaCardExpanded.Description description={media.description} />
-            </MediaCardExpanded.Container>
-          </div>
-          <EpisodesListContainer
-            mediaId={id}
-            activeEpisodeNumber={ep}
-            audio={audio as "sub" | "dub"}
-            nextAiringEpisodeInfo={media.nextAiringEpisode || undefined}
-          />
-          {/* COMMENTS FOR THIS EPISODE (keyed by episode so ?ep= reloads them) */}
-          <CommentsSection
-            key={`comments-${ep}`}
-            mediaInfo={{ id: media.id, title: media.title, format: media.format }}
-            isOnWatchPage
-            episodeNumber={ep}
-          />
-        </section>
+        </WatchLayout>
       </main>
     </WatchState>
   );

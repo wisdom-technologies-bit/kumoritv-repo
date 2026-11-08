@@ -1,7 +1,11 @@
+/* The panel surface (background, border, radius) is owned by the page's
+   sidebar column, so this container stays transparent. */
 #episodes_list_container {
-  background: var(--white-05);
+  background: transparent;
 
-  padding: 16px;
+  padding: 14px;
+
+  min-width: 0;
 }
 
 #episodes_list_container .heading_container button {
@@ -219,10 +223,20 @@
   overflow: hidden;
 }
 
+/* Next-airing chip on the panel header. */
 .next_episode {
+  display: inline-block;
+
+  padding: 3px 8px;
+
   font-size: var(--font-size--small-2);
-  color: var(--white-50);
-  margin-bottom: 8px;
+  color: var(--white-75);
+
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 999px;
+
+  white-space: nowrap;
 }
 
 .loading {

@@ -16,11 +16,14 @@ export default function ExpandableText({
   children,
   id,
   className,
+  lines,
 }: {
   children: React.ReactNode;
   /** Optional id for the clamped box; generated when omitted. */
   id?: string;
   className?: string;
+  /** Lines shown before "Read more" (default 4 on phones, 5 from 768px). */
+  lines?: number;
 }) {
   const generatedId = useId();
   const contentId = `expandable-${id || generatedId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -65,6 +68,11 @@ export default function ExpandableText({
       className={[styles.container, className].filter(Boolean).join(" ")}
       data-expanded={expanded}
       data-clamped={canExpand && !expanded}
+      style={
+        lines
+          ? ({ "--expandable-lines": String(lines) } as React.CSSProperties)
+          : undefined
+      }
     >
       <div id={contentId} ref={contentRef} className={styles.content}>
         {children}

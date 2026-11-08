@@ -33,6 +33,8 @@ export default function EpisodeList({
   watched = [],
   format,
   title = "Episodes",
+  headerSlot,
+  variant,
 }: {
   episodes: EpisodeItem[];
   anilistId: number;
@@ -41,6 +43,10 @@ export default function EpisodeList({
   watched?: number[];
   format?: string | null;
   title?: string;
+  /** Extra node shown on the header line (the watch page's next-airing chip). */
+  headerSlot?: React.ReactNode;
+  /** "sidebar": the watch page's right column - always one column, compact. */
+  variant?: "sidebar";
 }) {
   const [query, setQuery] = useState("");
   const [order, setOrder] = useState<EpisodeOrder>("desc");
@@ -98,8 +104,24 @@ export default function EpisodeList({
     if (!activeEpisode) return;
     const node = activeRef.current;
     if (!node) return;
-    if (typeof node.scrollIntoView === "function")
-      node.scrollIntoView({ block: "center" });
+    // Scroll the PANEL that holds the list (the watch page sidebar), never the
+    // page: on phones the panel sits below the player, and `scrollIntoView`
+    // would drag the whole page down on load. When nothing scrolls - the
+    // single-column phone layout, which expands the panel in place - there is
+    // nothing to do.
+    let scroller = node.parentElement;
+    while (scroller) {
+      const style = window.getComputedStyle(scroller);
+      const scrolls = /(auto|scroll)/.test(style.overflowY || "");
+      if (scrolls && scroller.scrollHeight > scroller.clientHeight + 1) break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return;
+
+    const box = scroller.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    const delta = rect.top - box.top - (box.height - rect.height) / 2;
+    if (Math.abs(delta) > 2) scroller.scrollTop += delta;
   }, [activeEpisode, shown.length]);
 
   const toggleView = () => {
@@ -127,11 +149,14 @@ export default function EpisodeList({
   };
 
   return (
-    <section className={styles.wrapper} data-view={view}>
+    <section className={styles.wrapper} data-view={view} data-variant={variant}>
       <header className={styles.header}>
-        <h3>
-          {title} ({counts.total})
-        </h3>
+        <div className={styles.title_row}>
+          <h3>
+            {title} ({counts.total})
+          </h3>
+          {headerSlot ? <div className={styles.header_slot}>{headerSlot}</div> : null}
+        </div>
         <div className={styles.toolbar}>
           <input
             className={styles.search}
@@ -222,6 +247,7 @@ export default function EpisodeList({
                     <Link
                       className={styles.link}
                       href={`/watch/${anilistId}?ep=${episode.number}&audio=${audio}`}
+                      aria-current={isActive ? "true" : undefined}
                     >
                       <span className={styles.thumb}>
                         {episode.image ? (
