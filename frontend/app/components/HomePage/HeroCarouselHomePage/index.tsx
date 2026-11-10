@@ -182,6 +182,14 @@ function HeroCarousel({
                               text, SEO and screen readers. */}
                           <Image
                             className={styles.title_logo}
+                            /* A very wide wordmark (aspect > 3.5, e.g. a long
+                               series name) is capped shorter on phones. The
+                               attribute is inert on desktop. */
+                            data-wide-logo={
+                              currentTitleLogo.aspectRatio > 3.5
+                                ? "true"
+                                : undefined
+                            }
                             src={currentTitleLogo.url}
                             alt={displayTitle(
                               animesList[currMediaOnScreenIndex]?.title
