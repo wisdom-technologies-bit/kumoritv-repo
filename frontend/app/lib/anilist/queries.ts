@@ -72,6 +72,69 @@ export function requestMediasByDateRelease() {
   return `query($page: Int, $sort: [AiringSort], $perPage: Int, $airingAt_greater: Int, $airingAt_lesser: Int) { Page(page: $page, perPage: $perPage) { airingSchedules(sort: $sort, airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser) { id airingAt timeUntilAiring episode mediaId media { id idMal isAdult description ${queryMediaReviews} ${queryTitles} ${queryCoverImage} trailer { id site thumbnail } bannerImage type format status season seasonYear seasonInt episodes duration chapters volumes countryOfOrigin isLicensed source hashtag updatedAt genres synonyms averageScore meanScore popularity isLocked trending favourites isFavourite isFavouriteBlocked isAdult siteUrl autoCreateForumThread isRecommendationBlocked isReviewBlocked modNotes } } } }`;
 }
 
+// Prompt 33: the release schedule. One query serves a whole week window, paged
+// through by the caller; the fields are the ones a schedule card actually shows
+// (nothing from the media page's heavy selection).
+export function requestAiringSchedule() {
+  return `query($page: Int, $perPage: Int, $airingAt_greater: Int, $airingAt_lesser: Int) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage currentPage }
+      airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
+        id
+        airingAt
+        timeUntilAiring
+        episode
+        media {
+          id
+          idMal
+          title { romaji english native }
+          coverImage { large extraLarge color }
+          bannerImage
+          format
+          status
+          episodes
+          duration
+          genres
+          averageScore
+          popularity
+          isAdult
+          countryOfOrigin
+          studios(isMain: true) { nodes { name } }
+          nextAiringEpisode { episode airingAt }
+        }
+      }
+    }
+  }`;
+}
+
+// Titles that have not started yet, for the "Premiering soon" row.
+export function requestPremieringSoon() {
+  return `query($page: Int, $perPage: Int, $from: FuzzyDateInt, $to: FuzzyDateInt, $isAdult: Boolean) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { hasNextPage }
+      media(type: ANIME, status: NOT_YET_RELEASED, startDate_greater: $from, startDate_lesser: $to, sort: POPULARITY_DESC, isAdult: $isAdult) {
+        id
+        idMal
+        title { romaji english native }
+        coverImage { large extraLarge color }
+        bannerImage
+        format
+        status
+        episodes
+        duration
+        genres
+        averageScore
+        popularity
+        isAdult
+        countryOfOrigin
+        startDate { year month day }
+        studios(isMain: true) { nodes { name } }
+        nextAiringEpisode { episode airingAt }
+      }
+    }
+  }`;
+}
+
 export function requestMediasByTrendingSort() {
   return `query Page($page: Int, $sort: [MediaTrendSort], $perPage: Int) { Page(page: $page, perPage: $perPage) { mediaTrends(sort: $sort) { mediaId date trending averageScore inProgress releasing episode popularity media { id idMal isAdult ${queryTitles} id ${queryMediaReviews} ${queryCoverImage} trailer { id site thumbnail } bannerImage type format status description season seasonYear seasonInt episodes duration chapters volumes countryOfOrigin isLicensed source hashtag updatedAt genres synonyms averageScore meanScore popularity isLocked trending favourites isFavourite isFavouriteBlocked isAdult siteUrl autoCreateForumThread isRecommendationBlocked isReviewBlocked modNotes } } } }`;
 }

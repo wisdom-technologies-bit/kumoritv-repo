@@ -293,6 +293,9 @@ export function buildRecentSitemap(episodes: SitemapEpisode[], topUp: any[]): st
  */
 export const STATIC_SITEMAP_PAGES: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/", changefreq: "daily", priority: "1.0" },
+  // Prompt 33: the release schedule changes every few minutes, so it is a
+  // daily-crawl page in its own right.
+  { path: "/schedule", changefreq: "daily", priority: "0.8" },
   { path: "/search", changefreq: "daily", priority: "0.8" },
   { path: "/search?type=manga", changefreq: "daily", priority: "0.7" },
 ];
