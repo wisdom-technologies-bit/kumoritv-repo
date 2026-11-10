@@ -224,14 +224,46 @@ ul.carousel_container li.carousel_item div.item_info {
     }
 }
 
-@media((max-width: 767px)) {
+@media (max-width: 767px) {
+    /* Prompt 32: the info block is a flex column with `align-items: center`,
+       so every child used to shrink to its own content - the buttons were as
+       wide as the longest label on that slide. These rules give the block a
+       definite width and let the layout (never the logo, the label or the
+       slide) decide the button width. Everything here is phones-only; the
+       desktop column is untouched. */
     ul.carousel_container li.carousel_item div.item_info {
         align-items: center;
 
         text-align: center;
 
-        /* Push the block down a little so the artwork stays visible above it. */
-        padding-block-start: 12px;
+        /* Definite width on the flex item itself: `width: 92%` alone still
+           lets a centred flex item shrink around its content. */
+        width: 92%;
+        max-width: 92%;
+        min-height: 240px;
+
+        /* Push the block down so the artwork stays visible above it. */
+        padding-block-start: 36px;
+
+        /* Tighter rhythm between logo, meta line and buttons. */
+        gap: 9px;
+    }
+
+    /* One fixed row height for the heading on every slide (logo, wide logo or
+       no logo at all) so the meta line and the buttons keep the same Y offset
+       when the carousel changes slides. */
+    ul.carousel_container li.carousel_item h2 {
+        min-height: 84px;
+
+        /* Centre the wordmark (or the clamped text title) inside that fixed
+           row instead of leaving it glued to the top. */
+        align-content: center;
+    }
+
+    /* A shrink-to-fit heading would clip the logo: keep the box at least as
+       wide as its column. */
+    ul.carousel_container li.carousel_item h2:has(img.title_logo) {
+        min-width: 0;
     }
 }
 
@@ -667,8 +699,24 @@ ul.carousel_container li.carousel_item h2 img.title_logo {
 }
 
 @media (max-width: 767px) {
+    /* Phones: a smaller wordmark that never leaves the content column - 68% of
+       the heading box (about 216px on a 360px screen) capped at 240px. */
     ul.carousel_container li.carousel_item h2 img.title_logo {
-        max-height: 72px;
+        max-width: min(68%, 240px);
+        max-height: 84px;
+
+        width: auto;
+        height: auto;
+
+        object-fit: contain;
+
+        margin-inline: auto;
+    }
+
+    /* A very wide wordmark (aspect ratio > 3.5, flagged from the stored
+       aspectRatio in index.tsx) stays short so it cannot dominate the hero. */
+    ul.carousel_container li.carousel_item h2 img.title_logo[data-wide-logo="true"] {
+        max-height: 64px;
     }
 }
 
@@ -695,4 +743,57 @@ ul.carousel_container li.carousel_item h2 .title_text_hidden {
 
     white-space: nowrap;
     border: 0;
+}
+
+/* PROMPT 32 - PHONES AND SMALL TABLETS IN PORTRAIT ONLY.
+   The hero buttons are laid out by the grid, never by their label or by the
+   slide's logo: same width and same height on every slide, in both favourite
+   states. Declared last so it wins over the shared button rules above; the
+   desktop rules (min-width: 768px) are untouched. */
+@media (max-width: 767px) {
+    /* The content block starts lower on phones, keeping the artwork visible
+       above the logo and a gap before "Todays Recomendation". */
+    .carousel_position_wrapper {
+        top: -28px;
+    }
+
+    ul.carousel_container li.carousel_item div.item_info .item_buttons {
+        width: 100%;
+        max-width: 480px;
+        margin-inline: auto;
+
+        /* Stretch inside the centred flex column. */
+        align-self: stretch;
+
+        /* One column of equal, full-width buttons - never content sized. */
+        grid-template-columns: 1fr;
+        gap: 8px 0;
+    }
+
+    ul.carousel_container li.carousel_item div.item_info .item_buttons>a,
+    ul.carousel_container li.carousel_item div.item_info .item_buttons>button {
+        box-sizing: border-box;
+
+        width: 100%;
+        min-width: 0;
+        min-height: 44px;
+
+        padding: 0 8px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        /* A label must never wrap, and the outlined button must be exactly as
+           tall as the filled one: same padding, same line box, same border. */
+        white-space: nowrap;
+        line-height: 1.25;
+        letter-spacing: -0.01em;
+    }
+
+    /* The filled button had no border and the outlined one 1px, which made
+       Favourite 1px taller than Watch Now. */
+    ul.carousel_container li.carousel_item div.item_info .item_buttons>a {
+        border: 1px solid transparent;
+    }
 }
