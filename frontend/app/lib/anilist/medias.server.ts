@@ -2,7 +2,9 @@
 
 import { unstable_cache } from 'next/cache';
 import { AniListNotFoundError, AniListRateLimitedError, anilistFetch } from './client';
-import { requestMediaById, requestMedias, requestMediasByDateRelease, requestMediasByTrendingSort } from './queries';
+import { requestAiringSchedule, requestMediaById, requestMedias, requestMediasByDateRelease, requestMediasByTrendingSort, requestPremieringSoon } from './queries';
+import { prepareAiringSchedule } from '@/app/lib/schedule/format';
+import type { PremieringFetch, ScheduleFetch, ScheduleItem } from '@/app/lib/schedule/types';
 import type { MediaDataFullInfo } from '@/app/ts/interfaces/anilistMediaData';
 import { parseGenreParam } from '@/app/lib/search/genres';
 import { displayTitle } from '@/app/lib/titles';
@@ -193,4 +195,130 @@ export async function getMediaForThisFormat(options: MediaOptions & { pageNumber
     const data = await cached('media-for-format', variables, 3600, () => anilistFetch<{ Page?: { media?: unknown[] } }>(requestMedias(), variables));
     return withoutAdult((data.Page?.media || []) as { isAdult?: boolean }[], showAdultContent);
   } catch { return []; }
+}
+
+/* ---------------------------------------------------------------------------
+   Prompt 33 Part B - the release schedule feed.
+
+   A single week window is fetched in one go (paged, because AniList caps a page
+   at 50 rows), then cached for five minutes under the `schedule` tag. The client
+   never talks to AniList: it receives these rows and does the time-zone work.
+   --------------------------------------------------------------------------- */
+
+/** AniList's hard page cap is 50; eight pages is a very busy week. */
+const SCHEDULE_PER_PAGE = 50;
+const SCHEDULE_MAX_PAGES = 8;
+/** Total budget for one window, including the pauses between pages. */
+const SCHEDULE_BUDGET_MS = 20_000;
+const SCHEDULE_PAGE_PAUSE_MS = 120;
+/** A week plus its margins. Anything wider is a bug, not a request. */
+const SCHEDULE_MAX_SPAN_SECONDS = 21 * 86_400;
+
+type AiringPage = {
+  Page?: {
+    pageInfo?: { hasNextPage?: boolean };
+    airingSchedules?: Array<{
+      id: number;
+      airingAt: number;
+      episode: number;
+      media?: ScheduleItem['media'] | null;
+    }>;
+  };
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The last good answer per window: what a failed refresh falls back to. */
+const lastGoodSchedule = new Map<string, { items: ScheduleItem[]; pages: number; fetchedAt: number }>();
+
+async function normaliseScheduleWindow(from: number, to: number): { from: number; to: number } {
+  const start = Math.floor(Number(from));
+  const end = Math.floor(Number(to));
+  const safeStart = Number.isFinite(start) ? start : Math.floor(Date.now() / 1000);
+  const safeEnd = Number.isFinite(end) ? end : safeStart + 9 * 86_400;
+  const [lo, hi] = safeStart <= safeEnd ? [safeStart, safeEnd] : [safeEnd, safeStart];
+  return { from: lo, to: Math.min(hi, lo + SCHEDULE_MAX_SPAN_SECONDS) };
+}
+
+async function loadScheduleWindow(from: number, to: number, showAdultContent: boolean) {
+  const startedAt = Date.now();
+  const rows: ScheduleItem[] = [];
+
+  for (let page = 1; page <= SCHEDULE_MAX_PAGES; page += 1) {
+    if (Date.now() - startedAt > SCHEDULE_BUDGET_MS) break;
+
+    let data: AiringPage;
+    try {
+      data = await anilistFetch<AiringPage>(requestAiringSchedule(), {
+        page,
+        perPage: SCHEDULE_PER_PAGE,
+        airingAt_greater: from,
+        airingAt_lesser: to,
+      });
+    } catch (error) {
+      // A rate limit is not a reason to serve half a page: reuse the last good
+      // window when we have one, otherwise say AniList is unavailable.
+      if (error instanceof AniListRateLimitedError) throw error;
+      if (page > 1) break;
+      throw error;
+    }
+
+    for (const item of data.Page?.airingSchedules ?? []) {
+      if (!item || !item.media) continue;
+      rows.push({ id: item.id, airingAt: item.airingAt, episode: item.episode, media: item.media });
+    }
+
+    if (!data.Page?.pageInfo?.hasNextPage) break;
+    await sleep(SCHEDULE_PAGE_PAUSE_MS);
+  }
+
+  // `airingSchedules` has no isAdult argument, so the nested media is filtered.
+  const items = prepareAiringSchedule(rows, { showAdultContent });
+  return { items, pages: Math.min(SCHEDULE_MAX_PAGES, Math.max(1, Math.ceil(items.length / SCHEDULE_PER_PAGE))) };
+}
+
+export async function getAiringSchedule({ from, to, showAdultContent: explicit }: { from: number; to: number; showAdultContent?: boolean }): Promise<ScheduleFetch> {
+  const window = await normaliseScheduleWindow(from, to);
+  const key = `${window.from}:${window.to}`;
+  const showAdultContent = await shouldShowAdultContent(explicit);
+
+  try {
+    const result = await unstable_cache(
+      async () => loadScheduleWindow(window.from, window.to, showAdultContent),
+      ['anilist', 'schedule', key, showAdultContent ? 'adult' : 'clean'],
+      { tags: ['anilist', 'schedule'], revalidate: 300 },
+    )();
+
+    lastGoodSchedule.set(key, { ...result, fetchedAt: Math.floor(Date.now() / 1000) });
+    return { items: result.items, ok: true, pages: result.pages, fetchedAt: Math.floor(Date.now() / 1000) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'AniList request failed';
+    const fallback = lastGoodSchedule.get(key);
+    if (fallback) {
+      return { items: fallback.items, ok: true, stale: true, pages: fallback.pages, fetchedAt: fallback.fetchedAt, error: message };
+    }
+    return { items: [], ok: false, pages: 0, fetchedAt: Math.floor(Date.now() / 1000), error: message };
+  }
+}
+
+/** The "Premiering soon" row: NOT_YET_RELEASED titles starting in 30 days. */
+export async function getPremieringSoon({ limit = 8, showAdultContent: explicit }: { limit?: number; showAdultContent?: boolean } = {}): Promise<PremieringFetch> {
+  const showAdultContent = await shouldShowAdultContent(explicit);
+  const now = new Date();
+  const fuzzy = (date: Date) => Number(date.toISOString().slice(0, 10).replace(/-/g, ''));
+  const from = fuzzy(now);
+  const to = fuzzy(new Date(now.getTime() + 30 * 86_400_000));
+
+  try {
+    const data = await unstable_cache(
+      async () =>
+        anilistFetch<{ Page?: { media?: unknown[] } }>(requestPremieringSoon(), { page: 1, perPage: limit, from, to, ...adultQueryVariables(showAdultContent) }),
+      ['anilist', 'premiering-soon', `${from}:${to}:${limit}:${showAdultContent ? 'adult' : 'clean'}`],
+      { tags: ['anilist', 'schedule'], revalidate: 1800 },
+    )();
+    const items = withoutAdult((data.Page?.media ?? []) as { isAdult?: boolean }[], showAdultContent).slice(0, limit);
+    return { items: items as PremieringFetch['items'], ok: true, fetchedAt: Math.floor(Date.now() / 1000) };
+  } catch {
+    return { items: [], ok: false, fetchedAt: Math.floor(Date.now() / 1000) };
+  }
 }

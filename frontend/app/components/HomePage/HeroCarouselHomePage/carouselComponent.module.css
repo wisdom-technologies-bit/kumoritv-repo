@@ -1,6 +1,14 @@
 #hero_section_container {
 
+    /* Prompt 33: the hero is a full-bleed band, so its own box is pinned to the
+       viewport width and anything a slide paints outside it is clipped here.
+       `clip` (where supported) does the same job as `hidden` without turning
+       the section into a scroll container; the `hidden` line stays as the
+       fallback for older engines. This is defence in depth only - the real fix
+       is the contained trailer box below. */
     overflow-x: hidden;
+    overflow-x: clip;
+    max-width: 100vw;
 
     position: relative;
     top: 0;
@@ -25,6 +33,9 @@ ul.carousel_container img:not([class*="title_logo"]) {
 ul.carousel_container li.carousel_item {
 
     overflow: hidden;
+
+    /* The trailer layer is positioned against the slide, not the viewport. */
+    position: relative;
 
     cursor: default;
 
@@ -62,29 +73,104 @@ ul.carousel_container li.carousel_item {
     }
 }
 
+/* PROMPT 33 - EDGE TO EDGE TRAILER
+   ---------------------------------------------------------------------------
+   The trailer used to be sized in viewport units (100vw x 114vh, and 177.78vh
+   wide on portrait). The hero is NOT viewport sized - it is 520px on phones and
+   `calc(...vw)` tall on desktop - so a 16:9 player dropped inside that frame
+   never matched the hero box: bars on desktop, and a 1300-1600px wide frame on
+   a 360px phone that Android Chrome counted as page width.
+
+   The layer is now a contained, clipped box the exact size of the slide, and
+   the frame inside it is a true 16:9 "cover" of that box: one dimension is
+   100% and the other is derived from the OTHER container axis, so it always
+   covers, is always centred, and the container clips the overscan. */
 .video_container {
 
-    position: relative;
+    position: absolute;
+    inset: 0;
+
+    /* The player can never leak out of the slide again (this is what pushed the
+       whole page wider on Android Chrome). */
+    overflow: hidden;
+    contain: paint;
+
+    /* Decorative only: the layer sits behind the artwork scrim, the info block
+       and the buttons, and never swallows their clicks. */
+    pointer-events: none;
+    z-index: 0;
+
+    /* Enables the cqw / cqh units used by the frame below. */
+    container-type: size;
 
 }
 
-li.carousel_item iframe {
+.video_container iframe {
 
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 100vw;
-    /* height: 100vh; */
-    height: 114vh;
-    /* transform: translate(-50%, -50%); */
-    transform: translate(-50%, -25%);
-    pointer-events: none;
 
+    /* Fallback for engines without container query units: the frame covers the
+       slide exactly, so the hero is still edge to edge and nothing overflows
+       (the player letterboxes inside its own frame there). */
+    width: 100%;
+    height: 100%;
+
+    transform: translate(-50%, -50%);
+
+    /* Painted only: never hit-tested, never scrollable. */
+    pointer-events: none;
+    border: 0;
     overflow: hidden;
 
 }
 
-li.carousel_item iframe::-webkit-scrollbar {
+/* The real "background video" framing: width is the larger of the box width
+   and the width that a 16:9 frame needs at the box height (and vice versa), so
+   the frame always contains the slide and is cropped by the container. The
+   1.06 overscan pushes YouTube's own edge chrome outside the clipped box. */
+@supports (width: 1cqw) {
+
+    .video_container iframe {
+
+        width: max(100%, calc(100cqh * 16 / 9));
+        height: max(100%, calc(100cqw * 9 / 16));
+
+        transform: translate(-50%, -50%) scale(1.06);
+
+    }
+
+}
+
+/* A little bottom-weighted shade over the video so the title, the meta line and
+   the buttons keep their contrast on a bright trailer frame. Only painted when
+   a trailer is actually on screen, so a hero without one is untouched. */
+.video_container::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.08) 0%,
+        rgba(0, 0, 0, 0.18) 55%,
+        rgba(0, 0, 0, 0.45) 100%
+    );
+
+    pointer-events: none;
+}
+
+/* Kept deliberately on this exact selector: Prompt 32b's guard asserts the
+   decorative contract ("absolute, no pointer events") against it, and the
+   contract still holds now that the frame lives inside the clipped layer. */
+li.carousel_item iframe {
+    position: absolute;
+    pointer-events: none;
+}
+
+.video_container iframe::-webkit-scrollbar {
     display: none;
 }
 
@@ -94,18 +180,6 @@ li.carousel_item iframe::-webkit-scrollbar {
     }
 }
 
-@media (min-aspect-ratio: 16/9) {
-    .video-container iframe {
-        height: 56.25vw;
-    }
-}
-
-@media (max-aspect-ratio: 16/9) {
-    li.carousel_item iframe {
-        width: 177.78vh;
-        /* width: 134.78vh; */
-    }
-}
 
 ul.carousel_container li.carousel_item div.item_info {
 
