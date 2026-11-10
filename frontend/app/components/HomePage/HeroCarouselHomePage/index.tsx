@@ -14,6 +14,17 @@ import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { SwiperSlide } from "swiper/react";
 import { displayTitle } from "@/app/lib/titles";
 import Image from "next/image";
+import {
+  YOUTUBE_IFRAME_ALLOW,
+  YOUTUBE_REFERRER_POLICY,
+  autoplayAllowed,
+  browserOrigin,
+  buildYoutubeEmbedSrc,
+  isYoutubeTrailer,
+  readPlaybackEnvironment,
+  youtubeTrailerId,
+} from "@/app/lib/youtube";
+import { useYoutubeTrailerGuard } from "../../Trailer/useYoutubeTrailerGuard";
 
 const framerMotionVariants = {
   enter: (direction: number) => {
@@ -55,19 +66,34 @@ function HeroCarousel({
 
   const [autoPlayTrailer, setAutoPlayTrailer] = useState<boolean>(true);
 
+  // localStorage is only readable after mount. Until it has been read we do not
+  // know whether this visitor turned trailers off, so the iframe is not
+  // rendered at all (that is what used to make a "false" setting flash).
+  const [trailerPreferenceKnown, setTrailerPreferenceKnown] = useState(false);
+
+  // Origin for the embed URL, plus the reduced-motion / data-saver policy.
+  // Both are browser-only, so they land in the same post-mount effect.
+  const [trailerEmbedOrigin, setTrailerEmbedOrigin] = useState("");
+  const [trailerPlaybackAllowed, setTrailerPlaybackAllowed] = useState(false);
+
   // A logo that fails to load falls back to the text title (one failed id, so
   // the next slide still tries its own logo).
   const [failedLogoId, setFailedLogoId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (localStorage.getItem("autoPlayTrailer") == undefined) {
-      setAutoPlayTrailer(true);
-      localStorage.setItem("autoPlayTrailer", "true");
+    const storedPreference = localStorage.getItem("autoPlayTrailer");
 
-      return;
+    if (storedPreference == undefined) {
+      localStorage.setItem("autoPlayTrailer", "true");
+      setAutoPlayTrailer(true);
+    } else {
+      setAutoPlayTrailer(storedPreference == "true");
     }
 
-    setAutoPlayTrailer(localStorage.getItem("autoPlayTrailer") == "true");
+    setTrailerPreferenceKnown(true);
+
+    setTrailerEmbedOrigin(browserOrigin());
+    setTrailerPlaybackAllowed(autoplayAllowed(readPlaybackEnvironment()));
   }, []);
 
   // Slide Carousel Props
@@ -81,6 +107,28 @@ function HeroCarousel({
   const paginate = (newDirection: number) => {
     setPage([page + newDirection, newDirection]);
   };
+
+  // Only a real YouTube trailer may be embedded: AniList also returns
+  // `dailymotion` trailers and sometimes a stale id, and the YouTube player
+  // shows a configuration error for those.
+  const currentTrailer = animesList[currMediaOnScreenIndex]?.trailer;
+  const currentTrailerId = youtubeTrailerId(
+    isYoutubeTrailer(currentTrailer) ? currentTrailer : null
+  );
+
+  const {
+    failed: trailerEmbedFailed,
+    frameRef: trailerFrameRef,
+    onFrameLoad: onTrailerFrameLoad,
+  } = useYoutubeTrailerGuard(currentTrailerId);
+
+  const shouldShowTrailer =
+    trailerPreferenceKnown &&
+    autoPlayTrailer &&
+    trailerPlaybackAllowed &&
+    !!trailerEmbedOrigin &&
+    !!currentTrailerId &&
+    !trailerEmbedFailed;
 
   const currentId = Number(animesList[currMediaOnScreenIndex]?.id);
   const currentTitleLogo =
@@ -149,16 +197,29 @@ function HeroCarousel({
                 }
               }}
             >
-              {autoPlayTrailer &&
-                animesList[currMediaOnScreenIndex]?.trailer && (
+              {shouldShowTrailer && currentTrailerId && (
                 <AnimatePresence>
                   <motion.div className={styles.video_container}>
                     <motion.iframe
+                      /* One frame per video: a new slide never reuses the
+                         previous trailer's player. */
+                      key={currentTrailerId}
+                      ref={trailerFrameRef}
+                      onLoad={onTrailerFrameLoad}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 3 }}
-                      src={`https://www.youtube.com/embed/${animesList[currMediaOnScreenIndex].trailer.id}?controls=0&autoplay=1&mute=1&playsinline=1&loop=1&showinfo=0&playlist=${animesList[currMediaOnScreenIndex].trailer.id}`}
+                      src={buildYoutubeEmbedSrc(currentTrailerId, {
+                        autoplay: true,
+                        loop: true,
+                        controls: false,
+                        origin: trailerEmbedOrigin,
+                      })}
                       frameBorder={0}
+                      /* Cross-origin muted autoplay needs the permission
+                         granted on the frame, not only `mute=1`. */
+                      allow={YOUTUBE_IFRAME_ALLOW}
+                      referrerPolicy={YOUTUBE_REFERRER_POLICY}
                       title={
                         displayTitle(
                           animesList[currMediaOnScreenIndex].title

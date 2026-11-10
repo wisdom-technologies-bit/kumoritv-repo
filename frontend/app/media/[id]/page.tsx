@@ -20,6 +20,9 @@ import { loadCommentSummary } from "@/app/lib/seo/comments-jsonld";
 import { notFound } from "next/navigation";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 import { displayTitle } from "@/app/lib/titles";
+import { isYoutubeTrailer } from "@/app/lib/youtube";
+import { originFromHeaders } from "@/app/lib/siteOrigin";
+import YoutubeTrailerFrame from "@/app/components/Trailer/YoutubeTrailerFrame";
 import { Suspense } from "react";
 import EpisodesSection from "./components/EpisodesSection";
 import CommentsSection from "@/app/components/CommentsSection";
@@ -80,7 +83,11 @@ export default async function MediaPage({
   params: { id: number };
   searchParams: { lang?: string };
 }) {
-  const isOnMobileScreen = checkDeviceIsMobile(headers()) || false;
+  const requestHeaders = headers();
+  const isOnMobileScreen = checkDeviceIsMobile(requestHeaders) || false;
+  // The `origin` YouTube compares against the embedding page. Read from the
+  // request so the server and the client render the same src.
+  const pageOrigin = originFromHeaders(requestHeaders);
 
   const mediaInfo = (await getMediaInfo({ id: Number(params.id) })) as MediaDataFullInfo | null;
   if (!mediaInfo) {
@@ -448,16 +455,14 @@ export default async function MediaPage({
             )}
 
             {/* TRAILER */}
-            {mediaInfo.trailer && (
+            {isYoutubeTrailer(mediaInfo.trailer) && (
               <div id={styles.yt_video_container}>
                 <h2 className={styles.heading_style}>TRAILER</h2>
-                <iframe
+                <YoutubeTrailerFrame
                   className="yt_embed_video"
-                  src={`https://www.youtube.com/embed/${mediaInfo.trailer.id}`}
-                  frameBorder={0}
+                  trailer={mediaInfo.trailer}
+                  origin={pageOrigin}
                   title={displayTitle(mediaInfo.title) + " Trailer"}
-                  allow="accelerometer; autoplay; encrypted-media; gyroscope;"
-                  allowFullScreen
                 />
               </div>
             )}

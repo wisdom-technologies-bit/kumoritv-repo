@@ -19,6 +19,9 @@ import JsonLd from "./lib/seo/JsonLd";
 import { buildHomeJsonLd } from "./lib/seo/jsonld";
 import { absoluteUrl } from "./lib/seo/text";
 import { displayTitle } from "@/app/lib/titles";
+import { isYoutubeTrailer } from "@/app/lib/youtube";
+import { originFromHeaders } from "@/app/lib/siteOrigin";
+import YoutubeTrailerFrame from "./components/Trailer/YoutubeTrailerFrame";
 
 export const metadata: Metadata = {
   title: { absolute: "KumoriTV - Watch Anime Online" },
@@ -55,7 +58,11 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const isOnMobileScreen = checkDeviceIsMobile(headers());
+  const requestHeaders = headers();
+  const isOnMobileScreen = checkDeviceIsMobile(requestHeaders);
+  // Handed to the trailer embeds: YouTube needs an `origin` that matches the
+  // page it is embedded in. Read from the request, never from `window`.
+  const pageOrigin = originFromHeaders(requestHeaders);
 
   const accessTokenCookie = cookies().get("access_token")?.value;
 
@@ -218,14 +225,13 @@ export default async function Home() {
           </div>
 
           <div id={styles.player_button_container}>
-            {bannerMedia.trailer && (
-              <iframe
+            {isYoutubeTrailer(bannerMedia.trailer) && (
+              <YoutubeTrailerFrame
                 className="yt_embed_video"
-                src={`https://www.youtube.com/embed/${bannerMedia.trailer.id}?controls=0&showinfo=0`}
-                frameBorder={0}
+                trailer={bannerMedia.trailer}
+                origin={pageOrigin}
+                controls={false}
                 title={displayTitle(bannerMedia.title) + " Trailer"}
-                allow="accelerometer; autoplay; encrypted-media; gyroscope;"
-                allowFullScreen
               />
             )}
           </div>
