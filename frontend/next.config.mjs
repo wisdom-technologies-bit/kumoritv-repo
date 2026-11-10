@@ -30,6 +30,23 @@ const nextConfig = {
       },
     ]
   },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            // YouTube replaced the old "no Referer" behaviour with a hard
+            // error 153 ("Video player configuration error"). This policy still
+            // sends only the origin cross-site, which is exactly what the
+            // trailer iframes declare, so nothing else is exposed.
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+        ],
+      },
+    ]
+  },
   images: {
     unoptimized: true, // set to TRUE due to vercel limit of image optimization
     remotePatterns: [

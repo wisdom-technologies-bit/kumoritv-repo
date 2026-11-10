@@ -23,6 +23,7 @@ import SwiperCarousel from "./swiperCarousel";
 import { SwiperSlide } from "swiper/react";
 import { convertToUnix } from "@/app/lib/formatDateUnix";
 import { displayTitle } from "@/app/lib/titles";
+import YoutubeTrailerFrame from "@/app/components/Trailer/YoutubeTrailerFrame";
 
 export const revalidate = 1800; // revalidate cached data every 30 min
 
@@ -355,14 +356,11 @@ function NavigationThroughMedias({
               {/* SHOWS TRAILER / SHOWS DESCRIPTION */}
               {isTrailerBeeingShown ? (
                 <motion.div className={styles.trailer_container}>
-                  <iframe
+                  <YoutubeTrailerFrame
                     className="yt_embed_video"
-                    src={`https://www.youtube.com/embed/${mediaSelect.trailer.id}`}
-                    frameBorder={0}
+                    trailer={mediaSelect.trailer}
                     title={displayTitle(mediaSelect.title) + " Trailer"}
-                    allow="accelerometer; autoplay; encrypted-media; gyroscope;"
-                    allowFullScreen
-                  ></iframe>
+                  />
                 </motion.div>
               ) : (
                 mediaSelect.description && (

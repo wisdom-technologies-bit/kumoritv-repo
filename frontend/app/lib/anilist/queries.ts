@@ -33,6 +33,9 @@ const mediaFields = `
   popularity
 `;
 
+// `trailer` is not decoration: the home hero, the home banner and the carousel
+// trailer button only render when it is present, so dropping it from this list
+// silently removes every trailer on the home page.
 const mediaListFields = `
   ${queryTitles}
   description(asHtml: false)
@@ -41,6 +44,7 @@ const mediaListFields = `
   status
   episodes
   duration
+  trailer { id site thumbnail }
   updatedAt
   favourites
   averageScore
