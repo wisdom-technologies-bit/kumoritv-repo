@@ -23,6 +23,8 @@ import {
   fetchRecentEpisodes,
   parseSitemapEpisode,
   parseSitemapFileName,
+  resetRankedProbe,
+  setRankedViewAvailableOverride,
   sitemapIndexFiles,
 } from "../../lib/sitemap";
 import { GET as chunkRoute } from "@/app/sitemaps/[file]/route";
@@ -60,7 +62,7 @@ class CappedQuery implements PromiseLike<{ data: any; error: any; count: number 
   private wantsCount = false;
   private headOnly = false;
   private orders: Array<{ column: string; ascending: boolean }> = [];
-  private conditions: Array<{ column: string; op: "eq" | "gte"; value: any }> = [];
+  private conditions: Array<{ column: string; op: "eq" | "gte" | "lte"; value: any }> = [];
   private rangeFrom = 0;
   private rangeTo = Number.MAX_SAFE_INTEGER;
   private limitCount: number | null = null;
@@ -88,6 +90,11 @@ class CappedQuery implements PromiseLike<{ data: any; error: any; count: number 
     return this;
   }
 
+  lte(column: string, value: any) {
+    this.conditions.push({ column, op: "lte", value });
+    return this;
+  }
+
   limit(count: number) {
     this.limitCount = count;
     return this;
@@ -102,11 +109,15 @@ class CappedQuery implements PromiseLike<{ data: any; error: any; count: number 
   private matching(): Row[] {
     let rows = this.db.rows(this.table).slice();
     for (const condition of this.conditions) {
-      rows = rows.filter((row) =>
-        condition.op === "eq"
-          ? row[condition.column] === condition.value
-          : row[condition.column] != null && String(row[condition.column]) >= String(condition.value),
-      );
+      rows = rows.filter((row) => {
+        if (condition.op === "eq") return row[condition.column] === condition.value;
+        if (row[condition.column] == null) return false;
+        // rn-style integer columns compare numerically; everything else as text.
+        const numeric = typeof row[condition.column] === "number" && typeof condition.value === "number";
+        const left = numeric ? row[condition.column] : String(row[condition.column]);
+        const right = numeric ? condition.value : String(condition.value);
+        return condition.op === "gte" ? left >= right : left <= right;
+      });
     }
     if (this.orders.length) {
       rows.sort((left, right) => {
@@ -191,15 +202,16 @@ test("the [file] route 404s on an unknown name and 200s on a real one", async ()
   const traversal = await chunkRoute(new Request("http://localhost/sitemaps/x"), { params: { file: "..%2Fsecret" } });
   assert.equal(traversal.status, 404, "path tricks are a 404");
 
-  // No Supabase env in tests, so the db is null and the builder emits an empty
-  // (but valid) urlset: the point is that the route RESOLVES instead of 404ing.
+  // Prompt 34: with no database the route cannot know whether a chunk has rows,
+  // so it answers 503 + Retry-After with a tiny valid XML body. It never answers
+  // a bare 500 and never a 200 with an empty urlset.
   for (const file of ["episodes-1.xml", "anime-1.xml"]) {
     const response = await chunkRoute(new Request(`http://localhost/sitemaps/${file}`), { params: { file } });
-    assert.equal(response.status, 200, `${file} resolves`);
+    assert.equal(response.status, 503, `${file} reports an outage, not a missing file`);
+    assert.equal(response.headers.get("retry-after"), "3600");
     const body = await response.text();
     assert.match(body, /^<\?xml/);
-    assert.match(body, /<urlset/);
-    assert.match(String(response.headers.get("cache-control")), /s-maxage=3600/, "chunk files stay cached");
+    assert.match(body, /<error/);
   }
 });
 
@@ -254,7 +266,7 @@ test("the index lists static.xml first, then new.xml, then the right chunk count
 // ----------------------------------------------------------------- static.xml
 
 test("static.xml lists only the indexable static pages that exist", async () => {
-  const response = await staticRoute();
+  const response = await staticRoute(new Request("http://localhost/sitemaps/static.xml"));
   const body = await response.text();
 
   assert.equal(response.status, 200);
@@ -377,6 +389,9 @@ test("a bulk-written row with no air_date is never treated as just-aired", async
 // --------------------------------------------------------------- no inventions
 
 test("episodes chunks list only rows the view actually has", async () => {
+  // Prompt 34: this fake only has the old `sitemap_episodes` view, so pin the
+  // fallback path (the ranked view probe cannot know a table is missing here).
+  setRankedViewAvailableOverride(false);
   const db = new CappedDb({
     // Gaps on purpose: episodes 2, 3 and 4 do not exist.
     sitemap_episodes: [episodeRow(100, 1, hoursAgo(10)), episodeRow(100, 5, hoursAgo(9)), episodeRow(100, 9, hoursAgo(8))],
@@ -387,6 +402,7 @@ test("episodes chunks list only rows the view actually has", async () => {
 
   const episodes = [...xml.matchAll(/ep=(\d+)/g)].map((match) => Number(match[1]));
   assert.deepEqual(episodes, [1, 5, 9], "no 1..N generation");
+  resetRankedProbe();
 
   // Malformed view rows are dropped, never guessed.
   assert.equal(parseSitemapEpisode({ anilist_id: 1, episode_number: 0 }), null);

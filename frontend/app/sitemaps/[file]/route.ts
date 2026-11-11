@@ -1,14 +1,14 @@
-import {
-  buildEpisodesSitemap,
-  buildMediaSitemap,
-  fetchEpisodeSlice,
-  fetchMediaSlice,
-  getSitemapDb,
-  parseSitemapFileName,
-  xmlResponse,
-} from "@/lib/sitemap";
+import { buildChunkSitemap, parseSitemapFileName, formatError } from "@/lib/sitemap";
+import { loadSitemap, sitemapErrorResponse, sitemapHttpResult } from "@/lib/sitemap-cache";
 
-export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+/**
+ * Prompt 34: no more `force-dynamic`. Every crawler hit used to re-walk the
+ * database (ten or more sequential queries for one chunk). The file is now
+ * cached per name by `unstable_cache` (tag `sitemap`, revalidate 3600) and by
+ * the in-process cache in lib/sitemap-cache, and Cloudflare may cache it too -
+ * see docs/sitemap-cloudflare.md.
+ */
 export const revalidate = 3600;
 
 /**
@@ -21,30 +21,46 @@ export const revalidate = 3600;
  * 404 for /sitemaps/episodes-1.xml. The parameter is parsed here instead, strictly
  * /^(episodes|anime)-(\d+)\.xml$/ - anything else is a 404.
  *
- * Content still comes from the same helpers the old routes called: episodes from
- * the `sitemap_episodes` view (never an invented 1..N range), anime pages from the
- * `anime` table (discovered-but-never-imported rows have no page to index).
+ * Answers:
+ *   200 + the XML (ETag, Last-Modified, s-maxage)   - the normal case
+ *   304                                             - the crawler already has it
+ *   404                                             - no such chunk, or a chunk
+ *                                                     with no rows (episodes-15..19
+ *                                                     used to answer 200 with an
+ *                                                     empty urlset)
+ *   503 + Retry-After                               - the build failed and there is
+ *                                                     no cached copy to serve
  */
-export async function GET(_request: Request, context: { params: { file: string } }) {
+export async function GET(request: Request, context: { params: { file: string } }) {
+  const started = Date.now();
   const file = parseSitemapFileName(context.params?.file);
 
   if (!file) {
-    return new Response(
-      `<?xml version="1.0" encoding="UTF-8"?><error>Unknown sitemap file</error>`,
-      {
-        status: 404,
-        headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "no-store" },
-      },
+    return sitemapErrorResponse(404, "Unknown sitemap file");
+  }
+
+  const key = `sitemap:${file.kind}:${file.page}`;
+
+  try {
+    const served = await loadSitemap(key, () => buildChunkSitemap(file));
+
+    if (served.payload.empty) {
+      // A chunk past the end of the data: 404, never a 200 with an empty urlset.
+      console.warn(
+        `[sitemap] empty chunk file=${file.kind}-${file.page}.xml step=build elapsed_ms=${
+          Date.now() - started
+        } - answering 404`,
+      );
+      return sitemapErrorResponse(404, "No rows for this sitemap chunk");
+    }
+
+    return sitemapHttpResult(served, request);
+  } catch (error) {
+    console.error(
+      `[sitemap] chunk failed file=${file.kind}-${file.page}.xml page=${file.page} step=serve elapsed_ms=${
+        Date.now() - started
+      } error=${formatError(error)}`,
     );
+    return sitemapErrorResponse(503, "Sitemap temporarily unavailable", { "Retry-After": "3600" });
   }
-
-  const db = getSitemapDb();
-
-  if (file.kind === "episodes") {
-    const episodes = await fetchEpisodeSlice(db, file.page);
-    return xmlResponse(buildEpisodesSitemap(episodes), 3600);
-  }
-
-  const media = await fetchMediaSlice(db, file.page);
-  return xmlResponse(buildMediaSitemap(media), 3600);
 }

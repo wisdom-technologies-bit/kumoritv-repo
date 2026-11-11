@@ -89,6 +89,26 @@ body {
   max-width: 100vw;
 }
 
+/* PROMPT 34 - THE DOCUMENT ITSELF CANNOT SCROLL SIDEWAYS ON PHONES.
+   The hero trailer is a 16:9 "cover" frame (~980px wide inside a 360px hero),
+   so on any engine that fails to clip the composited iframe the whole document
+   used to become wider than the screen. The hero clips its own box (see
+   carouselComponent.module.css); this is the page-level safety net for
+   everything else - recommendation rows, swipers, future components.
+
+   `overflow-x: clip` does NOT create a scroll container, so `position: sticky`
+   (the header) keeps working and no element gains a scrollbar; the `hidden`
+   line before it is only the fallback for engines without `clip`. Phones only:
+   desktop layout, sticky behaviour and modals are untouched. */
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: hidden;
+    overflow-x: clip;
+    max-width: 100%;
+  }
+}
+
 body {
   min-height: 75vh;
   background-color: var(--background);

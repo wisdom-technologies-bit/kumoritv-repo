@@ -177,8 +177,11 @@ test("a 10000-row chunk comes back whole and in order, not capped at 1000", asyn
   const keys = new Set(rows.map((row) => `${row.anilist_id}-${row.episode_number}`));
   assert.equal(keys.size, 10000, "no duplicates");
 
-  assert.equal(db.requests.length, 10, "ten 1000-row pages, one per request");
-  for (const request of db.requests) {
+  // Prompt 34: the read now first probes sitemap_episodes_ranked (one request,
+  // empty here), so count only the pages served by the legacy view.
+  const pages = db.requests.filter((request) => request.table === "sitemap_episodes");
+  assert.equal(pages.length, 10, "ten 1000-row pages, one per request");
+  for (const request of pages) {
     assert.ok(request.returned <= 1000, "the fake never served more than 1000 rows");
     assert.ok(request.to - request.from + 1 <= ROW_PAGE_SIZE, "each request stays inside one page");
   }
@@ -215,7 +218,11 @@ test("a chunk that ends mid-page stops after the short page", async () => {
 
   const rows = await fetchEpisodeSlice(db as never, 1, 1200);
   assert.equal(rows.length, 1200, "the chunk size is respected, not the table size");
-  assert.equal(db.requests.length, 2, "one full page plus the partial one");
+  assert.equal(
+    db.requests.filter((request) => request.table === "sitemap_episodes").length,
+    2,
+    "one full page plus the partial one",
+  );
 });
 
 test("media chunks use the same paged read", async () => {

@@ -4,8 +4,18 @@
        viewport width and anything a slide paints outside it is clipped here.
        `clip` (where supported) does the same job as `hidden` without turning
        the section into a scroll container; the `hidden` line stays as the
-       fallback for older engines. This is defence in depth only - the real fix
-       is the contained trailer box below. */
+       fallback for older engines.
+
+       Prompt 34: the clipping can no longer depend on one mechanism. A
+       composited cross-origin iframe (YouTube) can escape `overflow` clipping
+       on Android Chrome, which is how a ~980px-wide player inside a 360px hero
+       still widened the whole page after Prompt 33.
+
+       None of that may cost layout or pixels on desktop, so the extra clips
+       (clip-path, its own stacking context, paint containment) are phones-only
+       - see the max-width: 767px block below. `overflow: hidden` or
+       `contain: paint` here would also stop a 24px child margin collapsing
+       through the section and move the whole desktop hero by 24px. */
     overflow-x: hidden;
     overflow-x: clip;
     max-width: 100vw;
@@ -91,16 +101,30 @@ ul.carousel_container li.carousel_item {
     inset: 0;
 
     /* The player can never leak out of the slide again (this is what pushed the
-       whole page wider on Android Chrome). */
+       whole page wider on Android Chrome).
+
+       Prompt 34: `overflow: hidden` plus `contain: paint` alone were not
+       enough - Android Chrome keeps a composited cross-origin iframe outside
+       that clip when the containing layer is promoted. `clip-path: inset(0)`
+       is applied by the compositor to the layer itself, so the frame is
+       cropped even when the paint clip is lost, and `contain: strict` makes
+       the box independent of anything it contains. All of this is on the
+       frame's own parent: the clip never relies on an ancestor. */
     overflow: hidden;
+    clip-path: inset(0);
     contain: paint;
+    contain: strict;
 
     /* Decorative only: the layer sits behind the artwork scrim, the info block
        and the buttons, and never swallows their clicks. */
     pointer-events: none;
     z-index: 0;
+    isolation: isolate;
 
-    /* Enables the cqw / cqh units used by the frame below. */
+    /* Enables the cqw / cqh units used by the frame below. Prompt 34 keeps the
+       sizing container and the clip on the same box: size containment is what
+       `container-type: size` already establishes, so `contain: strict` does
+       not change how the cq units resolve. */
     container-type: size;
 
 }
@@ -299,6 +323,15 @@ ul.carousel_container li.carousel_item div.item_info {
 }
 
 @media (max-width: 767px) {
+    /* Prompt 34: on phones the hero band also gets a compositor clip
+       (`clip-path` is applied to the layer itself, so a composited iframe
+       cannot paint outside it even when the paint clip is lost) and its own
+       stacking context. Paint-only, so no box moves. */
+    #hero_section_container {
+        clip-path: inset(0);
+        isolation: isolate;
+    }
+
     /* Prompt 32: the info block is a flex column with `align-items: center`,
        so every child used to shrink to its own content - the buttons were as
        wide as the longest label on that slide. These rules give the block a
