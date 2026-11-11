@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import type { SitemapPayload } from "@/lib/sitemap-cache";
 import { fetchAiringWindow } from "@/app/lib/discovery/anilist";
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top").replace(/\/$/, "");
@@ -44,6 +45,25 @@ export function parseSitemapFileName(file: string | undefined | null): SitemapFi
  */
 export const SITEMAP_EPISODES_VIEW = "sitemap_episodes";
 
+/**
+ * Prompt 34: the ranked MATERIALIZED view (docs/sql/sitemap-chunks.sql).
+ *
+ * The old view has no storage, so chunk N cost an OFFSET deep into a re-sorted
+ * join: ~1.4 s for chunk 1, ~13.7 s past row 40,000, and the slowest reads came
+ * back as HTTP 500. `sitemap_episodes_ranked` stores the same rows once with a
+ * dense `rn` and a unique index on it, so a chunk is
+ * `rn between (N-1)*10000+1 and N*10000`: an index range scan, ~0.2 ms at any
+ * depth in the stand-in.
+ *
+ * The view is created by a SQL file the owner runs by hand, so the code must
+ * keep working before it exists: every read below falls back to the old view.
+ */
+export const SITEMAP_EPISODES_RANKED_VIEW = "sitemap_episodes_ranked";
+
+/** Sitemap protocol ceilings per file. A chunk is CHUNK_SIZE (10,000) today. */
+export const SITEMAP_MAX_URLS_PER_FILE = 50000;
+export const SITEMAP_MAX_BYTES_PER_FILE = 50 * 1024 * 1024;
+
 export type SitemapEpisode = {
   anilist_id: number;
   episode_number: number;
@@ -68,6 +88,26 @@ export function indexDoc(files: Array<{ loc: string; lastmod?: string }>) { retu
 
 /** Supabase-shaped client. The view is not in the generated types, so it is `any`. */
 export type SitemapDb = { from: (table: string) => any };
+
+/**
+ * PostgREST hands back plain `{ message, details, hint, code }` objects rather
+ * than Error instances, so `String(error)` printed "[object Object]" in the log
+ * line that is supposed to explain a production sitemap failure.
+ */
+export function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const candidate = error as { message?: unknown; error?: { message?: unknown }; code?: unknown } | null;
+  const message = candidate?.message ?? candidate?.error?.message;
+  const code = candidate?.code ?? (candidate?.error as { code?: unknown } | undefined)?.code;
+  if (typeof message === "string" && message) return code ? `${message} (code ${String(code)})` : message;
+  try {
+    const json = JSON.stringify(error);
+    if (json && json !== "{}") return json;
+  } catch {
+    /* fall through */
+  }
+  return "unknown error";
+}
 
 export function getSitemapDb(): SitemapDb | null {
   return createAdminClient() as unknown as SitemapDb | null;
@@ -161,17 +201,201 @@ export async function countRows(db: SitemapDb | null, table: string): Promise<nu
   return Number(count) || 0;
 }
 
-/** One chunk (CHUNK_SIZE rows) of playable episodes, ordered by id then episode. */
+/**
+ * Chunk N covers the dense rank range [start, end]:
+ *   start = (N - 1) * size + 1, end = N * size.
+ * `rn` is 1-based, so `chunkRange(1, 10000) === { start: 1, end: 10000 }` and
+ * `chunkRange(4, 10000)` starts at row 30,001.
+ */
+export function chunkRange(page: number, size = CHUNK_SIZE): { start: number; end: number } {
+  const safePage = Math.max(1, Math.floor(Number(page)) || 1);
+  const safeSize = Math.max(1, Math.floor(Number(size)) || CHUNK_SIZE);
+  return { start: (safePage - 1) * safeSize + 1, end: safePage * safeSize };
+}
+
+/** How many files of `size` rows a table of `rows` rows needs. */
+export const chunkCountFor = (rows: number, size = CHUNK_SIZE) =>
+  Math.max(0, Math.ceil((Number(rows) || 0) / Math.max(1, Math.floor(size) || CHUNK_SIZE)));
+
+const RANKED_PROBE_TTL_MS = 5 * 60 * 1000;
+/**
+ * The answer is cached per client, not per module: each request builds its own
+ * client (and every test builds its own fake), so a module-wide flag would let
+ * one client's "the ranked view exists" leak into another's reads.
+ */
+const rankedProbes = new WeakMap<object, { available: boolean; checkedAt: number }>();
+let rankedOverride: boolean | null = null;
+
+/** Test seam: forget the cached "does the ranked view exist" answer. */
+export function resetRankedProbe() {
+  rankedOverride = null;
+  lastGoodEpisodeRows = null;
+}
+
+/**
+ * Test seam: pretend the ranked view exists (or does not) without a database.
+ * `null` restores the real probe.
+ */
+export function setRankedViewAvailableOverride(value: boolean | null) {
+  rankedOverride = value;
+}
+
+/**
+ * Does `sitemap_episodes_ranked` exist yet? PostgREST answers 42P01 /
+ * PGRST205 until the owner runs docs/sql/sitemap-chunks.sql, and the answer is
+ * cached for a few minutes so a missing view is not probed on every request.
+ */
+export async function rankedViewAvailable(db: SitemapDb | null): Promise<boolean> {
+  if (rankedOverride !== null) return rankedOverride;
+  if (!db) return false;
+  const now = Date.now();
+  const cached = rankedProbes.get(db as object);
+  if (cached && now - cached.checkedAt < RANKED_PROBE_TTL_MS) return cached.available;
+  let available = false;
+  try {
+    // A missing view is an error (42P01 / PGRST205); an existing but empty view
+    // returns no rows. Both mean "nothing to read up there", so the fallback is
+    // the right answer either way - and treating an empty answer as unavailable
+    // keeps a fake client that has no such table from looking like one.
+    const { data, error } = await db.from(SITEMAP_EPISODES_RANKED_VIEW).select("rn").limit(1);
+    available = !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    available = false;
+  }
+  rankedProbes.set(db as object, { available, checkedAt: now });
+  return available;
+}
+
+/**
+ * One chunk (CHUNK_SIZE rows) of playable episodes, ordered by id then episode.
+ *
+ * Ranked path: `rn between start and end`, paged at PostgREST's 1000-row cap -
+ * an index range scan, so chunk 40 costs what chunk 1 costs.
+ * Fallback path: the old offset walk over the un-materialised view, unchanged,
+ * so deploying before the SQL lands cannot break the sitemaps.
+ */
 export async function fetchEpisodeSlice(db: SitemapDb | null, page: number, size = CHUNK_SIZE): Promise<SitemapEpisode[]> {
-  const from = (Math.max(1, page) - 1) * size;
+  const { start, end } = chunkRange(page, size);
+
+  if (await rankedViewAvailable(db)) {
+    try {
+      const ranked = await readRowsPaged<any>(db, {
+        table: SITEMAP_EPISODES_RANKED_VIEW,
+        columns: "rn,anilist_id,episode_number,updated_at,air_date",
+        order: ["rn"],
+        // The rn filter below already restricts the rows to this chunk, so the
+        // page offsets start at 0: no OFFSET is ever pushed to the database.
+        chunkStart: 0,
+        chunkEnd: end - start,
+        filters: (query: any) =>
+          typeof query?.gte === "function" && typeof query?.lte === "function"
+            ? query.gte("rn", start).lte("rn", end)
+            : query,
+      });
+      return ranked.map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
+    } catch (error) {
+      // The view is being recreated (SQL editor run) or the read timed out:
+      // read the old view for this request instead of failing the sitemap, and
+      // stop probing the ranked view for a while.
+      console.error(
+        `[sitemap] ranked read failed page=${page} rn=${start}-${end} step=read error=${
+          formatError(error)
+        } - falling back to ${SITEMAP_EPISODES_VIEW}`,
+      );
+      if (db) rankedProbes.set(db as object, { available: false, checkedAt: Date.now() });
+    }
+  }
+
+  const from = start - 1;
   const rows = await readRowsPaged<any>(db, {
     table: SITEMAP_EPISODES_VIEW,
     columns: "anilist_id,episode_number,updated_at,air_date",
     order: ["anilist_id", "episode_number"],
     chunkStart: from,
-    chunkEnd: from + size - 1,
+    chunkEnd: end - 1,
   });
   return rows.map(parseSitemapEpisode).filter((row): row is SitemapEpisode => row !== null);
+}
+
+/** Total playable episodes: max(rn) on the ranked view (one index step), else count(*). */
+export async function episodeRowCount(db: SitemapDb | null, size = CHUNK_SIZE): Promise<number> {
+  void size;
+  if (await rankedViewAvailable(db)) {
+    const { data, error } = await db!
+      .from(SITEMAP_EPISODES_RANKED_VIEW)
+      .select("rn")
+      .order("rn", { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return Number(data?.[0]?.rn) || 0;
+  }
+  return countRows(db, SITEMAP_EPISODES_VIEW);
+}
+
+let lastGoodEpisodeRows: number | null = null;
+
+/** For the health/cron routes and tests. */
+export function peekLastGoodEpisodeRows() {
+  return lastGoodEpisodeRows;
+}
+
+/**
+ * The index's chunk count. `count: 'exact'` on the heavy view is what used to
+ * time out and silently list too few (or too many) chunks, so:
+ *   - the ranked view answers with max(rn), the same data the chunk route reads;
+ *   - a failed read reuses the last successful count instead of dropping chunks;
+ *   - the count never shrinks quietly either: a smaller answer is logged.
+ */
+export async function episodeChunkCountStable(
+  db: SitemapDb | null,
+  size = CHUNK_SIZE,
+): Promise<{ chunks: number; rows: number; source: "ranked" | "view" | "last-good" | "none" }> {
+  const ranked = await rankedViewAvailable(db);
+  try {
+    const rows = await episodeRowCount(db, size);
+    if (rows > 0 || lastGoodEpisodeRows === null) {
+      if (lastGoodEpisodeRows !== null && rows < lastGoodEpisodeRows) {
+        console.warn(
+          `[sitemap] episode rows dropped rows=${rows} previous=${lastGoodEpisodeRows} source=${
+            ranked ? "ranked" : "view"
+          }`,
+        );
+      }
+      lastGoodEpisodeRows = rows;
+      return { chunks: chunkCountFor(rows, size), rows, source: ranked ? "ranked" : "view" };
+    }
+    return { chunks: chunkCountFor(lastGoodEpisodeRows, size), rows: lastGoodEpisodeRows, source: "last-good" };
+  } catch (error) {
+    console.error(
+      `[sitemap] episode count failed step=count source=${ranked ? "ranked" : "view"} error=${
+        formatError(error)
+      }`,
+    );
+    if (lastGoodEpisodeRows !== null) {
+      return { chunks: chunkCountFor(lastGoodEpisodeRows, size), rows: lastGoodEpisodeRows, source: "last-good" };
+    }
+    return { chunks: 0, rows: 0, source: "none" };
+  }
+}
+
+/** max(updated_at) of one episode chunk, for the index's <lastmod>. Null when unknown. */
+export async function episodeChunkLastmod(db: SitemapDb | null, page: number, size = CHUNK_SIZE): Promise<string | null> {
+  if (!(await rankedViewAvailable(db))) return null;
+  const { start, end } = chunkRange(page, size);
+  try {
+    const { data, error } = await db!
+      .from(SITEMAP_EPISODES_RANKED_VIEW)
+      .select("updated_at")
+      .gte("rn", start)
+      .lte("rn", end)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (error) return null;
+    const value = data?.[0]?.updated_at;
+    return typeof value === "string" && value ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** One chunk of imported anime (media pages). */
@@ -310,13 +534,23 @@ export function buildStaticSitemap(pages = STATIC_SITEMAP_PAGES): string {
  * counts come from the same source each file pages through (anime table for
  * anime-*, the sitemap_episodes view for episodes-*).
  */
-export function sitemapIndexFiles(animeCount: number, episodeCount: number): Array<{ loc: string }> {
+export function sitemapIndexFiles(
+  animeCount: number,
+  episodeCount: number,
+  lastmods: { anime?: Record<number, string | null>; episodes?: Record<number, string | null> } = {},
+): Array<{ loc: string; lastmod?: string }> {
   const chunksFor = (count: number) => Math.max(0, Math.ceil((Number(count) || 0) / CHUNK_SIZE));
+  const withLastmod = (loc: string, lastmod?: string | null) =>
+    lastmod ? { loc, lastmod } : { loc };
   return [
     { loc: `${SITE_URL}/sitemaps/static.xml` },
     { loc: `${SITE_URL}/sitemaps/new.xml` },
-    ...Array.from({ length: chunksFor(animeCount) }, (_, index) => ({ loc: `${SITE_URL}/sitemaps/anime-${index + 1}.xml` })),
-    ...Array.from({ length: chunksFor(episodeCount) }, (_, index) => ({ loc: `${SITE_URL}/sitemaps/episodes-${index + 1}.xml` })),
+    ...Array.from({ length: chunksFor(animeCount) }, (_, index) =>
+      withLastmod(`${SITE_URL}/sitemaps/anime-${index + 1}.xml`, lastmods.anime?.[index + 1]),
+    ),
+    ...Array.from({ length: chunksFor(episodeCount) }, (_, index) =>
+      withLastmod(`${SITE_URL}/sitemaps/episodes-${index + 1}.xml`, lastmods.episodes?.[index + 1]),
+    ),
   ];
 }
 
@@ -324,3 +558,212 @@ export async function recentAiringTopUp() {
   try { const page = await fetchAiringWindow(Math.floor(Date.now() / 1000) - 21600, Math.floor(Date.now() / 1000), 1); return (page.airingSchedules || []).filter((item: any) => item.airingAt <= Date.now() / 1000); } catch { return []; }
 }
 export const chunks = <T,>(items: T[], size = CHUNK_SIZE) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+
+/* -------------------------------------------------------------------------- */
+/* Prompt 34 Part B: one payload per sitemap file, with its own cache + limits */
+/* -------------------------------------------------------------------------- */
+
+
+/**
+ * The limits every produced file is checked against before it is cached or
+ * served: 50,000 URLs and 50 MB per file. A chunk is 10,000 URLs today, so a
+ * breach means CHUNK_SIZE or the row mapping changed, not that Google is wrong.
+ */
+export function assertSitemapWithinLimits(label: string, payload: SitemapPayload): SitemapPayload {
+  const bytes = Buffer.byteLength(payload.body, "utf8");
+  if (payload.urls > SITEMAP_MAX_URLS_PER_FILE) {
+    throw new Error(`sitemap ${label} has ${payload.urls} URLs (limit ${SITEMAP_MAX_URLS_PER_FILE})`);
+  }
+  if (bytes > SITEMAP_MAX_BYTES_PER_FILE) {
+    throw new Error(`sitemap ${label} is ${bytes} bytes (limit ${SITEMAP_MAX_BYTES_PER_FILE})`);
+  }
+  return payload;
+}
+
+/** /sitemaps/episodes-N.xml and /sitemaps/anime-N.xml. */
+export async function buildChunkSitemap(
+  file: SitemapFile,
+  db: SitemapDb | null = getSitemapDb(),
+): Promise<SitemapPayload> {
+  // No client means we cannot know whether the chunk is empty: that is an
+  // outage (503), never an empty file (404).
+  if (!db) throw new Error("supabase admin client unavailable");
+
+  if (file.kind === "episodes") {
+    const episodes = await fetchEpisodeSlice(db, file.page);
+    const lastModified = episodes.length ? await episodeChunkLastmod(db, file.page) : null;
+    return assertSitemapWithinLimits(`episodes-${file.page}`, {
+      body: buildEpisodesSitemap(episodes),
+      urls: episodes.length,
+      lastModified: lastModified ?? (episodes[0]?.updated_at ?? null),
+      empty: episodes.length === 0,
+    });
+  }
+
+  const media = await fetchMediaSlice(db, file.page);
+  return assertSitemapWithinLimits(`anime-${file.page}`, {
+    body: buildMediaSitemap(media),
+    urls: media.length,
+    lastModified: media[0]?.updated_at ?? null,
+    empty: media.length === 0,
+  });
+}
+
+/** /sitemap.xml - lists exactly the chunks that have rows, with per-chunk lastmod. */
+export async function buildSitemapIndexPayload(
+  db: SitemapDb | null = getSitemapDb(),
+): Promise<SitemapPayload> {
+  const [{ chunks: episodeChunks }, animeRows] = await Promise.all([
+    episodeChunkCountStable(db),
+    countRows(db, "anime").catch((error) => {
+      console.error(`[sitemap] anime count failed step=count error=${formatError(error)}`);
+      return 0;
+    }),
+  ]);
+
+  const lastmods: { episodes?: Record<number, string | null>; anime?: Record<number, string | null> } = {};
+  const episodePages = Array.from({ length: episodeChunks }, (_, index) => index + 1);
+  const settled = await Promise.all(
+    episodePages.map((page) => episodeChunkLastmod(db, page).catch(() => null)),
+  );
+  if (settled.some(Boolean)) {
+    lastmods.episodes = Object.fromEntries(episodePages.map((page, index) => [page, settled[index]]));
+  }
+
+  const files = sitemapIndexFiles(animeRows, episodeChunks * CHUNK_SIZE, lastmods);
+  return assertSitemapWithinLimits("index", {
+    body: indexDoc(files),
+    urls: files.length,
+    lastModified: settled.find(Boolean) ?? null,
+    empty: files.length === 0,
+  });
+}
+
+/** /sitemaps/new.xml */
+export async function buildRecentSitemapPayload(
+  db: SitemapDb | null = getSitemapDb(),
+): Promise<SitemapPayload> {
+  const [episodes, topUp] = await Promise.all([
+    fetchRecentEpisodes(db, RECENT_WINDOW_HOURS).catch((error) => {
+      console.error(`[sitemap] new.xml rows failed step=recent error=${formatError(error)}`);
+      return [] as SitemapEpisode[];
+    }),
+    recentAiringTopUp(),
+  ]);
+  const body = buildRecentSitemap(episodes, topUp);
+  return assertSitemapWithinLimits("new", {
+    body,
+    urls: (body.match(/<url>/g) || []).length,
+    lastModified: episodes[0]?.air_date ?? null,
+    empty: false,
+  });
+}
+
+/** /sitemaps/static.xml */
+export function buildStaticSitemapPayload(): SitemapPayload {
+  const body = buildStaticSitemap(STATIC_SITEMAP_PAGES);
+  return assertSitemapWithinLimits("static", {
+    body,
+    urls: STATIC_SITEMAP_PAGES.length,
+    lastModified: null,
+    empty: false,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Prompt 34 Part B: pre-warm + one-call health report                        */
+/* -------------------------------------------------------------------------- */
+
+import { loadSitemap, type SitemapServed } from "@/lib/sitemap-cache";
+
+export type SitemapReport = {
+  file: string;
+  status: number;
+  ms: number;
+  bytes: number;
+  urls: number;
+};
+
+/** Every file this site publishes, in index order. */
+export async function sitemapFileList(db: SitemapDb | null = getSitemapDb()): Promise<string[]> {
+  const [{ chunks: episodeChunks }, animeRows] = await Promise.all([
+    episodeChunkCountStable(db),
+    countRows(db, "anime").catch(() => 0),
+  ]);
+  const animeChunks = chunkCountFor(animeRows);
+  return [
+    "sitemap.xml",
+    "static.xml",
+    "new.xml",
+    ...Array.from({ length: animeChunks }, (_, index) => `anime-${index + 1}.xml`),
+    ...Array.from({ length: episodeChunks }, (_, index) => `episodes-${index + 1}.xml`),
+  ];
+}
+
+async function buildOne(
+  file: string,
+  db: SitemapDb | null,
+  fresh: boolean,
+): Promise<{ served: SitemapServed | null; isIndex: boolean }> {
+  if (file === "sitemap.xml") {
+    return { served: await loadSitemap("sitemap:index", () => buildSitemapIndexPayload(db), { fresh }), isIndex: true };
+  }
+  if (file === "static.xml") {
+    return { served: await loadSitemap("sitemap:static", async () => buildStaticSitemapPayload(), { fresh }), isIndex: false };
+  }
+  if (file === "new.xml") {
+    return { served: await loadSitemap("sitemap:new", () => buildRecentSitemapPayload(db), { fresh }), isIndex: false };
+  }
+  const parsed = parseSitemapFileName(file);
+  if (!parsed) return { served: null, isIndex: false };
+  return {
+    served: await loadSitemap(`sitemap:${parsed.kind}:${parsed.page}`, () => buildChunkSitemap(parsed, db), { fresh }),
+    isIndex: false,
+  };
+}
+
+/**
+ * Builds the index and every child through the same cached path the crawler
+ * hits, and reports what happened to each one. Used by the refresh cron to
+ * pre-warm (so the next crawler gets a warm file) and by the sitemap-check
+ * health route.
+ */
+export async function buildSitemapReport(
+  db: SitemapDb | null = getSitemapDb(),
+  options: { fresh?: boolean; budgetMs?: number; files?: string[] } = {},
+): Promise<SitemapReport[]> {
+  const fresh = options.fresh ?? true;
+  const files = options.files ?? (await sitemapFileList(db));
+  const started = Date.now();
+  const budget = options.budgetMs ?? 100000;
+  const report: SitemapReport[] = [];
+
+  for (const file of files) {
+    if (Date.now() - started > budget) break;
+    const at = Date.now();
+    try {
+      const { served, isIndex } = await buildOne(file, db, fresh);
+      if (!served) {
+        report.push({ file, status: 404, ms: Date.now() - at, bytes: 0, urls: 0 });
+        continue;
+      }
+      report.push({
+        file,
+        // An empty index is a real (bad) state, not a missing file.
+        status: served.payload.empty && !isIndex ? 404 : 200,
+        ms: Date.now() - at,
+        bytes: Buffer.byteLength(served.payload.body, "utf8"),
+        urls: served.payload.urls,
+      });
+    } catch (error) {
+      report.push({ file, status: 503, ms: Date.now() - at, bytes: 0, urls: 0 });
+      console.error(
+        `[sitemap] report item failed file=${file} elapsed_ms=${Date.now() - at} error=${
+          formatError(error)
+        }`,
+      );
+    }
+  }
+
+  return report;
+}
