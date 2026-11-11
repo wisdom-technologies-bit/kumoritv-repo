@@ -199,16 +199,23 @@ function HeroCarousel({
             >
               {shouldShowTrailer && currentTrailerId && (
                 <AnimatePresence>
-                  <motion.div className={styles.video_container}>
-                    <motion.iframe
-                      /* One frame per video: a new slide never reuses the
-                         previous trailer's player. */
-                      key={currentTrailerId}
+                  {/* Prompt 34: framer-motion fades in the WRAPPING LAYER only
+                      (opacity). The frame itself is a plain <iframe>, so no
+                      library can ever write an inline `transform` that
+                      replaces the CSS 16:9 cover transform and offsets the
+                      player out of its clipped box. */}
+                  <motion.div
+                    /* One layer per video: a new slide never reuses the
+                       previous trailer's player. */
+                    key={currentTrailerId}
+                    className={styles.video_container}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 3 }}
+                  >
+                    <iframe
                       ref={trailerFrameRef}
                       onLoad={onTrailerFrameLoad}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 3 }}
                       src={buildYoutubeEmbedSrc(currentTrailerId, {
                         autoplay: true,
                         loop: true,
