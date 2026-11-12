@@ -29,6 +29,8 @@ import {
   WATCH_ERROR_GENERIC,
 } from "@/app/lib/watch/errors";
 import { useWatchState } from "../WatchState";
+import ClipEndCard from "../ClipEndCard";
+import { useClipBridge } from "../ClipBridge/context";
 
 const HLS_CONFIG = {
   autoStartLoad: true,
@@ -84,6 +86,14 @@ type Props = {
   /** Next episode number, when one actually exists (auto-next). */
   nextEpisode?: number | null;
   onResolved?: (data: any) => void;
+  /**
+   * Prompt 35: play only this range and stop at its end. `mode: "clip"` is the
+   * /clip/[code] page (offers the full episode), `"watch"` is a plain watch URL
+   * with ?t=&end= (offers "keep watching").
+   */
+  clip?: { start: number; end: number; mode: "clip" | "watch"; fullEpisodeHref?: string } | null;
+  /** A clip page must never overwrite the viewer's episode progress. */
+  trackProgress?: boolean;
 };
 
 export default function VideoPlayer({
@@ -98,6 +108,8 @@ export default function VideoPlayer({
   cover,
   nextEpisode,
   onResolved,
+  clip,
+  trackProgress = true,
 }: Props) {
   const playerRef = useRef<any>(null);
   const progressRef = useRef({ time: initialTime, duration: 0 });
@@ -110,6 +122,13 @@ export default function VideoPlayer({
     switched: false,
   });
   const watch = useWatchState();
+  const clipBridge = useClipBridge();
+  const [clipEnded, setClipEnded] = useState(false);
+  // "Watch from here" releases the range: otherwise the very next timeupdate
+  // still sees currentTime >= end and pauses again immediately.
+  const clipReleasedRef = useRef(false);
+  const clipRef = useRef(clip);
+  clipRef.current = clip;
   const renders = useRef(0);
   renders.current++;
   const [dbg, setDbg] = useState<string[] | null>(null);
@@ -365,6 +384,14 @@ export default function VideoPlayer({
     firstSaveDoneRef.current = false;
   }, [anilistId, episode, audio]);
 
+  // A new source (server switch) has to start at the clip's beginning again.
+  useEffect(() => {
+    resumeRef.current = false;
+    clipReleasedRef.current = false;
+    setClipEnded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId]);
+
   const seekTo = (time: number) => {
     const player: any = playerRef.current;
     if (!player) return;
@@ -373,7 +400,62 @@ export default function VideoPlayer({
     else player.currentTime = time;
   };
 
+  // Prompt 35: the toolbar's Clip button talks to the player through this tiny
+  // API; nothing else is shared, so playback stays owned here.
+  const clipBridgeRef = useRef(clipBridge);
+  clipBridgeRef.current = clipBridge;
+  const registerClipApi = clipBridge?.register;
+
+  useEffect(() => {
+    const bridge = clipBridgeRef.current;
+    if (!bridge) return;
+    bridge.register({
+      getTime: () => {
+        const value = Number(
+          playerRef.current?.currentTime ?? progressRef.current.time ?? 0,
+        );
+        return Number.isFinite(value) ? value : 0;
+      },
+      getDuration: () => {
+        const value = Number(
+          progressRef.current.duration || playerRef.current?.state?.duration || 0,
+        );
+        return Number.isFinite(value) && value > 0 ? value : 0;
+      },
+      seek: (time: number) => seekTo(time),
+      play: () => {
+        void playerRef.current?.play?.();
+      },
+      pause: () => {
+        void playerRef.current?.pause?.();
+      },
+      // An embed is an iframe on someone else's origin: no currentTime, no seek.
+      isEmbed: Boolean(embedSource),
+      hasSource: Boolean(embedSource || source),
+    });
+    return () => bridge.register(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerClipApi, embedSource, sourceId]);
+
+  const replayClip = () => {
+    if (!clipRef.current) return;
+    setClipEnded(false);
+    seekTo(clipRef.current.start);
+    void playerRef.current?.play?.();
+  };
+
+  const continuePastClip = () => {
+    if (!clipRef.current) return;
+    clipReleasedRef.current = true;
+    setClipEnded(false);
+    seekTo(clipRef.current.end);
+    void playerRef.current?.play?.();
+  };
+
   const persist = () => {
+    // A clip page plays a range, not the episode: saving that as progress would
+    // move the viewer's own place in the episode.
+    if (!trackProgress) return;
     const value = progressRef.current;
     if (value.time > 0)
       saveProgress(anilistId, {
@@ -451,6 +533,22 @@ export default function VideoPlayer({
 
     if (resumeRef.current) return;
     resumeRef.current = true;
+
+    // A clip always starts at its own beginning: saved progress is irrelevant.
+    if (clipRef.current) {
+      seekTo(clipRef.current.start);
+      // A clip link is a request to watch that range, so try to start playing.
+      // Browsers may still refuse an unmuted autoplay; the range and the end
+      // card behave the same as soon as the viewer presses play.
+      const startPlayback = () => {
+        const media: any = playerRef.current;
+        Promise.resolve(media?.play?.()).catch(() => {});
+      };
+      requestAnimationFrame(startPlayback);
+      setTimeout(startPlayback, 250);
+      return;
+    }
+
     const saved = getProgress(anilistId);
     const time =
       initialTime ||
@@ -579,8 +677,22 @@ export default function VideoPlayer({
                 setVisibleSkip(next);
               }
 
-              // Auto-skip: seek once per range, never twice.
-              if (prefs.autoSkip && next) {
+              clipBridge?.emitTime(current);
+
+              // A clip range is a contract: pause exactly at its end.
+              const activeClip = clipRef.current;
+              if (
+                activeClip &&
+                !clipReleasedRef.current &&
+                !clipEnded &&
+                current >= activeClip.end - 0.05
+              ) {
+                setClipEnded(true);
+                void playerRef.current?.pause?.();
+              }
+
+              // Auto-skip would jump outside the range the viewer asked for.
+              if (prefs.autoSkip && next && !activeClip) {
                 if (
                   shouldAutoSkip(
                     next.key,
@@ -672,6 +784,18 @@ export default function VideoPlayer({
                 </span>
               </button>
             )}
+
+            {/* Inside the player tree: the end card shows in fullscreen too. */}
+            {clip && clipEnded ? (
+              <ClipEndCard
+                start={clip.start}
+                end={clip.end}
+                mode={clip.mode}
+                fullEpisodeHref={clip.fullEpisodeHref}
+                onReplay={replayClip}
+                onContinue={continuePastClip}
+              />
+            ) : null}
           </MediaPlayer>
         )}
         {error && (

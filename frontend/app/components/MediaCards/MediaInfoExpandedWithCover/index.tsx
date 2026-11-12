@@ -55,7 +55,12 @@ export function Description({ description }: { description: string }) {
       {/* <input type='checkbox' className={styles.expand_description} /> */}
 
       {/* <span className={`${styles.paragrath_container} ${styles.watch_page_custom_line_limit}`}> */}
-      <p>{parse(description) || "Description Not Available"}</p>
+      {/* A <p> here nested the <p> tags parse() emits, which is invalid HTML:
+          the browser closes the outer one and hydration then fails (React
+          418/422), killing every handler on the page. */}
+      <div className={styles.description_text}>
+        {parse(description) || "Description Not Available"}
+      </div>
       {/* </span> */}
     </React.Fragment>
   );

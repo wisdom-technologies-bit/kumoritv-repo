@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Prompt 35 e2e harness artefacts (regenerate, see test-harness/clips-e2e/README.md)
+test-harness/clips-e2e/test.mp4
+test-harness/clips-e2e/screenshots/
+test-harness/clips-e2e/report.jsonl
+test-results/
+playwright-report/

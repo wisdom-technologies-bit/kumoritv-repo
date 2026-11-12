@@ -11,9 +11,12 @@
 // hrefs and the same disabled rules the controls row used before this prompt.
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import { usePrefs } from "@/app/lib/user-data/prefs";
 import { useWatchUI } from "../WatchLayout";
+import { useClipBridge } from "../ClipBridge/context";
+import { useWatchStateOptional } from "../WatchState";
 
 /** One size for every toolbar glyph (16px), filled or stroked. */
 function Icon({
@@ -62,6 +65,17 @@ const ICON = {
   next: "M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708",
 };
 
+/** Scissors, same 16px box as every other toolbar glyph. */
+function ClipIcon() {
+  return (
+    <Icon>
+      <circle cx="3.4" cy="4" r="1.9" />
+      <circle cx="3.4" cy="12" r="1.9" />
+      <path d="M5 5.2 13.2 12M5 10.8 13.2 4" />
+    </Icon>
+  );
+}
+
 export default function PlayerToolbar({
   anilistId,
   episode,
@@ -77,6 +91,35 @@ export default function PlayerToolbar({
   const ui = useWatchUI();
   const theater = ui?.theater ?? false;
   const lightsOff = ui?.lightsOff ?? false;
+
+  // Prompt 35: the player registers this when it has a real video element it
+  // can read and seek. Null (no provider, or nothing registered yet) simply
+  // means there is nothing to clip from here.
+  const bridge = useClipBridge();
+  const clipApi = bridge?.api ?? null;
+  const isEmbed = clipApi?.isEmbed === true;
+
+  // The server cannot know whether this source is a real video or an embed, so
+  // the first client render must match the server HTML exactly: everything
+  // clip-related renders hidden until after mount. (Rendering it conditionally
+  // up front made hydration fail, which killed every handler in the toolbar.)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const canClip = mounted && Boolean(clipApi) && !isEmbed && clipApi?.hasSource !== false;
+  // Server switching only matters for the embed notice, and it must never throw
+  // when the toolbar renders outside WatchState.
+  const watch = useWatchStateOptional();
+  const nextServer =
+    (watch?.servers ?? []).find((server) => server.id !== watch?.activeServerId) ?? null;
+
+  const openClip = () => {
+    if (!bridge) return;
+    if (typeof document !== "undefined" && document.fullscreenElement) {
+      bridge.toast("Exit fullscreen to clip");
+      return;
+    }
+    bridge.openClipPanel();
+  };
 
   return (
     <div className={styles.toolbar} role="toolbar" aria-label="Player options">
@@ -124,6 +167,19 @@ export default function PlayerToolbar({
         <span>Lights off</span>
       </button>
 
+      <button
+        type="button"
+        className={`${styles.tool} ${styles.clip_tool}`}
+        data-testid="clip-button"
+        title="Clip a moment of this episode"
+        hidden={mounted && !canClip}
+        disabled={!canClip}
+        onClick={openClip}
+      >
+        <ClipIcon />
+        <span className={styles.clip_label}>Clip</span>
+      </button>
+
       <div className={styles.nav}>
         {episode > 1 ? (
           <Link
@@ -155,6 +211,22 @@ export default function PlayerToolbar({
           </Link>
         )}
       </div>
+
+      {mounted && isEmbed ? (
+        <p className={styles.embed_notice} data-testid="clip-embed-notice">
+          Clipping is available on the HD player, switch server
+          {nextServer ? (
+            <button
+              type="button"
+              className={styles.embed_switch}
+              data-testid="clip-switch-server"
+              onClick={() => watch?.selectServer(nextServer.id)}
+            >
+              Switch server
+            </button>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   );
 }

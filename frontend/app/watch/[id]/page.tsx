@@ -40,6 +40,8 @@ import {
 import { WatchState } from "./components/WatchState";
 import { displayTitle } from "@/app/lib/titles";
 import { nextEpisodeNumber } from "@/app/lib/episodes/items";
+import ClipBridge from "./components/ClipBridge";
+import { parseWatchRange } from "@/app/lib/clips/url";
 
 const plain = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -113,12 +115,16 @@ export default async function WatchPage({
     audio?: string;
     dub?: string;
     t?: string;
+    end?: string;
   };
 }) {
   const id = Number(params.id);
   const media = await getMediaInfo({ id });
   if (!media) notFound();
   const ep = parseEpisodeNumber(searchParams.ep ?? searchParams.episode, media.format);
+  // Prompt 35: `?t=&end=` plays that range only. Bad values are ignored, so a
+  // mangled link still opens the episode at the start.
+  const watchRange = parseWatchRange(searchParams);
   const audio =
     searchParams.audio || (searchParams.dub === "true" ? "dub" : "sub");
   const lang = cookies().get("subtitle_language")?.value || "English";
@@ -182,6 +188,12 @@ export default async function WatchPage({
     >
       <JsonLd data={jsonLd} />
       <main id={styles.container}>
+        <ClipBridge
+          anilistId={id}
+          episode={ep}
+          audio={audio as "sub" | "dub"}
+          animeTitle={displayTitle(media.title) || name}
+        >
         <WatchLayout>
           {/* LEFT COLUMN: player, its toolbar, the controls, this episode and
               the series card. On phones everything here is a single column. */}
@@ -193,7 +205,16 @@ export default async function WatchPage({
                   episode={ep}
                   audio={audio as "sub" | "dub"}
                   subtitleLanguage={lang}
-                  initialTime={Number(searchParams.t || 0)}
+                  initialTime={watchRange.seek ?? 0}
+                  clip={
+                    watchRange.range
+                      ? {
+                          start: watchRange.range.start,
+                          end: watchRange.range.end,
+                          mode: "watch" as const,
+                        }
+                      : null
+                  }
                   title={displayTitle(media.title) || name}
                   episodeImage={episodeSeo?.thumbnailUrl || undefined}
                   cover={cover || undefined}
@@ -391,6 +412,7 @@ export default async function WatchPage({
             />
           </div>
         </WatchLayout>
+        </ClipBridge>
       </main>
     </WatchState>
   );

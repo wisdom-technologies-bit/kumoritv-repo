@@ -1,0 +1,37 @@
+/* Prompt 35: My clips. Same shell as the favourites/list pages. */
+
+#container {
+  display: flex;
+  flex-direction: column;
+
+  width: 100%;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 24px var(--page-gutter) 64px;
+
+  color: var(--white-100);
+}
+
+#main_content_container {
+  min-width: 0;
+}
+
+#heading_container {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+
+  margin-bottom: 20px;
+}
+
+#heading_container h1 {
+  font-size: var(--font-size--h4);
+  font-weight: 600;
+}
+
+.count {
+  color: var(--white-50);
+  font-size: var(--font-size--small-1);
+  font-variant-numeric: tabular-nums;
+}
