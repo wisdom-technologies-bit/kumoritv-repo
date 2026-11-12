@@ -1,0 +1,490 @@
+/* Prompt 35: clip panel.
+   Phones: a bottom sheet that can be used one-handed (all targets >= 44px).
+   Tablet and up: a side popover anchored to the bottom-right of the viewport.
+   Both are `position: fixed`, so opening the panel never shifts the page and
+   never overlaps the player's own controls at 360/390/412px. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) - 1);
+
+  background: rgba(6, 6, 12, 0.55);
+}
+
+.panel {
+  position: fixed;
+  z-index: var(--z-modal);
+
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+
+  color: var(--white-100);
+  background: #101018;
+  border: 1px solid var(--white-25);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.55);
+}
+
+@media (min-width: 768px) {
+  .panel {
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+
+    width: min(380px, calc(100vw - 48px));
+    max-height: min(70vh, 560px);
+
+    padding: 18px;
+
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+  }
+
+  .scrim {
+    background: rgba(6, 6, 12, 0.25);
+  }
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-size: var(--font-size--h5);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.subtitle {
+  margin-top: 4px;
+
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--white-50);
+  font-weight: 400;
+}
+
+.close {
+  flex: 0 0 auto;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+
+  color: var(--white-75);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--white-100);
+  background: var(--white-05);
+  border-color: var(--white-25);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+
+  padding: 4px;
+
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 999px;
+}
+
+.tab {
+  flex: 1;
+
+  min-height: 40px;
+  padding: 0 12px;
+
+  color: var(--white-75);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+
+  font-size: var(--font-size--small-1);
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  color: var(--white-100);
+  background: var(--brand-color);
+}
+
+.quick,
+.manual {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---- range bar ---------------------------------------------------------- */
+
+.bar {
+  position: relative;
+
+  height: 44px;
+
+  touch-action: none;
+}
+
+.track,
+.fill {
+  position: absolute;
+  top: 50%;
+
+  height: 6px;
+  margin-top: -3px;
+
+  border-radius: 999px;
+}
+
+.track {
+  left: 0;
+  right: 0;
+
+  background: var(--white-25);
+}
+
+.fill {
+  background: var(--kumori-gradient);
+}
+
+/* 44px hit area, 18px visual handle: a thumb, not a pin. */
+.handle {
+  position: absolute;
+  top: 50%;
+
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+
+  padding: 0;
+
+  background: transparent;
+  border: 0;
+
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::after {
+  content: "";
+
+  position: absolute;
+  top: 50%;
+  left: 50%;
+
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+
+  background: var(--white-100);
+  border: 2px solid var(--brand-color);
+  border-radius: 50%;
+
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.handle:focus-visible {
+  outline: none;
+}
+
+.handle:focus-visible::after {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+/* ---- nudges ------------------------------------------------------------- */
+
+.nudges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nudge_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  min-width: 0;
+}
+
+.nudge_label {
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+  white-space: nowrap;
+}
+
+.nudge_label strong {
+  color: var(--white-100);
+  font-variant-numeric: tabular-nums;
+}
+
+.nudge_buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.nudge {
+  min-width: 44px;
+  min-height: 44px;
+
+  padding: 0 8px;
+
+  color: var(--white-75);
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 10px;
+
+  font-size: var(--font-size--small-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+
+  cursor: pointer;
+}
+
+.nudge:hover {
+  color: var(--white-100);
+  border-color: var(--white-50);
+}
+
+/* ---- fields ------------------------------------------------------------- */
+
+.field {
+  position: relative;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  min-width: 0;
+}
+
+.label {
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+}
+
+.input_row {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.input {
+  flex: 1;
+
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+
+  color: var(--white-100);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--white-25);
+  border-radius: 10px;
+
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--font-size--p);
+  font-variant-numeric: tabular-nums;
+}
+
+.input::placeholder {
+  color: var(--white-50);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: 1px;
+}
+
+.counter {
+  position: absolute;
+  right: 0;
+  bottom: -16px;
+
+  color: var(--white-50);
+  font-size: var(--font-size--small-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: var(--white-50);
+  font-size: var(--font-size--small-2);
+  line-height: 1.45;
+}
+
+.error {
+  color: #ffb3b3;
+  font-size: var(--font-size--small-1);
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.primary,
+.secondary,
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 44px;
+  padding: 0 16px;
+
+  border-radius: 999px;
+
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--font-size--small-1);
+  font-weight: 600;
+  text-decoration: none;
+
+  cursor: pointer;
+}
+
+.primary {
+  color: var(--white-100);
+  background: var(--brand-color);
+  border: 1px solid var(--brand-color);
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondary {
+  color: var(--white-100);
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+}
+
+.secondary:hover {
+  border-color: var(--white-50);
+}
+
+.ghost {
+  color: var(--white-75);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.ghost:hover {
+  color: var(--white-100);
+  border-color: var(--white-25);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible,
+.ghost:focus-visible,
+.close:focus-visible,
+.tab:focus-visible,
+.nudge:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+/* ---- share state -------------------------------------------------------- */
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.share_title {
+  font-size: var(--font-size--p);
+  font-weight: 600;
+}
+
+.share_range {
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.link_input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+
+  color: var(--white-100);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--white-25);
+  border-radius: 10px;
+
+  font-family: var(--font-family-monospace);
+  font-size: var(--font-size--small-1);
+}
+
+.link_input:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: 1px;
+}
+
+/* The counter sits under the title input; give the field room for it. */
+.field:has(.counter) {
+  padding-bottom: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .handle,
+  .primary,
+  .secondary,
+  .ghost {
+    transition: none;
+    animation: none;
+  }
+}

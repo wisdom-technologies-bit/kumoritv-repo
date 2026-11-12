@@ -1,0 +1,223 @@
+/* Prompt 35: My clips rows. One column, thumbnail + details + actions. */
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  min-width: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  margin: 0;
+  padding: 0;
+
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  gap: 12px;
+
+  min-width: 0;
+  padding: 10px;
+
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 12px;
+}
+
+.thumb {
+  position: relative;
+
+  flex: 0 0 auto;
+
+  width: 112px;
+  height: 63px;
+
+  overflow: hidden;
+
+  background: #000;
+  border-radius: 8px;
+}
+
+.thumb img {
+  object-fit: cover;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  font-size: var(--font-size--small-1);
+  font-weight: 600;
+  line-height: 1.35;
+
+  overflow-wrap: anywhere;
+}
+
+.title a {
+  color: var(--white-100);
+  text-decoration: none;
+}
+
+.title a:hover {
+  color: var(--pink-variant-3);
+}
+
+.meta,
+.sub {
+  color: var(--white-75);
+  font-size: var(--font-size--small-2);
+  overflow-wrap: anywhere;
+}
+
+.sub {
+  color: var(--white-50);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  margin-top: 4px;
+}
+
+.secondary,
+.danger,
+.quiet,
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 34px;
+  padding: 0 12px;
+
+  border-radius: 999px;
+
+  font-size: var(--font-size--small-2);
+  font-weight: 600;
+  text-decoration: none;
+
+  cursor: pointer;
+}
+
+.secondary {
+  color: var(--white-100);
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+}
+
+.secondary:hover {
+  border-color: var(--white-50);
+}
+
+.danger {
+  color: #ffb3b3;
+  background: transparent;
+  border: 1px solid rgba(255, 120, 120, 0.4);
+}
+
+.danger:hover {
+  border-color: rgba(255, 120, 120, 0.8);
+}
+
+.quiet {
+  color: var(--white-50);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.quiet:hover {
+  color: var(--white-100);
+  border-color: var(--white-25);
+}
+
+.primary {
+  color: var(--white-100);
+  background: var(--brand-color);
+  border: 1px solid var(--brand-color);
+}
+
+.primary:disabled,
+.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.input {
+  flex: 1;
+
+  min-width: 140px;
+  min-height: 40px;
+  padding: 0 10px;
+
+  color: var(--white-100);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--white-25);
+  border-radius: 8px;
+
+  font-family: var(--font-family-sans-serif);
+  font-size: var(--font-size--small-1);
+}
+
+.empty {
+  color: var(--white-75);
+  font-size: var(--font-size--p);
+}
+
+.empty strong {
+  color: var(--white-100);
+}
+
+.error {
+  color: #ffb3b3;
+  font-size: var(--font-size--small-1);
+}
+
+.thumb:focus-visible,
+.secondary:focus-visible,
+.danger:focus-visible,
+.quiet:focus-visible,
+.primary:focus-visible,
+.input:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 520px) {
+  .item {
+    flex-direction: column;
+  }
+
+  .thumb {
+    width: 100%;
+    height: 168px;
+  }
+
+  .actions > * {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+}

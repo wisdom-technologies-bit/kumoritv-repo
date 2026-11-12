@@ -1,0 +1,116 @@
+/* Prompt 35: clip end card. Sits over the video, inside the player stage. */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 16px 16px 64px;
+
+  background: rgba(6, 6, 12, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+
+  width: min(420px, 100%);
+  padding: 18px 16px;
+
+  text-align: center;
+
+  color: var(--white-100);
+  background: #101018;
+  border: 1px solid var(--white-25);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.kicker {
+  color: var(--sakura-pink);
+  font-size: var(--font-size--small-2);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.range {
+  color: var(--white-75);
+  font-size: var(--font-size--p);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+
+  margin-top: 8px;
+}
+
+.primary,
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 40px;
+  padding: 0 14px;
+
+  border-radius: 999px;
+
+  font-size: var(--font-size--small-1);
+  font-weight: 600;
+  text-decoration: none;
+
+  cursor: pointer;
+}
+
+.primary {
+  color: var(--white-100);
+  background: var(--brand-color);
+  border: 1px solid var(--brand-color);
+}
+
+.secondary {
+  color: var(--white-100);
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+}
+
+.secondary:hover {
+  border-color: var(--white-50);
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .primary,
+  .secondary {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay {
+    backdrop-filter: none;
+  }
+}
