@@ -11,6 +11,7 @@
 // hrefs and the same disabled rules the controls row used before this prompt.
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import styles from "./component.module.css";
 import { usePrefs } from "@/app/lib/user-data/prefs";
 import { useWatchUI } from "../WatchLayout";
@@ -97,6 +98,14 @@ export default function PlayerToolbar({
   const bridge = useClipBridge();
   const clipApi = bridge?.api ?? null;
   const isEmbed = clipApi?.isEmbed === true;
+
+  // The server cannot know whether this source is a real video or an embed, so
+  // the first client render must match the server HTML exactly: everything
+  // clip-related renders hidden until after mount. (Rendering it conditionally
+  // up front made hydration fail, which killed every handler in the toolbar.)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const canClip = mounted && Boolean(clipApi) && !isEmbed;
   // Server switching only matters for the embed notice, and it must never throw
   // when the toolbar renders outside WatchState.
   const watch = useWatchStateOptional();
@@ -158,18 +167,18 @@ export default function PlayerToolbar({
         <span>Lights off</span>
       </button>
 
-      {clipApi && !isEmbed ? (
-        <button
-          type="button"
-          className={`${styles.tool} ${styles.clip_tool}`}
-          data-testid="clip-button"
-          title="Clip a moment of this episode"
-          onClick={openClip}
-        >
-          <ClipIcon />
-          <span className={styles.clip_label}>Clip</span>
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className={`${styles.tool} ${styles.clip_tool}`}
+        data-testid="clip-button"
+        title="Clip a moment of this episode"
+        hidden={mounted && !canClip}
+        disabled={!canClip}
+        onClick={openClip}
+      >
+        <ClipIcon />
+        <span className={styles.clip_label}>Clip</span>
+      </button>
 
       <div className={styles.nav}>
         {episode > 1 ? (
@@ -203,7 +212,7 @@ export default function PlayerToolbar({
         )}
       </div>
 
-      {isEmbed ? (
+      {mounted && isEmbed ? (
         <p className={styles.embed_notice} data-testid="clip-embed-notice">
           Clipping is available on the HD player, switch server
           {nextServer ? (

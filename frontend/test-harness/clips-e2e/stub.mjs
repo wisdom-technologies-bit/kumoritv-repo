@@ -17,6 +17,10 @@ import path from "node:path";
 
 const PORT = Number(process.env.STUB_PORT || 54321);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
+// The app refuses to proxy private targets (SSRF guard), so the video and its
+// subtitles are reached through a hostname that resolves to this stub
+// (127.0.0.1 clip-test.example in /etc/hosts). Nothing leaves the machine.
+const MEDIA_HOST = `http://clip-test.example:${PORT}`;
 const USER_TOKEN = "standin-user-token";
 const USER_ID = "11111111-2222-3333-4444-555555555555";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -93,13 +97,13 @@ let clipId = 0;
 const substream = (suffix, server) => ({
   streams: [
     {
-      url: `${ORIGIN}/test.mp4${suffix}`,
+      url: `${MEDIA_HOST}/test.mp4${suffix}`,
       type: "mp4",
       server,
       audio: "sub",
       priority: 1,
       isActive: true,
-      subtitles: [{ url: `${ORIGIN}/subs.vtt`, lang: "en", label: "English" }],
+      subtitles: [{ url: `${MEDIA_HOST}/subs.vtt`, lang: "en", label: "English" }],
     },
   ],
 });

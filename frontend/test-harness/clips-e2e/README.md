@@ -19,6 +19,21 @@ npx playwright test -c test-harness/clips-e2e/playwright.config.ts
 
 This harness is NOT part of `npm test`.
 
+## The SSRF guard and the local stand-in
+
+`app/lib/proxy/signing.ts` refuses private proxy targets (127.*, localhost, 10.*,
+192.168.*, 172.16-31.*), so the stand-in video is reached through a hostname that
+resolves to this machine:
+
+```bash
+echo "127.0.0.1 clip-test.example" | sudo tee -a /etc/hosts
+```
+
+The config also sets `PROXY_SIGNING_SECRET` (any value) because
+`/api/watch/[id]/[ep]` prefers the signed proxy path and answers
+`proxy_not_configured` without it. With those two in place the route returns 200
+and the player mounts a real `<video>`; nothing leaves the machine.
+
 ## Status (honest)
 
 First run, 13 tests:
