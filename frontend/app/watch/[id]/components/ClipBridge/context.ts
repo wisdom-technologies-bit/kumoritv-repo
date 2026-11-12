@@ -19,6 +19,8 @@ export type PlayerApi = {
   pause: () => void;
   /** True for provider iframe embeds: no currentTime, no seek. */
   isEmbed: boolean;
+  /** False while the episode has no playable source at all. */
+  hasSource: boolean;
 };
 
 export type ClipBridgeValue = {

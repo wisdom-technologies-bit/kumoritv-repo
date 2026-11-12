@@ -110,9 +110,10 @@ export default async function ClipPage({ params }: Params) {
 
   const { clip, anime } = loaded;
   const name = (anime?.title || "").trim() || `Anime ${clip.anilistId}`;
-  const episodePage = `/watch/${clip.anilistId}?ep=${clip.episode}${
-    clip.audio ? `&audio=${clip.audio}` : ""
-  }`;
+  // Prompt 35 pins this target: the full episode, no extra params. Audio
+  // continuity is the watch page's own concern (saved preferences), so a clip
+  // link never carries it.
+  const episodePage = `/watch/${clip.anilistId}?ep=${clip.episode}`;
   const adultHidden = anime?.isAdult === true && !(await readShowAdultContent());
 
   if (adultHidden) {

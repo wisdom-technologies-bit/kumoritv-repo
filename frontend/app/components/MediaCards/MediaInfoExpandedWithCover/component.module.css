@@ -275,3 +275,8 @@ input.expand_description:checked::before {
     fill: var(--brand-color) !important;
 
 }
+/* Same type size the global `p` rule gave this block, so swapping the wrapper
+   for a <div> (to stop invalid <p> nesting) changes nothing visually. */
+.description_text {
+  font-size: var(--font-size--p);
+}

@@ -34,7 +34,7 @@ export default function ClipBridge({
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const register = useCallback((next: PlayerApi | null) => {
-    setApi(next);
+    setApi((previous) => (previous === next ? previous : next));
     // A new source means the old player is gone: a panel left open would point
     // at a video that no longer exists.
     if (!next) setOpen(false);

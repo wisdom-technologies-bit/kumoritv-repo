@@ -105,7 +105,7 @@ export default function PlayerToolbar({
   // up front made hydration fail, which killed every handler in the toolbar.)
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const canClip = mounted && Boolean(clipApi) && !isEmbed;
+  const canClip = mounted && Boolean(clipApi) && !isEmbed && clipApi?.hasSource !== false;
   // Server switching only matters for the embed notice, and it must never throw
   // when the toolbar renders outside WatchState.
   const watch = useWatchStateOptional();

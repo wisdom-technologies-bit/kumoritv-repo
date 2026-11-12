@@ -124,6 +124,9 @@ export default function VideoPlayer({
   const watch = useWatchState();
   const clipBridge = useClipBridge();
   const [clipEnded, setClipEnded] = useState(false);
+  // "Watch from here" releases the range: otherwise the very next timeupdate
+  // still sees currentTime >= end and pauses again immediately.
+  const clipReleasedRef = useRef(false);
   const clipRef = useRef(clip);
   clipRef.current = clip;
   const renders = useRef(0);
@@ -384,6 +387,7 @@ export default function VideoPlayer({
   // A new source (server switch) has to start at the clip's beginning again.
   useEffect(() => {
     resumeRef.current = false;
+    clipReleasedRef.current = false;
     setClipEnded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId]);
@@ -398,9 +402,14 @@ export default function VideoPlayer({
 
   // Prompt 35: the toolbar's Clip button talks to the player through this tiny
   // API; nothing else is shared, so playback stays owned here.
+  const clipBridgeRef = useRef(clipBridge);
+  clipBridgeRef.current = clipBridge;
+  const registerClipApi = clipBridge?.register;
+
   useEffect(() => {
-    if (!clipBridge) return;
-    clipBridge.register({
+    const bridge = clipBridgeRef.current;
+    if (!bridge) return;
+    bridge.register({
       getTime: () => {
         const value = Number(
           playerRef.current?.currentTime ?? progressRef.current.time ?? 0,
@@ -422,10 +431,11 @@ export default function VideoPlayer({
       },
       // An embed is an iframe on someone else's origin: no currentTime, no seek.
       isEmbed: Boolean(embedSource),
+      hasSource: Boolean(embedSource || source),
     });
-    return () => clipBridge.register(null);
+    return () => bridge.register(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipBridge, embedSource, sourceId]);
+  }, [registerClipApi, embedSource, sourceId]);
 
   const replayClip = () => {
     if (!clipRef.current) return;
@@ -436,6 +446,7 @@ export default function VideoPlayer({
 
   const continuePastClip = () => {
     if (!clipRef.current) return;
+    clipReleasedRef.current = true;
     setClipEnded(false);
     seekTo(clipRef.current.end);
     void playerRef.current?.play?.();
@@ -526,6 +537,15 @@ export default function VideoPlayer({
     // A clip always starts at its own beginning: saved progress is irrelevant.
     if (clipRef.current) {
       seekTo(clipRef.current.start);
+      // A clip link is a request to watch that range, so try to start playing.
+      // Browsers may still refuse an unmuted autoplay; the range and the end
+      // card behave the same as soon as the viewer presses play.
+      const startPlayback = () => {
+        const media: any = playerRef.current;
+        Promise.resolve(media?.play?.()).catch(() => {});
+      };
+      requestAnimationFrame(startPlayback);
+      setTimeout(startPlayback, 250);
       return;
     }
 
@@ -661,7 +681,12 @@ export default function VideoPlayer({
 
               // A clip range is a contract: pause exactly at its end.
               const activeClip = clipRef.current;
-              if (activeClip && !clipEnded && current >= activeClip.end - 0.05) {
+              if (
+                activeClip &&
+                !clipReleasedRef.current &&
+                !clipEnded &&
+                current >= activeClip.end - 0.05
+              ) {
                 setClipEnded(true);
                 void playerRef.current?.pause?.();
               }

@@ -70,7 +70,9 @@ const episodes = [
     needs_resync: false,
   },
   {
-    // Episode 2 starts on an embed server, so the toolbar can be checked.
+    // Episode 2 keeps an embed and an HD server: the route prefers the working
+    // non-embed, so the notice does not appear here.
+    // Episode 3 is embed-only, which is the state the notice exists for.
     play_id: "21-2",
     anilist_id: 21,
     episode_number: 2,
@@ -83,6 +85,21 @@ const episodes = [
       { provider: "mkissa", episodeId: "/ep/embed" },
       { provider: "mkissa", episodeId: "/ep/hd2" },
     ],
+    dub_providers: [],
+    resolved_provider: "mkissa",
+    resolved_audio: "sub",
+    needs_resync: false,
+  },
+  {
+    play_id: "21-3",
+    anilist_id: 21,
+    episode_number: 3,
+    title: "Embed Only Episode",
+    image_url: `${ORIGIN}/cover.jpg`,
+    duration: 1440,
+    filler: false,
+    recap: false,
+    sub_providers: [{ provider: "mkissa", episodeId: "/ep/embed" }],
     dub_providers: [],
     resolved_provider: "mkissa",
     resolved_audio: "sub",
@@ -226,7 +243,7 @@ const server = createServer(async (req, res) => {
       const end = matchRange && matchRange[2] ? Number(matchRange[2]) : VIDEO.length - 1;
       const chunk = VIDEO.subarray(start, Math.min(end, VIDEO.length - 1) + 1);
       res.writeHead(206, {
-        "content-type": "video/mp4",
+        "content-type": "video/webm",
         "accept-ranges": "bytes",
         "content-range": `bytes ${start}-${start + chunk.length - 1}/${VIDEO.length}`,
         "content-length": chunk.length,
@@ -235,7 +252,7 @@ const server = createServer(async (req, res) => {
       return res.end(chunk);
     }
     res.writeHead(200, {
-      "content-type": "video/mp4",
+      "content-type": "video/webm",
       "accept-ranges": "bytes",
       "content-length": VIDEO.length,
       "access-control-allow-origin": "*",
@@ -293,7 +310,12 @@ const server = createServer(async (req, res) => {
     if (pathname === "/ep/embed") {
       return json(res, { embeds: [`${ORIGIN}/embed`] });
     }
-    const suffix = pathname === "/ep/hd2" ? "?s=2" : pathname === "/ep/other" ? "?s=3" : "";
+    if (pathname === "/ep/hd2") {
+      // Offered by the provider but not playable: keeps the embed active while
+      // "switch server" still has somewhere to switch to.
+      return json(res, { ...substream("", "HD-2"), streams: substream("", "HD-2").streams.map((one) => ({ ...one, url: `${MEDIA_HOST}/missing.mp4` })) });
+    }
+    const suffix = pathname === "/ep/other" ? "?s=3" : "";
     return json(res, substream(suffix, pathname === "/ep/hd2" ? "HD-2" : "HD-1"));
   }
 

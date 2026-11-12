@@ -78,7 +78,12 @@ export async function POST(request: Request) {
       sameSite: "lax",
       path: "/",
       maxAge: CLIP_OWNER_COOKIE_MAX_AGE,
-      secure: process.env.NODE_ENV === "production",
+      // Behind a TLS proxy `request.url` can still read as http, so trust the
+      // configured site origin first. A Secure cookie over plain http is never
+      // stored, which would silently break guest ownership.
+      secure:
+        (process.env.NEXT_PUBLIC_SITE_URL ?? "").startsWith("https:") ||
+        new URL(request.url).protocol === "https:",
     });
   }
 

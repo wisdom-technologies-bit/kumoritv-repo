@@ -23,10 +23,19 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
-    trace: "off",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
     video: "off",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: { args: ["--autoplay-policy=no-user-gesture-required"] },
+      },
+    },
+  ],
   webServer: [
     {
       command: `node test-harness/clips-e2e/stub.mjs`,
