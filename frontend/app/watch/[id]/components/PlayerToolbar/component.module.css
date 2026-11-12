@@ -118,3 +118,77 @@
     transition: none;
   }
 }
+
+/* Prompt 35: the Clip button sits with the other tools. Phones show the icon
+   only, so it never crowds the row at 360px. */
+.clip_tool {
+  color: var(--white-100);
+}
+
+.clip_tool:hover {
+  color: var(--pink-variant-3);
+}
+
+.clip_label {
+  white-space: nowrap;
+}
+
+.clip_tool:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .clip_label {
+    display: none;
+  }
+
+  .clip_tool {
+    padding: 0 10px;
+  }
+}
+
+/* Prompt 35: embed sources cannot be clipped by the button; wrap the notice to
+   its own line so the toolbar keeps its height and nothing overlaps. */
+.embed_notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+
+  flex: 1 0 100%;
+
+  margin: 6px 0 0;
+  padding: 8px 10px;
+
+  color: var(--white-75);
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 8px;
+
+  font-size: var(--font-size--small-2);
+}
+
+.embed_switch {
+  min-height: 32px;
+  padding: 0 10px;
+
+  color: var(--white-100);
+  background: transparent;
+  border: 1px solid var(--white-25);
+  border-radius: 999px;
+
+  font-size: var(--font-size--small-2);
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.embed_switch:hover {
+  border-color: var(--pink-variant-3);
+}
+
+.embed_switch:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}

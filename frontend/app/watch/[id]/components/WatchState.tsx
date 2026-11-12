@@ -295,3 +295,12 @@ export function useWatchState() {
   if (!value) throw new Error("useWatchState must be used inside WatchState");
   return value;
 }
+
+/**
+ * Prompt 35: the same value, but null outside the provider instead of throwing.
+ * The player toolbar also renders on its own (a few standalone surfaces and the
+ * layout tests render it directly), and a missing provider must not crash it.
+ */
+export function useWatchStateOptional() {
+  return useContext(Context);
+}
