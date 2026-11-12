@@ -475,3 +475,47 @@ test("the console stays clean", async ({ page }) => {
   );
   expect(ignorable).toEqual([]);
 });
+
+// Regression guard for the toolbar: adding the Clip button must not leave any
+// existing control inert (hydration failures make every handler silently dead).
+test("every toolbar button still responds to a click and to Enter/Space", async ({ page }) => {
+  await openPlayer(page);
+
+  const toggles = page.locator('[role="toolbar"] button[aria-pressed]');
+  const count = await toggles.count();
+  expect(count).toBeGreaterThanOrEqual(4);
+
+  for (let index = 0; index < count; index += 1) {
+    const button = toggles.nth(index);
+    const label = (await button.innerText()).trim();
+    const before = await button.getAttribute("aria-pressed");
+    const flipped = before === "true" ? "false" : "true";
+    // Focus + Enter first: it proves the handler without depending on the
+    // button's position inside a toolbar that collapses on narrow screens.
+    await button.focus();
+    await page.keyboard.press("Enter");
+    await expect(button, `${label} reacted to Enter`).toHaveAttribute("aria-pressed", flipped);
+    await page.keyboard.press("Enter");
+    await expect(button, `${label} toggled back`).toHaveAttribute("aria-pressed", before ?? "false");
+  }
+
+  // A real mouse click still works on the first control.
+  const first = toggles.first();
+  const firstBefore = await first.getAttribute("aria-pressed");
+  await first.click();
+  await expect(first, "first toolbar button reacted to a click").toHaveAttribute(
+    "aria-pressed",
+    firstBefore === "true" ? "false" : "true",
+  );
+  await first.click();
+
+  // Keyboard: the Clip button opens the panel with Enter and with Space.
+  for (const key of ["Enter", " "]) {
+    const clip = page.getByTestId("clip-button");
+    await clip.focus();
+    await page.keyboard.press(key);
+    await expect(page.getByTestId("clip-panel"), `${key} opened the panel`).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("clip-panel")).toBeHidden();
+  }
+});
