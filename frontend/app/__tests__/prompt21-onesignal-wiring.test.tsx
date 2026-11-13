@@ -121,9 +121,11 @@ test("the middleware lets /push/onesignal through without a rewrite or an auth c
   assert.match(matcher, /push\//, "push/ is excluded from the matcher");
   assert.match(matcher, /_next\/static/, "the other exclusions are still there");
 
-  // And the middleware never rewrites a request, so a worker URL cannot be
-  // answered with HTML or a redirect.
-  assert.equal(/NextResponse\.rewrite/.test(middleware), false);
+  // A worker URL must never be answered with HTML. The middleware does rewrite
+  // now, but only for the community flag gate, so pin every rewrite target: if a
+  // rewrite is ever added for another path, this fails.
+  const rewrites = [...middleware.matchAll(/NextResponse\.rewrite\(\s*new URL\(\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(rewrites)], ["/community-off"], "only the community gate rewrites");
 });
 
 // ------------------------------------------------------------------ identity
