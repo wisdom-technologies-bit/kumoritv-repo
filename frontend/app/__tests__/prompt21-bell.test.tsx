@@ -158,10 +158,10 @@ function seedClient(seed: Record<string, Row[]>) {
   return client;
 }
 
-async function renderPanel(): Promise<RenderedTree> {
+async function renderPanel(communityEnabled = false): Promise<RenderedTree> {
   return render(
     <Provider store={makeStore()}>
-      <NotificationsContainer />
+      <NotificationsContainer communityEnabled={communityEnabled} />
     </Provider>,
   );
 }
@@ -507,5 +507,77 @@ test("a refresh happens when the tab regains focus", async () => {
     assert.match(tree.container.textContent ?? "", /Mika replied to your comment/);
   } finally {
     await tree.unmount();
+  }
+});
+
+
+// ------------------------------------- Prompt 38B: the announcement "Open" target
+//
+// Amendment 6: with the community on, "Open" ALWAYS means the KumoriTV page
+// (/community/announcements/<id>), whatever the announcement's url is. With the
+// flag off nothing about the bell changes.
+
+test("community on: Open points at the announcement page even when a url exists", async () => {
+  seedClient({ announcements: [ANNOUNCEMENT] });
+  const tree = await renderPanel(true);
+
+  try {
+    await click(tree.container.querySelector("#notification_btn"));
+
+    const openLinks = [...tree.container.querySelectorAll("a")].filter(
+      (anchor) => (anchor.textContent ?? "").trim() === "Open",
+    );
+
+    assert.equal(openLinks.length, 1, "exactly one Open button");
+    assert.equal(openLinks[0].getAttribute("href"), "/community/announcements/ann-1");
+  } finally {
+    await tree.unmount();
+  }
+});
+
+test("community on: an announcement without a url still gets its Open button", async () => {
+  seedClient({ announcements: [{ ...ANNOUNCEMENT, url: null }] });
+  const tree = await renderPanel(true);
+
+  try {
+    await click(tree.container.querySelector("#notification_btn"));
+
+    const openLinks = [...tree.container.querySelectorAll("a")].filter(
+      (anchor) => (anchor.textContent ?? "").trim() === "Open",
+    );
+
+    assert.equal(openLinks.length, 1, "the button no longer depends on url");
+    assert.equal(openLinks[0].getAttribute("href"), "/community/announcements/ann-1");
+  } finally {
+    await tree.unmount();
+  }
+});
+
+test("community off: the bell keeps its old Open behaviour", async () => {
+  seedClient({ announcements: [ANNOUNCEMENT] });
+  const withUrl = await renderPanel(false);
+
+  try {
+    await click(withUrl.container.querySelector("#notification_btn"));
+    const openLinks = [...withUrl.container.querySelectorAll("a")].filter(
+      (anchor) => (anchor.textContent ?? "").trim() === "Open",
+    );
+    assert.equal(openLinks.length, 1);
+    assert.equal(openLinks[0].getAttribute("href"), "/news/app", "the announcement's own url");
+  } finally {
+    await withUrl.unmount();
+  }
+
+  seedClient({ announcements: [{ ...ANNOUNCEMENT, id: "ann-2", url: null }] });
+  const withoutUrl = await renderPanel(false);
+
+  try {
+    await click(withoutUrl.container.querySelector("#notification_btn"));
+    const openLinks = [...withoutUrl.container.querySelectorAll("a")].filter(
+      (anchor) => (anchor.textContent ?? "").trim() === "Open",
+    );
+    assert.equal(openLinks.length, 0, "no url, no button - the pre-38B behaviour");
+  } finally {
+    await withoutUrl.unmount();
   }
 });

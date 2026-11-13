@@ -7,6 +7,7 @@ import MangaNavListHover from "./components/MangaNavListHover";
 import UserSideMenu from "./components/User/UserSideMenu";
 import SearchFormContainer from "./components/SearchFormContainer";
 import NotificationsContainer from "./components/Notifications";
+import { isCommunityEnabled } from "@/app/lib/community/flag";
 
 function Header() {
   return (
@@ -76,7 +77,9 @@ function Header() {
         >
           <SearchFormContainer />
 
-          <NotificationsContainer />
+          {/* Read per request: with COMMUNITY_ENABLED off the bell keeps its old
+              "Open" behaviour and no announcement link changes. */}
+          <NotificationsContainer communityEnabled={isCommunityEnabled()} />
 
           <UserSideMenu />
         </div>

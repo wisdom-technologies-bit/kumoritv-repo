@@ -3,8 +3,13 @@ import React, { Suspense } from "react";
 import animesGenres from "@/app/data/animeGenres.json";
 import styles from "../../footerComponent.module.css";
 import AiringThisWeek from "./airingThisWeek";
+import { isCommunityEnabled } from "@/app/lib/community/flag";
 
 function NavLinks() {
+  // Prompt 38B: the only footer entry the community gets. Read per request, so
+  // flipping COMMUNITY_ENABLED needs no rebuild.
+  const showCommunity = isCommunityEnabled();
+
   return (
     <div id={styles.nav_links_container}>
       <div className={styles.list_container}>
@@ -56,6 +61,11 @@ function NavLinks() {
             <li>
               <Link href="/search?type=manga">Search Manga</Link>
             </li>
+            {showCommunity && (
+              <li>
+                <Link href="/community">Community</Link>
+              </li>
+            )}
           </ul>
         </div>
       </div>

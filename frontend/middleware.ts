@@ -2,7 +2,33 @@ import axios from "axios";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+// Prompt 38B: the community is switched off at the edge, before any rendering.
+//
+// The in-page guard stays (defence in depth), but a `notFound()` thrown while
+// the layout is already streaming answers 200 with the 404 page inside. A
+// rewrite to an unmatched path renders app/not-found.tsx with a real 404.
+//
+// `process.env[...]` (not `.COMMUNITY_ENABLED`) on purpose: a static member
+// expression is inlined at build time, and this flag has to be read per request.
+const COMMUNITY_FLAG = "COMMUNITY_ENABLED";
+function communityEnabled(): boolean {
+  const raw = String(process.env[COMMUNITY_FLAG] ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const isCommunityApi = pathname === "/api/community" || pathname.startsWith("/api/community/");
+  const isCommunityPage = pathname === "/community" || pathname.startsWith("/community/");
+
+  if ((isCommunityApi || isCommunityPage) && !communityEnabled()) {
+    if (isCommunityApi) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
+    return NextResponse.rewrite(new URL("/community-off", request.url));
+  }
+
+
   let response = NextResponse.next({ request });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
