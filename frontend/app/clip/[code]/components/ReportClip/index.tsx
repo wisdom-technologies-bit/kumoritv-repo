@@ -17,7 +17,14 @@ const REASONS = [
   { value: "other", label: "Something else" },
 ];
 
-export default function ReportClip({ code }: { code: string }) {
+export default function ReportClip({
+  code,
+  variant = "pill",
+}: {
+  code: string;
+  /** "text" is the tertiary text-link style the clip page's action row uses. */
+  variant?: "pill" | "text";
+}) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("copyright");
   const [details, setDetails] = useState("");
@@ -46,7 +53,7 @@ export default function ReportClip({ code }: { code: string }) {
     return (
       <button
         type="button"
-        className={styles.trigger}
+        className={variant === "text" ? `${styles.trigger} ${styles.trigger_text}` : styles.trigger}
         onClick={() => setOpen(true)}
         data-testid="clip-report-open"
       >

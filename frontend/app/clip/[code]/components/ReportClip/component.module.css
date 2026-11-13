@@ -20,6 +20,40 @@
   border-color: var(--white-50);
 }
 
+/* Prompt 36: tertiary text-link trigger, used in the clip page's action row. */
+.trigger_text {
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+
+  color: var(--white-50);
+  border-color: transparent;
+
+  font-size: var(--font-size--small-1);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.trigger_text:hover {
+  color: var(--white-100);
+  border-color: transparent;
+}
+
+.trigger_text::after {
+  /* 44px tap target that costs no layout. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+}
+
 .form {
   display: flex;
   flex-direction: column;

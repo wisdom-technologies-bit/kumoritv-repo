@@ -6,11 +6,17 @@
 // `start`, pause at `end`, then show the end card. Playback never leaves the
 // normal stream, so nothing is cut, hosted or re-served. It mounts one view ping
 // per page load; the route counts it once per session.
+//
+// Prompt 36: no WatchLayout here. That shell belongs to the watch page (it owns
+// the episodes sidebar grid, the theater/lights-off modes and its own page
+// padding), and nesting it inside this page's column added a second gutter and a
+// phantom 380px grid column, which is what shrank the player. The clip page's
+// own CSS module now owns the player box, byte for byte the watch player's
+// markup and skin.
 
 import { useEffect } from "react";
 import VideoPlayer from "@/app/watch/[id]/components/VideoPlayer";
 import { WatchState } from "@/app/watch/[id]/components/WatchState";
-import WatchLayout from "@/app/watch/[id]/components/WatchLayout";
 import ClipBridge from "@/app/watch/[id]/components/ClipBridge";
 import styles from "../../page.module.css";
 
@@ -56,22 +62,20 @@ export default function ClipPlayer({
       initialSubtitleLanguage={subtitleLanguage}
     >
       <ClipBridge anilistId={anilistId} episode={episode} audio={audio} animeTitle={animeTitle}>
-        <WatchLayout>
-          <div id={styles.video_container}>
-            <VideoPlayer
-              anilistId={anilistId}
-              episode={episode}
-              audio={audio}
-              subtitleLanguage={subtitleLanguage}
-              initialTime={start}
-              title={title}
-              episodeImage={episodeImage}
-              cover={cover}
-              clip={{ start, end, mode: "clip", fullEpisodeHref }}
-              trackProgress={false}
-            />
-          </div>
-        </WatchLayout>
+        <div id={styles.video_container}>
+          <VideoPlayer
+            anilistId={anilistId}
+            episode={episode}
+            audio={audio}
+            subtitleLanguage={subtitleLanguage}
+            initialTime={start}
+            title={title}
+            episodeImage={episodeImage}
+            cover={cover}
+            clip={{ start, end, mode: "clip", fullEpisodeHref }}
+            trackProgress={false}
+          />
+        </div>
       </ClipBridge>
     </WatchState>
   );
