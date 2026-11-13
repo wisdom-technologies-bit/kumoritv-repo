@@ -30,6 +30,22 @@ export type FeedShellProps = {
 type Cursor = { createdAt: string; key: string } | null;
 
 /** The whole client side of /community: filters, feed, composer, reactions. */
+/** One message per filter: an empty feed should say which feed is empty. */
+const EMPTY_STATE: Record<FeedFilter, { title: string; text: string }> = {
+  all: {
+    title: "Nothing here yet",
+    text: "The community is quiet. The first post is yours to write.",
+  },
+  post: {
+    title: "No posts yet",
+    text: "Nobody has posted yet today. Say what you are watching.",
+  },
+  announcement: {
+    title: "No announcements right now",
+    text: "When the team has something to say, it lands here first.",
+  },
+};
+
 export default function FeedShell({ initialItems, initialCursor, initialFailed, rightRail }: FeedShellProps) {
   const [client, setClient] = useState<ReturnType<typeof createBrowserSupabaseClient>>(null);
   const { user } = useUser();
@@ -350,16 +366,29 @@ export default function FeedShell({ initialItems, initialCursor, initialFailed, 
 
               {!isLoading && !error && items.length === 0 && (
                 <div className={styles.empty}>
-                  <p className={styles.empty_title}>
-                    {filter === "announcement" ? "No announcements right now" : "No posts yet"}
-                  </p>
-                  <p className={styles.empty_text}>
-                    {filter === "announcement"
-                      ? "When the team has something to say, it lands here first."
-                      : isSignedIn
-                        ? "You have the whole feed to yourself. Say hello."
-                        : "Sign in and start the conversation."}
-                  </p>
+                  <p className={styles.empty_title}>{EMPTY_STATE[filter].title}</p>
+                  <p className={styles.empty_text}>{EMPTY_STATE[filter].text}</p>
+                  {isSignedIn ? (
+                    <button
+                      type="button"
+                      className={styles.button}
+                      onClick={() => {
+                        // On a phone the composer is the sheet; on a wider screen
+                        // it is the inline card, so focus what is actually there.
+                        if (typeof window !== "undefined" && window.innerWidth < 768) {
+                          setIsSheetOpen(true);
+                          return;
+                        }
+                        document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Write a post"]')?.focus();
+                      }}
+                    >
+                      {filter === "announcement" ? "Write a post instead" : "Write the first post"}
+                    </button>
+                  ) : (
+                    <button type="button" className={styles.button} onClick={openLoginModal}>
+                      Sign in to post
+                    </button>
+                  )}
                 </div>
               )}
 

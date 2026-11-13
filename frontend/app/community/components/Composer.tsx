@@ -118,9 +118,11 @@ export default function Composer({
     clearDraft();
   }, [body, canSubmit, isSpoiler, onSubmit]);
 
+  // A guest sees the invitation, never a form: the API and RLS refuse writes
+  // anyway, so the copy explains that instead of pretending.
   if (!isSignedIn) {
-    return (
-      <div className={`${styles.card} ${styles.signin_card}`}>
+    const guest = (
+      <>
         <div className={styles.signin_copy}>
           <span className={styles.signin_title}>Sign in to post</span>
           <span className={styles.signin_text}>
@@ -130,8 +132,27 @@ export default function Composer({
         <button type="button" className={styles.button} onClick={onGuestWrite}>
           Sign in
         </button>
-      </div>
+      </>
     );
+
+    // The mobile sheet has to open for a guest too (it is the only composer on
+    // a phone). It used to return the inline card here, so tapping "+" produced
+    // no dialog at all while the body scroll stayed locked.
+    if (variant === "sheet") {
+      return (
+        <div className={`${styles.sheet} ${styles.sheet_guest}`} role="dialog" aria-modal="true" aria-label="New post">
+          <div className={styles.sheet_head}>
+            <span className={styles.sheet_title}>New post</span>
+            <button type="button" className={styles.button_link} onClick={onRequestClose}>
+              Close
+            </button>
+          </div>
+          <div className={`${styles.sheet_body} ${styles.signin_card}`}>{guest}</div>
+        </div>
+      );
+    }
+
+    return <div className={`${styles.card} ${styles.signin_card}`}>{guest}</div>;
   }
 
   const form = (

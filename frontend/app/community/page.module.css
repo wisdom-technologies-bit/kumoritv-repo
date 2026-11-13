@@ -811,6 +811,11 @@
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* The guest sheet is an invitation, not a form: centre it in the sheet. */
+.sheet_guest {
+  justify-content: center;
+}
+
 .sheet_head {
   display: flex;
   align-items: center;

@@ -243,7 +243,10 @@ const server = createServer(async (req, res) => {
     } catch {
       payload = {};
     }
-    return json(res, 200, feedRows(payload.p_kind ?? "all"));
+    const kind = payload.p_kind ?? "all";
+    // The announcements filter is the one that can be empty in this fixture.
+    if (kind === "announcement") return json(res, 200, []);
+    return json(res, 200, feedRows(kind));
   }
 
   if (pathname === "/rest/v1/rpc/community_react") {

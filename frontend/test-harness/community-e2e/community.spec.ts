@@ -50,7 +50,7 @@ test("the feed renders three cards with a first card that has a name and a time"
   const first = cards.first();
   await expect(first).toContainText(/Announcement/i);
   // The first *post* carries its author's name.
-  await expect(page.locator("[data-feed-key]").nth(1)).toContainText("Adaeze");
+  await expect(page.locator('[data-feed-key^="post:"]').first()).toContainText("Adaeze");
 });
 
 test("the announcement chip carries the megaphone and the pinned position", async ({ page }) => {
@@ -83,32 +83,62 @@ for (const viewport of VIEWPORTS) {
       await expect(page.locator("nav[aria-label='Filter the feed']")).toBeHidden();
       await expect(page.getByText("Latest announcements", { exact: true })).toBeHidden();
       await expect(page.getByRole("button", { name: "Write a post" })).toBeVisible();
-      const bar = page.locator("[role='tablist']").first();
+      const bar = page.locator('[class*="mobile_bar"] [role="tablist"]');
       await expect(bar).toBeVisible();
+      await expect(bar.getByRole("tab")).toHaveCount(3);
+      await expect(bar.getByRole("tab", { name: "All" })).toBeVisible();
+      await expect(bar.getByRole("tab", { name: "Posts" })).toBeVisible();
+      await expect(bar.getByRole("tab", { name: "Announcements" })).toBeVisible();
+      await bar.getByRole("tab", { name: "Posts" }).click();
+      await expect(bar.getByRole("tab", { name: "Posts" })).toHaveAttribute("aria-selected", "true");
+      await bar.getByRole("tab", { name: "All" }).click();
     }
   });
 }
 
-test("the mobile composer opens as a full-screen sheet and posts nothing empty", async ({ page }) => {
+test("the mobile composer sheet opens for a guest, locks scroll, closes on Escape", async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 915 });
   await page.goto("/community");
+
+  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
   await page.getByRole("button", { name: "Write a post" }).click();
 
   const dialog = page.getByRole("dialog", { name: "New post" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Sign in to post")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeVisible();
 
   const box = await dialog.boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(400);
+  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(400);
+  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(900);
 
-  await shot(page, "composer-412x915");
+  // scroll is locked while the sheet is open, and no horizontal overflow
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
+  await expectNoOverflow(page, "sheet open 412");
 
-  const post = dialog.getByRole("button", { name: /^Post$/ });
-  await expect(post).toBeDisabled();
+  await shot(page, "composer-sheet-412x915");
 
-  await dialog.getByRole("textbox", { name: "Write a post" }).fill("A test post that is long enough.");
-  await expect(post).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe("hidden");
+  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
+});
 
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+test("the mobile composer sheet opens at 360 too", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/community");
+
+  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
+  const fab = page.locator('button[aria-label="Write a post"]').last();
+  await expect(fab).toBeVisible();
+  await fab.click({ force: true });
+
+  const dialog = page.getByRole("dialog", { name: "New post" });
+  await expect(dialog).toBeVisible();
+  await expectNoOverflow(page, "sheet open 360");
+  await shot(page, "composer-sheet-360x800");
+
+  await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toBeHidden();
 });
 
@@ -120,19 +150,23 @@ test("the desktop composer is inline and the guest sees the sign-in state", asyn
   await shot(page, "composer-guest-1440x900");
 });
 
-test("the empty feed has a real empty state", async ({ page }) => {
+test("an empty announcements feed shows its own message and a call to action", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/community");
   await page.waitForSelector("[data-feed-key]");
 
-  // The filter refetch goes through the browser, so it can be answered here.
-  await page.route("**/rest/v1/rpc/community_feed_page", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
-  );
-  await page.getByText("Posts", { exact: true }).first().click();
+  await page.getByRole("button", { name: "Announcements", exact: true }).first().click();
 
-  await expect(page.getByText("No posts yet")).toBeVisible();
+  await expect(page.getByText("No announcements right now")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Write a post instead|Sign in to post/ })).toBeVisible();
   await shot(page, "feed-empty-1440x900");
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  const bar = page.locator('[class*="mobile_bar"]');
+  await bar.getByRole("tab", { name: "Announcements" }).click();
+  await expect(page.getByText("No announcements right now")).toBeVisible();
+  await expectNoOverflow(page, "empty 360");
+  await shot(page, "feed-empty-360x800");
 });
 
 test("a spoiler post is blurred until revealed", async ({ page }) => {
@@ -148,8 +182,8 @@ test("a spoiler post is blurred until revealed", async ({ page }) => {
 test("the post page renders the body and its comments", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/community/post/${POST_ID}`);
-  await expect(page.getByText("Started Frieren again", { exact: false })).toBeVisible();
-  await expect(page.getByText("The pacing in the second half", { exact: false })).toBeVisible();
+  await expect(page.getByText("Started Frieren again", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("The pacing in the second half", { exact: false }).first()).toBeVisible();
   await expectNoOverflow(page, "post 1440x900");
   await shot(page, "post-1440x900");
 
