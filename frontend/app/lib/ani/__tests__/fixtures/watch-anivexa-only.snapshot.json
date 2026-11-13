@@ -1,0 +1,36 @@
+{
+  "anilistId": 21,
+  "episode": 1,
+  "audio": "sub",
+  "provider": "anikoto",
+  "server": "HD-1",
+  "serverId": "hd-1",
+  "hasBackup": false,
+  "type": "hls",
+  "url": "/api/proxy/manifest?t=<token>",
+  "subtitles": [
+    {
+      "id": "sub-1",
+      "label": "English",
+      "lang": "en",
+      "kind": "full",
+      "default": true,
+      "url": "/api/proxy/subtitle?t=<token>"
+    }
+  ],
+  "thumbnails": null,
+  "intro": null,
+  "outro": null,
+  "availableAudio": [
+    "sub",
+    "dub"
+  ],
+  "servers": [
+    {
+      "id": "hd-1",
+      "label": "HD-1",
+      "active": true
+    }
+  ],
+  "resolvedAt": "<resolvedAt>"
+}

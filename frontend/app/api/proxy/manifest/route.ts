@@ -11,6 +11,49 @@ const bad = (status: number, message: string) =>
   new Response(message, { status });
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Optional per-host allowlist of segment hosts that may be left ABSOLUTE in a
+ * rewritten playlist, so their segments load straight from the CDN instead of
+ * through this server (Railway bandwidth).
+ *
+ * Only the segment snapshots the ani provider serves were measured as safe for
+ * this: `hls1.drama1.cfd` is CORS-open (`*`), needs no Referer, and serves
+ * `video/mp2t` under `*.ts.jpg` names. Playlists, key playlists, EXT-X-MAP and
+ * subtitles always stay proxied - only media segments can be direct.
+ *
+ * Unset or empty keeps the documented default host; `none`/`off` disables the
+ * behaviour entirely. Any other Anivexa host is never in this list, so its
+ * playlists are rewritten exactly as before.
+ */
+const DEFAULT_DIRECT_SEGMENT_HOSTS = "hls1.drama1.cfd";
+
+function directSegmentHosts(): string[] {
+  const raw = process.env.DIRECT_SEGMENT_HOSTS;
+  const value = !raw || !raw.trim() ? DEFAULT_DIRECT_SEGMENT_HOSTS : raw;
+  if (/^(none|off|0|false)$/i.test(value.trim())) return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Is this segment URL on a host we are allowed to serve directly? */
+function isDirectSegment(url: string, base: string, hosts: string[]) {
+  if (!hosts.length) return null;
+  let absolute: URL;
+  try {
+    absolute = new URL(url, base);
+  } catch {
+    return null;
+  }
+  if (absolute.protocol !== "https:") return null;
+  const host = absolute.hostname.toLowerCase();
+  const listed = hosts.some(
+    (allowed) => host === allowed || host.endsWith(`.${allowed}`),
+  );
+  return listed ? absolute.toString() : null;
+}
+
 type PlaylistResult = {
   response: Response;
   finalUrl: string;
@@ -107,6 +150,7 @@ export async function GET(req: Request) {
       );
     }
 
+    const directHosts = directSegmentHosts();
     const lines = text.split(/\r?\n/);
     const outputLines: string[] = [];
     let variant = false;
@@ -148,13 +192,17 @@ export async function GET(req: Request) {
         continue;
       }
 
+      const direct = variant
+        ? null
+        : isDirectSegment(line, upstream.finalUrl, directHosts);
       outputLines.push(
-        await make(
-          variant ? "manifest" : segmentKind,
-          line,
-          upstream.finalUrl,
-          payload.h || {},
-        ),
+        direct ||
+          (await make(
+            variant ? "manifest" : segmentKind,
+            line,
+            upstream.finalUrl,
+            payload.h || {},
+          )),
       );
       variant = false;
     }

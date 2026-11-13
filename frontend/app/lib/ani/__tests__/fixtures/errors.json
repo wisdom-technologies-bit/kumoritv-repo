@@ -1,0 +1,98 @@
+{
+  "MAL_NOT_FOUND": {
+    "code": "MAL_NOT_FOUND",
+    "title": "Unknown MAL id",
+    "stage": "mal_lookup",
+    "provider": "anilist",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "MAL id 99999999 is not a known anime entry",
+    "status": 404,
+    "instance": "/v1/streams/mal/99999999/episode/1",
+    "request_id": "req_fixture_404"
+  },
+  "MAL_NOT_MAPPED": {
+    "code": "MAL_NOT_MAPPED",
+    "title": "No verified HiAnime mapping for this MAL id",
+    "stage": "mal_mapping",
+    "provider": "hianime",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "no HiAnime candidate proved MAL id 52299 via provider embed",
+    "status": 404,
+    "instance": "/v1/streams/mal/52299/episode/1",
+    "request_id": "req_fixture_mapped"
+  },
+  "MAL_MAPPING_AMBIGUOUS": {
+    "code": "MAL_MAPPING_AMBIGUOUS",
+    "title": "Several HiAnime entries claim the same MAL id",
+    "stage": "mal_mapping",
+    "provider": "hianime",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "refusing to guess; overlapping verified options: show-part-1, show-part-2",
+    "status": 409,
+    "instance": "/v1/streams/mal/16498/episode/1",
+    "request_id": "req_fixture_ambiguous"
+  },
+  "MAL_EPISODE_NOT_FOUND": {
+    "code": "MAL_EPISODE_NOT_FOUND",
+    "title": "Episode not present in the verified mapping",
+    "stage": "mal_episode",
+    "provider": "hianime",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "MAL 21 has no episode 2000; available: 1-1100",
+    "status": 404,
+    "instance": "/v1/streams/mal/21/episode/2000",
+    "request_id": "req_fixture_ep404"
+  },
+  "MAL_EPISODE_MISMATCH": {
+    "code": "MAL_EPISODE_MISMATCH",
+    "title": "Provider embed disagrees with the requested MAL episode",
+    "stage": "mal_episode",
+    "provider": "zokoanime",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "asked for MAL 21 episode 1, provider embed serves /mal/21/2/; not returning a possibly wrong episode",
+    "status": 409,
+    "instance": "/v1/streams/mal/21/episode/1",
+    "request_id": "req_fixture_mismatch"
+  },
+  "MAL_TITLE_SOURCE_UNAVAILABLE": {
+    "code": "MAL_TITLE_SOURCE_UNAVAILABLE",
+    "title": "MAL metadata lookup temporarily unavailable",
+    "stage": "mal_lookup",
+    "provider": "anilist",
+    "retryable": true,
+    "retry_after": 30,
+    "detail": "anilist request failed",
+    "status": 503,
+    "instance": "/v1/streams/mal/21/episode/1",
+    "request_id": "req_fixture_title"
+  },
+  "UNAUTHORIZED": {
+    "code": "UNAUTHORIZED",
+    "title": "Missing or invalid API key",
+    "stage": "",
+    "provider": "",
+    "retryable": false,
+    "retry_after": null,
+    "detail": "",
+    "status": 401,
+    "instance": "/v1/streams/mal/21/episode/1",
+    "request_id": ""
+  },
+  "RATE_LIMITED": {
+    "code": "RATE_LIMITED",
+    "title": "Too many requests",
+    "stage": "",
+    "provider": "",
+    "retryable": true,
+    "retry_after": 60,
+    "detail": "",
+    "status": 429,
+    "instance": "/v1/streams/mal/21/episode/1",
+    "request_id": ""
+  }
+}

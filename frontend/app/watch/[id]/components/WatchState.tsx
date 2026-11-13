@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ANI_PROVIDER } from "@/app/lib/ani/constants";
 
 // The UI only ever talks about SERVER names. `provider` stays internal (it is
 // never rendered); it is what the route uses to exclude a dead source.
@@ -35,6 +36,8 @@ type LoadOptions = {
   provider?: string | null;
   server?: string | null;
   exclude?: string[];
+  /** Force a fresh upstream resolve (`refresh=1`): bypasses both caches. */
+  refresh?: boolean;
 };
 type State = {
   audio: "sub" | "dub";
@@ -124,15 +127,26 @@ export function WatchState({
   const [offset, setOffsetState] = useState(0);
   const [nonce, setNonce] = useState(0);
   const requestRef = useRef<LoadOptions>({});
+  // ani stream URLs were measured valid for about 28 minutes, so the first fatal
+  // player error is far more likely to be an expired URL than a dead source.
+  // One forced re-resolve is allowed per episode/audio before ani is excluded.
+  const aniRefreshTried = useRef(false);
 
+  // `refresh` is per-request on purpose: it must not be replayed by the next
+  // failover, only the provider/server/exclude choices are remembered.
   const load = useCallback(
     async (options: LoadOptions = requestRef.current) => {
-      requestRef.current = options;
+      requestRef.current = {
+        provider: options.provider,
+        server: options.server,
+        exclude: options.exclude,
+      };
       setStatus("loading");
       const query = new URLSearchParams({ audio, sublang: subtitleLanguage });
       if (options.provider) query.set("provider", options.provider);
       if (options.server) query.set("server", options.server);
       if (options.exclude?.length) query.set("exclude", options.exclude.join(","));
+      if (options.refresh) query.set("refresh", "1");
       try {
         const response = await fetch(
           `/api/watch/${anilistId}/${episode}?${query}`,
@@ -143,11 +157,15 @@ export function WatchState({
         setData(body);
         setStatus("ready");
         setErrorMessage("");
+        // A different source took over, so ani gets its one forced retry back.
+        if (body?.provider !== ANI_PROVIDER) aniRefreshTried.current = false;
+        return true;
       } catch (error) {
         setStatus("error");
         setErrorMessage(
           error instanceof Error ? error.message : "stream_error",
         );
+        return false;
       }
     },
     [anilistId, episode, audio, subtitleLanguage],
@@ -170,6 +188,10 @@ export function WatchState({
   useEffect(() => {
     void load();
   }, [load, nonce]);
+
+  useEffect(() => {
+    aniRefreshTried.current = false;
+  }, [anilistId, episode, audio]);
 
   /** Picking a server keeps the active provider and asks for that label. */
   const selectServer = (id: string) => {
@@ -207,10 +229,37 @@ export function WatchState({
     void load({ provider: null, server: null, exclude });
   };
 
+  /**
+   * ani first gets ONE forced re-resolve (`refresh=1`, same provider, position
+   * kept), because its URLs expire long before the session does. Only if that
+   * fails - or the fresh stream fails too - is ani excluded and Anivexa asked.
+   * Every other provider keeps the old behaviour: exclude and move on.
+   */
+  const refreshAniThenFallback = async () => {
+    const refreshed = await load({
+      provider: ANI_PROVIDER,
+      server: null,
+      refresh: true,
+    });
+    if (refreshed) return;
+    const exclude = [
+      ...new Set([...(requestRef.current.exclude || []), ANI_PROVIDER]),
+    ];
+    setSelectedServer("");
+    setTried(exclude);
+    writeServerPref(anilistId, audio, null);
+    await load({ provider: null, server: null, exclude });
+  };
+
   const failover = (reason = "network") => {
     const current = data?.provider;
     if (!current) return;
     reportDead(current, reason);
+    if (current === ANI_PROVIDER && !aniRefreshTried.current) {
+      aniRefreshTried.current = true;
+      void refreshAniThenFallback();
+      return;
+    }
     const exclude = [...new Set([...(requestRef.current.exclude || []), current])];
     setSelectedServer("");
     setTried(exclude);
