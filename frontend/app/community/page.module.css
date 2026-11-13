@@ -1107,3 +1107,106 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---- Airing this week: a 2x2 of posters, not a list of lines -------------- */
+.airing_grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+.airing_item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+}
+
+.airing_item:focus-visible {
+  outline: 2px solid var(--accent, #8b5cf6);
+  outline-offset: 3px;
+}
+
+.airing_cover {
+  display: block;
+  width: 100%;
+  max-width: 110px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.airing_cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* "On KumoriTV" is a real signal from the schedule layer, so it is shown rather
+   than guessed, but quietly: the poster is the card. */
+.airing_item[data-on-kumori="true"] .airing_cover {
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.55);
+}
+
+.airing_title {
+  font-size: 12px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.airing_meta {
+  font-size: 11px;
+  color: var(--white-50);
+  white-space: nowrap;
+}
+
+.rail_more {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--white-50);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rail_more:hover {
+  color: var(--white-75);
+}
+
+/* Skeleton: the same grid, so the rail does not jump when the data lands. */
+.airing_skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.airing_skeleton_cover {
+  display: block;
+  width: 100%;
+  max-width: 110px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.airing_skeleton_line,
+.airing_skeleton_line_short {
+  display: block;
+  height: 9px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.airing_skeleton_line_short {
+  width: 60%;
+}
