@@ -5,6 +5,7 @@ import type { FeedFilter } from "@/app/lib/community/queries";
 export const FILTERS: { value: FeedFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "post", label: "Posts" },
+  { value: "comment", label: "Comments" },
   { value: "announcement", label: "Announcements" },
 ];
 

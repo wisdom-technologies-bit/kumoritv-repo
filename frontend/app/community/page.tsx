@@ -10,6 +10,7 @@ import CommunityRails from "./components/rails";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { FEED_PAGE_SIZE, type FeedItem } from "@/app/lib/community/queries";
 import { createClient } from "@/app/lib/supabase/server";
+import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const FILTERS = ["all", "post", "announcement"] as const;
+const FILTERS = ["all", "post", "comment", "announcement"] as const;
 
 function readFilter(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -43,6 +44,11 @@ export default async function CommunityPage({
   if (!isCommunityEnabled()) notFound();
   const params = (await searchParams) ?? {};
   const initialFilter = readFilter(params.filter);
+  // ?anime=<anilistId> is the single-title view the rail and the cards link to.
+  const animeParam = Number(Array.isArray(params.anime) ? params.anime[0] : params.anime);
+  const initialAnimeId = Number.isFinite(animeParam) && animeParam > 0 ? animeParam : null;
+  // The same switch the site already honours. Guests get false.
+  const initialShowAdult = await readShowAdultContent();
 
   let initialItems: FeedItem[] = [];
   let initialCursor: { createdAt: string; key: string } | null = null;
@@ -56,16 +62,16 @@ export default async function CommunityPage({
         p_cursor_created_at: null,
         p_cursor_key: null,
         p_kind: initialFilter,
-        p_show_adult: false,
+        p_show_adult: initialShowAdult,
         p_author: null,
-        p_anilist_id: null,
+        p_anilist_id: initialAnimeId,
         p_hide_blocked: true,
       });
       if (error) {
         initialFailed = true;
       } else {
         initialItems = ((data ?? []) as FeedItem[]).filter(
-          (row) => row && (row.kind === "post" || row.kind === "announcement"),
+          (row) => row && (row.kind === "post" || row.kind === "announcement" || row.kind === "comment"),
         );
         const last = initialItems[initialItems.length - 1];
         initialCursor = last ? { createdAt: last.created_at, key: last.feed_key } : null;
@@ -81,6 +87,8 @@ export default async function CommunityPage({
       initialItems={initialItems}
       initialCursor={initialCursor}
       initialFailed={initialFailed}
+      initialShowAdult={initialShowAdult}
+      initialAnimeId={initialAnimeId}
       rightRail={<CommunityRails />}
     />
   );
