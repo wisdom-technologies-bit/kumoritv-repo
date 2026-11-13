@@ -493,6 +493,59 @@ else
   bad "comments-deleted-users.sql can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/comments-deleted-users.sql" 2>&1 | grep ERROR | head -2)"
 fi
 
+
+echo
+echo "== 19. first login, anonymous sessions, guest merge (profiles RLS on) =="
+FRANK='00000000-0000-0000-0000-0000000000b8'
+qs "insert into auth.users (id, email) select '$FRANK','b8@test.local' where not exists (select 1 from auth.users where id='$FRANK');" >/dev/null
+
+run_eq "signup: a signed-in user can create their own profile" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   with i as (insert into public.profiles (id, display_name) values ('$FRANK','Frank') returning 1) select count(*) from i"
+run_eq "signup: the row is readable back through public_profiles" "Frank" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select display_name from public.public_profiles where id = '$FRANK'"
+run_eq "signup: nobody can create a profile for somebody else" "denied" \
+  "select case when exists (
+     select 1 from pg_policies where tablename='profiles' and cmd='INSERT'
+      and coalesce(with_check,'') not like '%auth.uid()%')
+   then 'open' else 'denied' end"
+run_eq "signup: another signed-in user cannot read Frank's private profile row" "0" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ALICE\"}';
+   select count(*) from public.profiles where id = '$FRANK'"
+run_eq "signup: profiles still has no role column" "0" \
+  "select count(*) from information_schema.columns where table_name='profiles' and column_name='role'"
+
+ANDY='00000000-0000-0000-0000-0000000000c9'
+qs "insert into auth.users (id, email) select '$ANDY','c9@test.local' where not exists (select 1 from auth.users where id='$ANDY');" >/dev/null
+run_eq "anonymous: an is_anonymous session can create its profile" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ANDY\",\"is_anonymous\":true}';
+   with i as (insert into public.profiles (id) values ('$ANDY') returning 1) select count(*) from i"
+ANONPOST=$(qs "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ANDY\",\"is_anonymous\":true}';
+   insert into public.community_posts (author_id, body) values ('$ANDY','anon post');" 2>&1)
+case "$ANONPOST" in
+  *"row-level security"*) ok "anonymous: it still cannot write a community post directly" ;;
+  *) bad "anonymous: it still cannot write a community post directly" "row-level security" "$ANONPOST" ;;
+esac
+
+BOBFAV=$(qs "select count(*) from public.favourites where user_id = '$BOB'")
+run_eq "merge: a guest's favourites can be inserted for the new account" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   with i as (insert into public.favourites (user_id, anilist_id) values ('$FRANK', 44000) returning 1) select count(*) from i"
+run_eq "merge: the account reads its own merged row" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select count(*) from public.favourites where user_id = '$FRANK' and anilist_id = 44000"
+# NOTE: public.favourites has RLS disabled (no policies exist), so this harness
+# cannot prove per-user isolation for it. That is a pre-existing gap in the
+# prompt9 user_data tables, outside Community Phase 1, and is reported rather
+# than silently asserted as safe.
+run_eq "merge: the account only sees its own merged favourite" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select count(*) from public.favourites where user_id = '$FRANK'"
+
+run_eq "anon cannot read staff_roles even after every file" "t" \
+  "select not has_table_privilege('anon','public.staff_roles','select')"
+
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'failed: %s\n' "${failed_names[*]}"; exit 1; fi
