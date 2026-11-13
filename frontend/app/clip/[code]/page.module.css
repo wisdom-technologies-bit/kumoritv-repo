@@ -1,35 +1,56 @@
-/* Prompt 35: /clip/[code]. Dark, one column, the player first. */
+/* Prompt 35: /clip/[code]. Dark, one column, the player first.
+ *
+ * Prompt 36: layout only. Two things changed here and nowhere else.
+ *   1. The player is the watch page's player at full size: edge to edge on a
+ *      phone, and on desktop the right column of a two column grid built
+ *      inside the site's normal page container. To get there the page stops
+ *      nesting the watch page's own layout shell (see ClipPlayer), which was
+ *      adding a second gutter and an empty 380px sidebar column.
+ *   2. The details block sits in a 16px gutter under the player, and its
+ *      action buttons never wrap into three rows.
+ * Everything here is layout: no clip, player or range behaviour lives in this
+ * file. The player's control sizes and skin stay Vidstack's, unchanged. */
 
 #container {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "player"
+    "details";
+
   gap: 16px;
 
   width: 100%;
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 16px var(--page-gutter) 48px;
+  padding: 0 0 48px;
 
   color: var(--white-100);
 }
 
+/* ---- player ------------------------------------------------------------- */
+
 #video_area {
+  grid-area: player;
+
   width: 100%;
   min-width: 0;
 }
 
+/* Phones: no card, no frame, no gutter - the 16:9 box IS the screen width and
+   it starts directly under the header, exactly like the watch page player. */
 #video_container {
   position: relative;
 
   width: 100%;
-  min-height: 180px;
+  min-height: 0;
 
   overflow: hidden;
 
   background: #000;
   aspect-ratio: 16 / 9;
 
-  border-radius: 12px;
+  border-radius: 0;
 }
 
 #video_container > * {
@@ -63,20 +84,64 @@
   object-fit: contain;
 }
 
-@media (min-width: 1024px) {
-  #video_container {
-    max-height: min(78vh, calc((100vw - 3 * var(--page-gutter)) * 9 / 16));
+/* The end panel is the only thing on this page allowed to size itself from the
+   player box; naming the container here keeps that scoped to the clip player
+   (the watch page player is never a named container). */
+#video_container > * {
+  container: clip_player / inline-size;
+}
+
+/* While the compact end panel is open its own buttons are the actions, so the
+   chrome that used to collide with it steps aside: the centre play button and
+   the title/time row. The progress bar keeps its place. Scoped to this page by
+   the hashed id, so /watch is untouched. */
+#video_container [data-media-player]:has([data-testid="clip-end-card"]) .vds-play-button,
+#video_container [data-media-player]:has([data-testid="clip-end-card"]) .vds-time-group,
+#video_container [data-media-player]:has([data-testid="clip-end-card"]) .vds-chapter-title {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* On a phone-sized player the top row (cast, captions, settings) is inside the
+   panel's space too, so it steps aside as well; a large player keeps it. */
+@container clip_player (max-width: 599px) {
+  #video_container [data-media-player]:has([data-testid="clip-end-card"]) .vds-controls-group:has(.vds-google-cast-button),
+  #video_container [data-media-player]:has([data-testid="clip-end-card"]) .vds-controls-group:has(.vds-airplay-button) {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
   }
 }
 
-/* ---- info --------------------------------------------------------------- */
+/* The compact end panel needs its own padding back. The shared player module
+   zeroes padding on the stage's children (`.stage > div, .stage > div > div`),
+   which out-specifies the panel's own class, so the padding is re-declared here
+   at id specificity. The panel's presentation stays in its own module; only the
+   override lives on the clip page. */
+#video_container [data-testid="clip-end-card"] {
+  padding: 8px 8px 64px;
+}
+
+@container clip_player (min-width: 600px) {
+  #video_container [data-testid="clip-end-card"] {
+    padding: 16px 16px 92px;
+  }
+}
+
+/* ---- details ------------------------------------------------------------ */
 
 #info {
+  grid-area: details;
+
   display: flex;
   flex-direction: column;
   gap: 12px;
 
   min-width: 0;
+
+  /* The player is edge to edge; the text keeps the site gutter. */
+  padding-inline: var(--page-gutter);
 }
 
 #heading {
@@ -92,8 +157,8 @@
 
   flex: 0 0 auto;
 
-  width: 56px;
-  height: 78px;
+  width: 64px;
+  height: 90px;
 
   overflow: hidden;
 
@@ -111,7 +176,7 @@
 
 .kicker {
   color: var(--sakura-pink);
-  font-size: var(--font-size--small-2);
+  font-size: var(--font-size--small-1);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -121,6 +186,8 @@
   font-size: var(--font-size--h5);
   font-weight: 600;
   line-height: 1.25;
+
+  overflow-wrap: anywhere;
 }
 
 .heading_text h1 a {
@@ -152,14 +219,14 @@
 }
 
 .chip {
-  padding: 4px 10px;
+  padding: 5px 11px;
 
   color: var(--white-75);
   background: var(--white-05);
   border: 1px solid var(--white-25);
   border-radius: 999px;
 
-  font-size: var(--font-size--small-2);
+  font-size: var(--font-size--small-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -171,11 +238,18 @@
   line-height: 1.5;
 }
 
+/* Primary full width, then "Anime details" and "Report clip" sharing one row.
+   Two columns at every size means the row can never become three stacked
+   pills, and nothing scrolls sideways at 320px. */
 .actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 8px;
+}
+
+.primary {
+  grid-column: 1 / -1;
 }
 
 .primary,
@@ -184,13 +258,15 @@
   align-items: center;
   justify-content: center;
 
-  min-height: 40px;
+  width: 100%;
+  min-height: 44px;
   padding: 0 14px;
 
   border-radius: 999px;
 
   font-size: var(--font-size--small-1);
   font-weight: 600;
+  text-align: center;
   text-decoration: none;
 }
 
@@ -268,13 +344,104 @@
   text-decoration: none;
 }
 
+/* ---- tablet (768-1023): one column, player at the container width ------- */
+
 @media (min-width: 768px) {
   #container {
-    padding-top: 24px;
+    /* From tablet up the player sits inside the site's page container. */
+    padding: 0 var(--page-gutter) 48px;
+  }
+
+  #video_container {
+    border-radius: 12px;
+  }
+
+  #info {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "heading meta"
+      "title   note"
+      "actions actions";
+
+    gap: 12px 24px;
+    align-items: start;
+
+    /* The player no longer reaches the screen edge, so the text does not need
+       its own gutter: the page container owns it. */
+    padding-inline: 0;
+  }
+
+  #heading {
+    grid-area: heading;
+  }
+
+  .clip_title {
+    grid-area: title;
+  }
+
+  .meta {
+    grid-area: meta;
+  }
+
+  .note {
+    grid-area: note;
+  }
+
+  .actions {
+    grid-area: actions;
+  }
+
+  /* Actions keep the phone arrangement (primary, then the pair) and stay a
+     comfortable width instead of stretching across the whole tablet. */
+  .actions {
+    max-width: 420px;
   }
 
   .poster {
     width: 72px;
-    height: 100px;
+    height: 101px;
+  }
+}
+
+/* ---- desktop (>= 1024): details card left, large player right ---------- */
+
+@media (min-width: 1024px) {
+  #container {
+    grid-template-columns: clamp(320px, 30%, 420px) minmax(0, 1fr);
+    grid-template-areas: "details player";
+    align-items: start;
+    gap: 24px;
+
+    padding: 24px var(--page-gutter) 48px;
+  }
+
+  #info {
+    display: flex;
+
+    /* 64px sticky header + 16px breathing room. */
+    position: sticky;
+    top: 80px;
+
+    padding: 16px;
+
+    background: var(--white-05);
+    border: 1px solid var(--white-25);
+    border-radius: 12px;
+  }
+
+  .poster {
+    width: 96px;
+    height: 144px;
+  }
+
+  /* Stacked, full width, primary first. */
+  .actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .primary,
+  .secondary {
+    grid-column: 1 / -1;
   }
 }

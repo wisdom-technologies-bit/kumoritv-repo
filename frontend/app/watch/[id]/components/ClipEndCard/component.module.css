@@ -109,6 +109,155 @@
   }
 }
 
+/* ---- compact panel (Prompt 36, /clip/[code]) ----------------------------
+   The panel must fit inside ANY player box, including a 320x180 one. So it is
+   a centred grid cell whose content is capped at the player's height, with
+   every size derived from the player's own width via container query units
+   (the clip page marks the player as `clip_player`). The bottom padding keeps
+   the Vidstack progress bar clear; it is the measured height of that bar. */
+
+.overlay_compact {
+  display: grid;
+  place-items: center;
+
+  /* Bottom padding clears the progress bar: the time row is hidden while the
+     panel is open (see the clip page module), so what is left to clear is the
+     slider bar itself, which is the same ~64px from the bottom at every small
+     player size. Larger players get the taller bar below. */
+  padding: 8px 8px 64px;
+
+  overflow: hidden;
+}
+
+.card_compact {
+  /* Full width of the player minus its padding: a panel that shrink-wraps its
+     heading would wrap the buttons one per line. */
+  width: 100%;
+  max-width: min(420px, 100%);
+  max-height: 100%;
+  padding: clamp(4px, 1.8cqw, 12px) clamp(8px, 2.6cqw, 16px);
+
+  gap: 4px;
+
+  overflow: hidden;
+
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+
+  /* cqw needs the container; the px value is the fallback for the same look. */
+  font-size: clamp(12px, 3.4vw, 15px);
+  font-size: clamp(12px, 3.4cqw, 15px);
+}
+
+/* Label and range are ONE line: "CLIP ENDED · 8:17-8:32". */
+.heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4em;
+
+  max-width: 100%;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  font-size: 1em;
+  line-height: 1.05;
+}
+
+.heading .kicker {
+  font-size: 1em;
+  letter-spacing: 0.04em;
+}
+
+.heading .range {
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.dot {
+  color: var(--white-50);
+}
+
+.actions_compact {
+  flex-direction: row;
+
+  gap: 6px;
+
+  width: 100%;
+  margin-top: 0;
+}
+
+/* The narrow-screen stacking rule above is for the full card; the compact
+   panel keeps its buttons on one wrapping row at every player size. */
+.actions_compact .primary,
+.actions_compact .secondary {
+  width: auto;
+}
+
+.actions_compact .primary,
+.actions_compact .secondary,
+.link {
+  min-height: 36px;
+  padding: 0 12px;
+
+  border-radius: 999px;
+
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.1;
+  text-decoration: none;
+
+  cursor: pointer;
+}
+
+.actions_compact .primary,
+.actions_compact .secondary {
+  /* 44px tap target without growing the visible pill on a small player. */
+  position: relative;
+}
+
+.actions_compact .primary::after,
+.actions_compact .secondary::after,
+.link::after {
+  content: "";
+  position: absolute;
+  inset: -5px -2px;
+  border-radius: 999px;
+}
+
+.link {
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  color: var(--white-75);
+  background: transparent;
+  border: 1px solid transparent;
+
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:hover {
+  color: var(--white-100);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: 2px;
+}
+
+/* A phone-sized player keeps its control bar; a larger one has a taller bar. */
+@container clip_player (min-width: 600px) {
+  .overlay_compact {
+    padding: 16px 16px 92px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .overlay {
     backdrop-filter: none;

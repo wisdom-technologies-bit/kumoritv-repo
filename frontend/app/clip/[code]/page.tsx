@@ -201,6 +201,8 @@ export default async function ClipPage({ params }: Params) {
           re-hosted, and playback uses the normal stream.
         </p>
 
+        {/* Prompt 36: primary on its own line, then "Anime details" and
+            "Report clip" sharing one row - never three stacked pills. */}
         <div className={styles.actions}>
           <Link className={styles.primary} href={episodePage} data-testid="clip-watch-full">
             Watch the full episode
@@ -208,7 +210,7 @@ export default async function ClipPage({ params }: Params) {
           <Link className={styles.secondary} href={`/media/${clip.anilistId}`}>
             Anime details
           </Link>
-          <ReportClip code={clip.code} />
+          <ReportClip code={clip.code} variant="text" />
         </div>
       </section>
     </main>
