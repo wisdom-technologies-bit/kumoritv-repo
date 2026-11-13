@@ -20,6 +20,8 @@ import AnnouncementCard from "./AnnouncementCard";
 import ReportDialog from "./ReportDialog";
 
 export type FeedShellProps = {
+  /** From ?filter=..., so a filtered feed is linkable and server-rendered. */
+  initialFilter?: FeedFilter;
   initialItems: FeedItem[];
   initialCursor: { createdAt: string; key: string } | null;
   initialFailed: boolean;
@@ -46,7 +48,13 @@ const EMPTY_STATE: Record<FeedFilter, { title: string; text: string }> = {
   },
 };
 
-export default function FeedShell({ initialItems, initialCursor, initialFailed, rightRail }: FeedShellProps) {
+export default function FeedShell({
+  initialFilter = "all",
+  initialItems,
+  initialCursor,
+  initialFailed,
+  rightRail,
+}: FeedShellProps) {
   const [client, setClient] = useState<ReturnType<typeof createBrowserSupabaseClient>>(null);
   const { user } = useUser();
   const dispatch = useAppDispatch();
@@ -59,7 +67,7 @@ export default function FeedShell({ initialItems, initialCursor, initialFailed, 
     null;
   const avatarUrl = (user?.user_metadata?.avatar_url as string | undefined) || null;
 
-  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const [items, setItems] = useState<FeedItem[]>(initialItems);
   const [cursor, setCursor] = useState<Cursor>(initialCursor);
   const [isLoading, setIsLoading] = useState(initialItems.length === 0 && !initialFailed);

@@ -28,8 +28,21 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function CommunityPage() {
+const FILTERS = ["all", "post", "announcement"] as const;
+
+function readFilter(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (FILTERS as readonly string[]).includes(raw ?? "") ? (raw as (typeof FILTERS)[number]) : "all";
+}
+
+export default async function CommunityPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!isCommunityEnabled()) notFound();
+  const params = (await searchParams) ?? {};
+  const initialFilter = readFilter(params.filter);
 
   let initialItems: FeedItem[] = [];
   let initialCursor: { createdAt: string; key: string } | null = null;
@@ -42,7 +55,7 @@ export default async function CommunityPage() {
         p_limit: FEED_PAGE_SIZE,
         p_cursor_created_at: null,
         p_cursor_key: null,
-        p_kind: "all",
+        p_kind: initialFilter,
         p_show_adult: false,
         p_author: null,
         p_anilist_id: null,
@@ -64,6 +77,7 @@ export default async function CommunityPage() {
 
   return (
     <FeedShell
+      initialFilter={initialFilter}
       initialItems={initialItems}
       initialCursor={initialCursor}
       initialFailed={initialFailed}
