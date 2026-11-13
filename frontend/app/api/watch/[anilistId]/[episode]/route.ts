@@ -1,6 +1,8 @@
 import { runInBackground } from "@/app/lib/background";
 import { ANIVEXA_BASE } from "@/app/lib/anivexa/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import type { Database } from "@/app/lib/supabase/database.types";
 import { getWatchEpisodeResult } from "@/app/lib/watch/episode-data";
 import { importAnime } from "@/app/lib/anime-db/import";
 import { proxyUrl, ProxyNotConfiguredError } from "@/app/lib/proxy/signing";
@@ -16,6 +18,15 @@ import {
 import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
+import {
+  ANI_PROVIDER,
+  aniGate,
+  lookupMalId,
+  recordAniOutcome,
+  resolveAni,
+  type AniTraceEntry,
+  type AniWinner,
+} from "@/app/lib/ani";
 
 /** Supabase resolves with `{ error }` instead of throwing, so log the result. */
 function backgroundUpdate(query: PromiseLike<any>) {
@@ -32,7 +43,10 @@ function backgroundUpdate(query: PromiseLike<any>) {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-const cache = new Map<string, { at: number; value: any }>();
+const cache = new Map<string, { at: number; value: any; ttl?: number }>();
+/** Anivexa answers keep the 5 minute TTL; an ani answer may live 10 minutes. */
+const WATCH_CACHE_TTL_MS = 300_000;
+const ANI_WATCH_CACHE_TTL_MS = 600_000;
 function watchCacheKey(input: {
   id: string | number;
   episode: string | number;
@@ -153,6 +167,83 @@ async function resolveProvider(
     return null;
   }
 }
+type AudioChoice = "sub" | "dub";
+
+/**
+ * ani first, Anivexa second.
+ *
+ * This runs BEFORE the Anivexa loop and returns the same `winner` shape, so every
+ * downstream step (proxy signing, subtitles, server buttons, response) is shared.
+ * Any problem at all - flag off, rollout bucket, no MAL id, an error code, an
+ * unverified stream, a timeout, an open breaker, a failed probe - returns
+ * `winner: null` and the caller continues with the existing Anivexa path exactly
+ * as before. In explicit mode (`provider=ani`) the caller stops instead.
+ *
+ * `trace` is only filled when the request asked for `debug=1`, so a normal
+ * response is byte-for-byte what it was before this provider existed.
+ */
+async function tryAni(input: {
+  row: { mal_id?: number | null } | null;
+  db: SupabaseClient<Database> | null;
+  anilistId: number;
+  episode: number;
+  audio: AudioChoice;
+  requestedProvider?: string | null;
+  exclude: string[];
+  refresh: boolean;
+  sublang: string;
+  trace: AniTraceEntry[];
+  debug: boolean;
+}): Promise<{ winner: AniWinner | null; reason: string }> {
+  const gate = aniGate({
+    anilistId: input.anilistId,
+    audio: input.audio,
+    requestedProvider: input.requestedProvider,
+    exclude: input.exclude,
+  });
+  if (!gate.attempt) {
+    recordAniOutcome({ outcome: "skipped", reason: gate.reason, ms: 0 });
+    if (input.debug)
+      input.trace.push({
+        provider: ANI_PROVIDER,
+        outcome: "skipped",
+        reason: gate.reason,
+        ms: 0,
+      });
+    return { winner: null, reason: gate.reason };
+  }
+
+  const malId = input.row?.mal_id
+    ? Number(input.row.mal_id)
+    : await lookupMalId(input.db, input.anilistId);
+
+  const outcome = await resolveAni({
+    anilistId: input.anilistId,
+    episode: input.episode,
+    audio: input.audio,
+    malId,
+    refresh: input.refresh,
+    sublang: input.sublang,
+  });
+
+  if (input.debug)
+    input.trace.push({
+      provider: ANI_PROVIDER,
+      outcome: outcome.winner ? "success" : "failed",
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+      ms: outcome.ms,
+    });
+
+  if (!outcome.winner && input.requestedProvider !== ANI_PROVIDER)
+    recordAniOutcome({
+      outcome: "fallback_to_anivexa",
+      reason: outcome.reason ?? "internal_error",
+      ms: outcome.ms,
+    });
+
+  return { winner: outcome.winner, reason: outcome.reason ?? "internal_error" };
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { anilistId: string; episode: string } },
@@ -191,7 +282,12 @@ export async function GET(
       sublang,
     }),
     cached = cache.get(key);
-  if (!refresh && !debug && cached && now - cached.at < 300000)
+  if (
+    !refresh &&
+    !debug &&
+    cached &&
+    now - cached.at < (cached.ttl ?? WATCH_CACHE_TTL_MS)
+  )
     return json(cached.value);
   const db: any = createAdminClient();
   if (!db) return json({ error: "database_unavailable" }, 500);
@@ -204,23 +300,54 @@ export async function GET(
   const allProviders = Array.isArray(row[`${audio}_providers`])
     ? row[`${audio}_providers`]
     : [];
+  // Our own API is not an Anivexa provider row, so it is never in this list: it
+  // is asked separately, before the Anivexa loop, and never written back.
+  const explicitAni = requestedProvider === ANI_PROVIDER;
   if (
     requestedProvider &&
+    !explicitAni &&
     !allProviders.some((p: any) => p.provider === requestedProvider)
   )
     return json({ error: "unknown_provider" }, 400);
-  const providers = allProviders.filter(
-    (p: any) => !requestedProvider || p.provider === requestedProvider,
-  );
-  if (!providers.length) {
+  const providers = explicitAni
+    ? []
+    : allProviders.filter(
+        (p: any) => !requestedProvider || p.provider === requestedProvider,
+      );
+  const trace: any[] = [];
+  let winner: any = null;
+  const aniOutcome = await tryAni({
+    row,
+    db,
+    anilistId: id as number,
+    episode: episode as number,
+    audio: audio as AudioChoice,
+    requestedProvider,
+    exclude,
+    refresh,
+    sublang,
+    trace,
+    debug,
+  });
+  if (aniOutcome.winner) winner = aniOutcome.winner;
+  else if (explicitAni) {
+    // Explicit mode never falls back silently: the viewer asked for ani.
+    return json(
+      {
+        error: "no_playable_stream",
+        provider: ANI_PROVIDER,
+        tried: [{ provider: ANI_PROVIDER, reason: aniOutcome.reason }],
+      },
+      502,
+    );
+  }
+  if (!winner && !providers.length) {
     const availableAudio = ["sub", "dub"].filter(
       (a) =>
         Array.isArray(row[`${a}_providers`]) && row[`${a}_providers`].length,
     );
     return json({ error: "no_providers", availableAudio }, 404);
   }
-  const trace: any[] = [];
-  let winner: any = null;
   const fast =
     !refresh &&
     row.resolved_provider &&
@@ -287,11 +414,11 @@ export async function GET(
     );
   }
   const stream = winner.stream,
-    normalized = normalizeSubtitles(
-      stream.subtitles,
-      winner.json.subtitles,
-      sublang,
-    ),
+    // ani tracks arrive already in the public shape (its own labels and language
+    // codes, provider default first); Anivexa keeps its existing normaliser.
+    normalized = winner.subtitles
+      ? { subtitles: winner.subtitles, thumbnails: null }
+      : normalizeSubtitles(stream.subtitles, winner.json.subtitles, sublang),
     subs = normalized.subtitles,
     intro = normalizeIntroOutro(winner.json, stream),
     availableAudio = ["sub", "dub"].filter(
@@ -363,21 +490,32 @@ export async function GET(
       return json({ error: "proxy_not_configured" }, 500);
     throw error;
   }
-  backgroundUpdate(
-    db
-      .from("episodes")
-      .update({
-        resolved_provider: winner.provider,
-        resolved_audio: audio,
-        resolved_at: new Date().toISOString(),
-        needs_resync: false,
-      })
-      .eq("play_id", row.play_id),
-  );
+  // "ani" is never written to resolved_provider / sub_providers / dub_providers:
+  // those columns describe Anivexa's view of the episode and the importer fills
+  // them. ani keeps its own 10 minute cache instead.
+  if (winner.provider !== ANI_PROVIDER)
+    backgroundUpdate(
+      db
+        .from("episodes")
+        .update({
+          resolved_provider: winner.provider,
+          resolved_audio: audio,
+          resolved_at: new Date().toISOString(),
+          needs_resync: false,
+        })
+        .eq("play_id", row.play_id),
+    );
   if (debug) {
     result.trace = trace;
   } else {
-    cache.set(key, { at: now, value: result });
+    cache.set(key, {
+      at: now,
+      value: result,
+      ttl:
+        winner.provider === ANI_PROVIDER
+          ? ANI_WATCH_CACHE_TTL_MS
+          : WATCH_CACHE_TTL_MS,
+    });
   }
   return json(result);
 }

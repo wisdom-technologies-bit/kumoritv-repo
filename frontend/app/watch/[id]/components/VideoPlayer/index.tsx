@@ -583,6 +583,9 @@ export default function VideoPlayer({
       if (details.type === "networkError" && !recoveryRef.current.switched) {
         recoveryRef.current.switched = true;
         setWaiting(true);
+        // Save the place first: a failover remounts the player and resumes from
+        // the stored position, so the viewer lands where they were.
+        persist();
         watch.failover("blocked");
         return;
       }
@@ -600,6 +603,7 @@ export default function VideoPlayer({
       if (!recoveryRef.current.switched) {
         recoveryRef.current.switched = true;
         setWaiting(true);
+        persist();
         watch.failover("blocked");
         return;
       }
