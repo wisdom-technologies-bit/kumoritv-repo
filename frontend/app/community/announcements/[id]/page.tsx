@@ -3,6 +3,7 @@
 // Indexable with Open Graph (Q6). An external url is shown as a "Read more"
 // button with rel="noopener noreferrer", never as the page's own destination:
 // the bell and every link point HERE first.
+import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -27,7 +28,7 @@ type Announcement = {
   expires_at: string | null;
 };
 
-async function loadAnnouncement(id: string): Promise<Announcement | null> {
+const loadAnnouncement = cache(async function loadAnnouncement(id: string): Promise<Announcement | null> {
   try {
     const client = createClient();
     if (!client) return null;
@@ -44,7 +45,7 @@ async function loadAnnouncement(id: string): Promise<Announcement | null> {
   } catch {
     return null;
   }
-}
+});
 
 function descriptionFor(row: Announcement | null): string {
   const text = (row?.body ?? "").replace(/\s+/g, " ").trim();
@@ -54,6 +55,9 @@ function descriptionFor(row: Announcement | null): string {
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const enabled = isCommunityEnabled();
   const row = enabled && UUID.test(params.id) ? await loadAnnouncement(params.id) : null;
+  // Resolved before the shell streams: this is the only 404 that also carries a
+  // 404 status. Expired and missing announcements are both "absent".
+  if (enabled && !row) notFound();
   const title = row?.title || "Announcement";
   const description = descriptionFor(row);
   const image = row?.image || "/og-image.png";

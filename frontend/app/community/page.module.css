@@ -996,10 +996,20 @@
     display: none;
   }
 
+  /* One row, always. Wrapping made the bar two rows tall on a 360px screen,
+     which put it on top of the floating compose button. */
+  .mobile_bar .chip_row {
+    flex-wrap: nowrap;
+    width: 100%;
+  }
+
   .mobile_bar .chip {
-    flex: 1 0 auto;
+    flex: 1 1 0;
     justify-content: center;
     min-height: 44px;
+    padding: 0 10px;
+    font-size: 13px;
+    white-space: nowrap;
   }
 
   .fab {
@@ -1008,7 +1018,7 @@
     justify-content: center;
     position: fixed;
     right: 16px;
-    bottom: calc(72px + env(safe-area-inset-bottom));
+    bottom: calc(84px + env(safe-area-inset-bottom));
     width: 56px;
     height: 56px;
     border-radius: 999px;

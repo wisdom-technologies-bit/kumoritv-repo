@@ -2,6 +2,7 @@
 //
 // Guests may read (RLS lets anon read published, non-deleted posts). Post pages
 // are noindex,follow (Q6): the index and the announcement pages carry SEO.
+import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,7 +26,7 @@ type PostRow = {
   created_at: string;
 };
 
-async function loadPost(id: string): Promise<PostRow | null> {
+const loadPost = cache(async function loadPost(id: string): Promise<PostRow | null> {
   try {
     const client = createClient();
     if (!client) return null;
@@ -39,11 +40,14 @@ async function loadPost(id: string): Promise<PostRow | null> {
   } catch {
     return null;
   }
-}
+});
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const enabled = isCommunityEnabled();
   const post = enabled && UUID.test(params.id) ? await loadPost(params.id) : null;
+  // Metadata resolves before the layout shell is flushed, so this is the only
+  // place a 404 also gets the right status code. The page keeps its own guard.
+  if (enabled && !post) notFound();
   const title = post ? "A post on KumoriTV Community" : "Post not found";
 
   return {

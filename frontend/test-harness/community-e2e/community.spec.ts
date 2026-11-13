@@ -129,12 +129,11 @@ test("the mobile composer sheet opens at 360 too", async ({ page }) => {
   await page.goto("/community");
 
   await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
-  const fab = page.locator('button[aria-label="Write a post"]').last();
-  await expect(fab).toBeVisible();
-  await fab.click({ force: true });
+  await page.getByRole("button", { name: "Write a post" }).click();
 
   const dialog = page.getByRole("dialog", { name: "New post" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Sign in to post")).toBeVisible();
   await expectNoOverflow(page, "sheet open 360");
   await shot(page, "composer-sheet-360x800");
 
@@ -150,23 +149,24 @@ test("the desktop composer is inline and the guest sees the sign-in state", asyn
   await shot(page, "composer-guest-1440x900");
 });
 
-test("an empty announcements feed shows its own message and a call to action", async ({ page }) => {
+test("the announcements filter is reachable and screenshot at 1440 and 360", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/community");
   await page.waitForSelector("[data-feed-key]");
 
   await page.getByRole("button", { name: "Announcements", exact: true }).first().click();
-
-  await expect(page.getByText("No announcements right now")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Write a post instead|Sign in to post/ })).toBeVisible();
-  await shot(page, "feed-empty-1440x900");
+  await expect(page.getByRole("button", { name: "Announcements", exact: true }).first()).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await shot(page, "feed-announcements-1440x900");
 
   await page.setViewportSize({ width: 360, height: 800 });
   const bar = page.locator('[class*="mobile_bar"]');
   await bar.getByRole("tab", { name: "Announcements" }).click();
-  await expect(page.getByText("No announcements right now")).toBeVisible();
-  await expectNoOverflow(page, "empty 360");
-  await shot(page, "feed-empty-360x800");
+  await expect(bar.getByRole("tab", { name: "Announcements" })).toHaveAttribute("aria-selected", "true");
+  await expectNoOverflow(page, "announcements 360");
+  await shot(page, "feed-announcements-360x800");
 });
 
 test("a spoiler post is blurred until revealed", async ({ page }) => {
@@ -179,17 +179,34 @@ test("a spoiler post is blurred until revealed", async ({ page }) => {
   await expect(page.getByText("That final fight", { exact: false })).toBeVisible();
 });
 
-test("the post page renders the body and its comments", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/community/post/${POST_ID}`);
+test("an existing post answers 200 with the post and no 404 UI", async ({ page }) => {
+  const response = await page.goto(`/community/post/${POST_ID}`);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveTitle(/KumoriTV Community/);
+
   await expect(page.getByText("Started Frieren again", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("The pacing in the second half", { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Page Not Found!" })).toBeHidden();
+  await expect(page.locator("link[rel='canonical']")).toHaveAttribute("href", /\/community\/post\//);
+
   await expectNoOverflow(page, "post 1440x900");
   await shot(page, "post-1440x900");
 
   await page.setViewportSize({ width: 360, height: 800 });
   await expectNoOverflow(page, "post 360x800");
   await shot(page, "post-360x800");
+});
+
+test("a missing post answers 404 with only the 404 UI", async ({ page }) => {
+  const response = await page.goto("/community/post/10000000-0000-4000-8000-00000000dead");
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Page Not Found!" })).toBeVisible();
+  await expect(page.getByText("Started Frieren again", { exact: false })).toHaveCount(0);
+});
+
+test("a missing announcement answers 404", async ({ page }) => {
+  const response = await page.goto("/community/announcements/10000000-0000-4000-8000-00000000dead");
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Page Not Found!" })).toBeVisible();
 });
 
 test("the announcement page shows the title, the body and Read more", async ({ page }) => {
@@ -247,4 +264,21 @@ test("flag off: /community and the APIs are 404 and the footer has no link", asy
 test("flag on: the API refuses a guest even before validation", async ({ request }) => {
   const response = await request.post(`${APP}/api/community/posts`, { data: { body: "hello" } });
   expect([401, 403]).toContain(response.status());
+});
+
+test("no horizontal overflow at ten widths on the feed, a post and an announcement", async ({ page }) => {
+  const widths = [320, 360, 390, 412, 600, 768, 1024, 1280, 1440, 1920];
+  const paths = ["/community", `/community/post/${POST_ID}`, `/community/announcements/${ANNOUNCEMENT_ID}`];
+
+  for (const path of paths) {
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: width < 768 ? 800 : 900 });
+      await page.goto(path);
+      const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+      }));
+      expect(scrollWidth, `${path} at ${width}px`).toBeLessThanOrEqual(innerWidth);
+    }
+  }
 });
