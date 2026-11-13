@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import FeedShell from "./components/FeedShell";
 import CommunityRails from "./components/rails";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
+import { readFeedFilter } from "@/app/lib/community/filters";
 import { FEED_PAGE_SIZE, type FeedItem } from "@/app/lib/community/queries";
 import { createClient } from "@/app/lib/supabase/server";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
@@ -29,13 +30,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const FILTERS = ["all", "post", "comment", "announcement"] as const;
-
-function readFilter(value: string | string[] | undefined) {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return (FILTERS as readonly string[]).includes(raw ?? "") ? (raw as (typeof FILTERS)[number]) : "all";
-}
-
 export default async function CommunityPage({
   searchParams,
 }: {
@@ -43,7 +37,7 @@ export default async function CommunityPage({
 }) {
   if (!isCommunityEnabled()) notFound();
   const params = (await searchParams) ?? {};
-  const initialFilter = readFilter(params.filter);
+  const initialFilter = readFeedFilter(params.filter);
   // ?anime=<anilistId> is the single-title view the rail and the cards link to.
   const animeParam = Number(Array.isArray(params.anime) ? params.anime[0] : params.anime);
   const initialAnimeId = Number.isFinite(animeParam) && animeParam > 0 ? animeParam : null;
