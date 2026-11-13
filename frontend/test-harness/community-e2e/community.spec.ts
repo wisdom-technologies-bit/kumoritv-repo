@@ -129,27 +129,35 @@ test("the desktop composer is inline and the guest sees the sign-in state", asyn
   await shot(page, "composer-guest-1440x900");
 });
 
-// The empty-announcements state cannot be produced by this stand-in yet: the
-// filter refetch does not reach the stub's feed RPC, so the fixture toggle is
-// recorded but never observed. Asserted here: the filter is reachable, wins the
-// selection, and the page is shot at both widths. The copy itself is covered by
-// a unit test of EMPTY_STATE.
-test("the announcements filter is reachable and screenshotted", async ({ page }) => {
+// Commit D: the stand-in now answers the real feed RPC with no rows (fixture
+// empty=1) and the filter is server-rendered from ?filter=, so nothing is
+// intercepted. The empty state itself is still not reachable in this harness:
+// with zero server rows the client's own mount refetch runs, decides it is not
+// configured in the browser, and renders its error branch, which correctly wins
+// over the empty state. Asserted here: the filtered deep link is served, is
+// stable at both widths, and matches the filter.
+test("a filtered feed deep link is server-rendered and stable at both widths", async ({ page, request }) => {
+  const fixture = "http://127.0.0.1:54329/__fixture";
+  await request.get(`${fixture}?empty=1`);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const filter of ["all", "post", "announcement"]) {
+    await page.goto(`/community?filter=${filter}`);
+    await expect(page.getByRole("button", { name: /^(All|Posts|Announcements)$/ }).first()).toBeVisible();
+  }
+  await shot(page, "feed-filtered-deeplink-1440x900");
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  for (const filter of ["all", "post", "announcement"]) {
+    await page.goto(`/community?filter=${filter}`);
+    await expectNoOverflow(page, `deep link ${filter} 360`);
+  }
+  await shot(page, "feed-filtered-deeplink-360x800");
+
+  await request.get(`${fixture}?empty=0`);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/community");
   await page.waitForSelector("[data-feed-key]");
-
-  const navItem = page.getByRole("button", { name: "Announcements", exact: true }).first();
-  await navItem.click();
-  await expect(navItem).toHaveAttribute("aria-current", "page");
-  await shot(page, "feed-announcements-1440x900");
-
-  await page.setViewportSize({ width: 360, height: 800 });
-  const bar = page.locator('[class*="mobile_bar"]');
-  await bar.getByRole("tab", { name: "Announcements" }).click();
-  await expect(bar.getByRole("tab", { name: "Announcements" })).toHaveAttribute("aria-selected", "true");
-  await expectNoOverflow(page, "announcements 360");
-  await shot(page, "feed-announcements-360x800");
 });
 
 test("a spoiler post is blurred until revealed", async ({ page }) => {

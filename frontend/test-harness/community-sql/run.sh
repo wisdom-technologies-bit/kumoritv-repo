@@ -65,6 +65,8 @@ for f in \
   docs/sql/clips.sql \
   docs/sql/profiles-rls.sql \
   docs/sql/community.sql \
+  docs/sql/community-patch-1.sql \
+  docs/sql/comments-deleted-users.sql \
   test-harness/community-sql/fixtures.sql ; do
   if ! psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" >/dev/null 2>&1; then
     echo "FATAL: applying $f failed"; psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" 2>&1 | grep -E 'ERROR' | head -3; exit 1
@@ -245,7 +247,9 @@ run_as_eq "clearing removes the row" "0|0|" "authenticated" "$ALICE" \
 echo
 echo "== 14. the migration is idempotent =="
 if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/profiles-rls.sql" >/dev/null 2>&1 \
-   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community.sql" >/dev/null 2>&1; then
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1; then
   ok "profiles-rls.sql and community.sql can both run twice"
 else
   bad "re-running the migrations" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community.sql" 2>&1 | grep ERROR | head -2)"
@@ -253,6 +257,295 @@ fi
 run_eq  "still no stray insert policy after a re-run" "0" "select count(*) from pg_policies where tablename='community_posts' and cmd='INSERT'"
 
 echo
+
+echo
+echo "== 15. patch 1: reactions per target, locks, indexes =="
+NEWUSER='00000000-0000-0000-0000-0000000000e5'
+qs "insert into auth.users (id, email) select '$NEWUSER', 'e5@test.local'
+     where not exists (select 1 from auth.users where id = '$NEWUSER');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$NEWUSER', 'Eve'
+     where not exists (select 1 from public.profiles where id = '$NEWUSER');" >/dev/null
+
+POST_RL=$(qs "with i as (
+  insert into public.community_posts (author_id, body) values ('$BOB', 'reacted post for patch 1') returning id)
+  select id from i;")
+ANN_RL=$(qs "with i as (
+  insert into public.announcements (title, body) values ('Reacted announcement 1', 'body') returning id)
+  select id from i;")
+as authenticated "$NEWUSER" "select public.community_react('post', '$POST_RL', 1::smallint);" >/dev/null
+eq "patch: a signed-in user can react to an announcement" "1" \
+  "$(as authenticated "$NEWUSER" "select count(*) from public.community_react('announcement', '$ANN_RL', 1::smallint);")"
+
+run_eq "patch: a reacted post reports its like in the feed" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'post:$POST_RL'"
+run_eq "patch: a reacted announcement reports its like in the feed" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+run_eq "patch: announcements filter also carries the count" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'announcement', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+run_eq "patch: a dislike only appears on its own target" "0" \
+  "select dislikes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
+run_eq "patch: anon can still read the feed RPC" "ok" \
+  "select case when count(*) >= 0 then 'ok' end from public.community_feed_page(5, null, null, 'all', false, null, null, true)"
+run_eq "patch: anon cannot execute community_react" "denied" \
+  "select case when has_function_privilege('anon','public.community_react(text,uuid,smallint)','execute') then 'open' else 'denied' end"
+run_eq "patch: authenticated can execute community_react" "granted" \
+  "select case when has_function_privilege('authenticated','public.community_react(text,uuid,smallint)','execute') then 'granted' else 'no' end"
+run_eq "patch: no function runs with a mutable search_path" "0" \
+  "select count(*) from pg_proc where proname in ('community_feed_page','community_react','community_new_posts')
+     and (proconfig is null or not exists (select 1 from unnest(proconfig) c where c = 'search_path=\"\"'))"
+
+run_eq "patch: author/created index exists" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_author_created_idx'"
+run_eq "patch: comments user/created index exists" "1" \
+  "select count(*) from pg_indexes where indexname = 'comments_user_created_idx'"
+run_eq "patch: feed index order matches the cursor" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_feed_idx' and indexdef like '%created_at DESC, id DESC%'"
+
+# the guard's rate-limit query must use the new index, not a seq scan
+PLAN_AUTHOR=$(qs "set enable_seqscan = off; explain (costs off) select 1 from public.community_posts p
+   where p.author_id = '$ALICE' and p.created_at > now() - interval '30 seconds'")
+case "$PLAN_AUTHOR" in
+  *community_posts_author_created_idx*) ok "patch: guard query uses community_posts_author_created_idx" ;;
+  *) bad "patch: guard query uses community_posts_author_created_idx" "Index Scan" "$PLAN_AUTHOR" ;;
+esac
+PLAN_USER=$(qs "set enable_seqscan = off; explain (costs off) select 1 from public.comments c
+   where c.user_id = '$ALICE' and c.created_at > now() - interval '1 day'")
+case "$PLAN_USER" in
+  *comments_user_created_idx*) ok "patch: comment lookup uses comments_user_created_idx" ;;
+  *) bad "patch: comment lookup uses comments_user_created_idx" "Index Scan" "$PLAN_USER" ;;
+esac
+
+# two connections, one author, same instant: the advisory lock must serialise them
+BEFORE=$(qs "select count(*) from public.community_posts where author_id = '$NEWUSER'")
+psql -d "$DB" -q -c "begin; insert into public.community_posts (author_id, body) values ('$NEWUSER','race body one'); select pg_sleep(0.6); commit;" >/tmp/race1.log 2>&1 &
+psql -d "$DB" -q -c "begin; insert into public.community_posts (author_id, body) values ('$NEWUSER','race body two'); select pg_sleep(0.6); commit;" >/tmp/race2.log 2>&1 &
+wait
+RACED=$(qs "select count(*) from public.community_posts where author_id = '$NEWUSER' and body like 'race body%'")
+eq "patch: two simultaneous inserts from one author, exactly one lands" "1" "$RACED"
+
+# 50k posts, triggers off for the seed, then the real feed plan with buffers
+qs "set session_replication_role = replica;
+    insert into public.community_posts (author_id, body, created_at)
+    select '$NEWUSER', 'bulk ' || g, now() - (g || ' minutes')::interval
+      from generate_series(1, 50000) g;
+    set session_replication_role = origin;" >/dev/null
+FEEDPLAN=$(qs "explain (analyze, buffers) select p.id from public.community_posts p
+   where p.deleted_at is null and p.status = 'published'
+   order by p.created_at desc, p.id desc limit 20")
+case "$FEEDPLAN" in
+  *community_posts_feed_idx*) ok "patch: the feed query uses community_posts_feed_idx at 50k rows" ;;
+  *) bad "patch: the feed query uses community_posts_feed_idx at 50k rows" "Index Scan" "$(echo "$FEEDPLAN" | head -3)" ;;
+esac
+echo "     feed plan (50k posts): $(echo "$FEEDPLAN" | grep -E 'Execution Time|actual time' | head -1)"
+echo "     $(echo "$FEEDPLAN" | grep -E 'community_posts_feed_idx' | head -1)"
+qs "delete from public.community_posts where body like 'bulk %'" >/dev/null
+
+echo
+echo "== 16. patch 1 rollback =="
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1-rollback.sql" >/dev/null 2>&1; then
+  ok "rollback runs clean"
+else
+  bad "rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-patch-1-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: feed index back to its old order" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_feed_idx' and indexdef like '%created_at DESC, id)%'"
+run_eq "rollback: additive indexes dropped" "0" \
+  "select count(*) from pg_indexes where indexname in ('community_posts_author_created_idx','comments_user_created_idx')"
+run_eq "rollback: guard no longer takes the advisory lock" "0" \
+  "select count(*) from pg_proc where proname = 'community_posts_guard' and prosrc like '%pg_advisory_xact_lock%'"
+run_eq "rollback: announcement likes go back to zero" "0" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1; then
+  ok "patch 1 can run twice"
+else
+  bad "patch 1 can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-patch-1.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "patch re-applied: announcement like is back" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
+
+echo
+echo "== 17. account deletion keeps the conversation: [deleted] authors =="
+DAVE='00000000-0000-0000-0000-0000000000f6'
+qs "insert into auth.users (id, email) select '$DAVE', 'f6@test.local'
+     where not exists (select 1 from auth.users where id = '$DAVE');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$DAVE', 'Dave'
+     where not exists (select 1 from public.profiles where id = '$DAVE');" >/dev/null
+
+run_eq "deletion: comments.user_id is nullable" "YES" \
+  "select is_nullable from information_schema.columns where table_name='comments' and column_name='user_id'"
+run_eq "deletion: the foreign key is ON DELETE SET NULL" "n" \
+  "select confdeltype from pg_constraint where conname = 'comments_user_id_fkey'"
+run_eq "deletion: authenticated cannot run the anonymiser" "f" \
+  "select has_function_privilege('authenticated','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: anon cannot run the anonymiser" "f" \
+  "select has_function_privilege('anon','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: service_role can run the anonymiser" "t" \
+  "select has_function_privilege('service_role','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: the anonymiser has no mutable search_path" "1" \
+  "select count(*) from pg_proc where proname='anonymise_user_comments'
+     and exists (select 1 from unnest(proconfig) c where c = 'search_path=\"\"')"
+
+# Dave writes twice early enough to dodge the 10s rule, gets a reply on one,
+# and leaves a trail of his own rows behind.
+CPARENT=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (17000, 1, '$DAVE', 'Dave comment that gets a reply', now() - interval '5 minutes') returning id)
+  select id from i;")
+CORPHAN=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (18000, 2, '$DAVE', 'Dave comment nobody answered', now() - interval '4 minutes') returning id)
+  select id from i;")
+qs "insert into public.comments (anilist_id, episode_number, user_id, body, parent_id, created_at)
+    values (17000, 1, '$BOB', 'Bob replies to Dave', '$CPARENT', now() - interval '3 minutes');" >/dev/null
+qs "insert into public.comment_reactions (comment_id, user_id, value) values ('$CPARENT','$CAROL',1);" >/dev/null
+DPOST=$(qs "with i as (insert into public.community_posts (author_id, body) values ('$DAVE','dave post') returning id) select id from i;")
+qs "insert into public.community_reactions (user_id, target_kind, post_id, value) values ('$DAVE','post','$DPOST',1) on conflict do nothing;" >/dev/null
+qs "insert into public.community_reports (reporter_id, target_kind, target_id, reason)
+    values ('$DAVE','post','$DPOST','spam');" >/dev/null 2>&1
+qs "insert into public.community_blocks (blocker_id, blocked_id) values ('$DAVE','$ALICE') on conflict do nothing;" >/dev/null 2>&1
+qs "insert into public.user_notifications (user_id, kind, title, comment_id)
+    values ('$DAVE','reply','a reply','$CORPHAN') on conflict do nothing;" >/dev/null 2>&1
+
+RES=$(qs "select kept || '/' || removed from public.anonymise_user_comments('$DAVE');")
+eq "deletion: one comment kept, one removed" "1/1" "$RES"
+run_eq "deletion: the kept comment is anonymised" "1" \
+  "select count(*) from public.comments where id='$CPARENT' and user_id is null and body='[deleted]'"
+run_eq "deletion: the unanswered comment is gone" "0" \
+  "select count(*) from public.comments where id='$CORPHAN'"
+run_eq "deletion: the reply survives and keeps its author" "1" \
+  "select count(*) from public.comments where parent_id='$CPARENT' and user_id='$BOB' and body='Bob replies to Dave'"
+run_eq "deletion: no row keeps Dave's id in comments" "0" \
+  "select count(*) from public.comments where user_id = '$DAVE'"
+run_eq "deletion: his posts are gone" "0" "select count(*) from public.community_posts where author_id='$DAVE'"
+run_eq "deletion: his reactions are gone" "0" \
+  "select count(*) from public.community_reactions where user_id='$DAVE'"
+run_eq "deletion: his comment reactions are gone" "0" \
+  "select count(*) from public.comment_reactions where user_id='$DAVE'"
+run_eq "deletion: his reports are gone" "0" \
+  "select count(*) from public.community_reports where reporter_id='$DAVE'"
+run_eq "deletion: his blocks are gone" "0" \
+  "select count(*) from public.community_blocks where blocker_id='$DAVE' or blocked_id='$DAVE'"
+run_eq "deletion: his notifications are gone" "0" \
+  "select count(*) from public.user_notifications where user_id='$DAVE'"
+
+run_eq "deletion: the view shows the kept comment as an authorless row" "1" \
+  "select count(*) from public.comment_feed where id='$CPARENT' and user_id is null"
+run_eq "deletion: the view exposes no name for the deleted author" "0" \
+  "select count(*) from public.comment_feed where id='$CPARENT' and (username is not null or display_name is not null)"
+run_eq "deletion: the view still returns the reply's real author" "Bob" \
+  "select display_name from public.comment_feed where parent_id='$CPARENT'"
+run_eq "deletion: the view kept its original shape" "16" \
+  "select count(*) from information_schema.columns where table_name='comment_feed'"
+
+# the guard is unchanged for a live account
+qs "insert into public.comments (anilist_id, episode_number, user_id, body) values (19000, 3, '$CAROL', 'carol one');" >/dev/null
+FAST=$(qs "insert into public.comments (anilist_id, episode_number, user_id, body) values (19000, 3, '$CAROL', 'carol two');" 2>&1)
+case "$FAST" in
+  *"too fast"*) ok "deletion: the 10-second comment rule still fires" ;;
+  *) bad "deletion: the 10-second comment rule still fires" "too fast" "$FAST" ;;
+esac
+run_eq "deletion: a signed-in user can still comment after the window" "1" \
+  "select count(*) from public.comments where user_id='$CAROL' and body='carol one'"
+
+# safety net: deleting the auth user directly nulls the author, it does not cascade
+ERIN='00000000-0000-0000-0000-0000000000a7'
+qs "insert into auth.users (id, email) select '$ERIN','a7@test.local' where not exists (select 1 from auth.users where id='$ERIN');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$ERIN','Erin' where not exists (select 1 from public.profiles where id='$ERIN');" >/dev/null
+EPARENT=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (20000, 1, '$ERIN', 'Erin is deleted by the auth table', now() - interval '9 minutes') returning id) select id from i;")
+qs "insert into public.comments (anilist_id, episode_number, user_id, body, parent_id, created_at)
+    values (20000, 1, '$ALICE', 'reply to Erin', '$EPARENT', now() - interval '8 minutes');" >/dev/null
+DEL=$(qs "delete from auth.users where id = '$ERIN';")
+eq "deletion: deleting the auth user directly succeeds" "" "$DEL"
+run_eq "deletion: the FK safety net keeps the row and nulls the author" "1" \
+  "select count(*) from public.comments where id='$EPARENT' and user_id is null"
+run_eq "deletion: the reply under it survives" "1" \
+  "select count(*) from public.comments where parent_id='$EPARENT'"
+
+echo
+echo "== 18. comments-deleted-users rollback =="
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users-rollback.sql" >/dev/null 2>&1; then
+  ok "rollback runs clean"
+else
+  bad "rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/comments-deleted-users-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: user_id is NOT NULL again" "NO" \
+  "select is_nullable from information_schema.columns where table_name='comments' and column_name='user_id'"
+run_eq "rollback: the foreign key cascades again" "c" \
+  "select confdeltype from pg_constraint where conname = 'comments_user_id_fkey'"
+run_eq "rollback: the anonymiser is gone" "0" \
+  "select count(*) from pg_proc where proname='anonymise_user_comments'"
+run_eq "rollback: no authorless rows are left" "0" \
+  "select count(*) from public.comments where user_id is null"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1; then
+  ok "comments-deleted-users.sql can run twice"
+else
+  bad "comments-deleted-users.sql can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/comments-deleted-users.sql" 2>&1 | grep ERROR | head -2)"
+fi
+
+
+echo
+echo "== 19. first login, anonymous sessions, guest merge (profiles RLS on) =="
+FRANK='00000000-0000-0000-0000-0000000000b8'
+qs "insert into auth.users (id, email) select '$FRANK','b8@test.local' where not exists (select 1 from auth.users where id='$FRANK');" >/dev/null
+
+run_eq "signup: a signed-in user can create their own profile" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   with i as (insert into public.profiles (id, display_name) values ('$FRANK','Frank') returning 1) select count(*) from i"
+run_eq "signup: the row is readable back through public_profiles" "Frank" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select display_name from public.public_profiles where id = '$FRANK'"
+run_eq "signup: nobody can create a profile for somebody else" "denied" \
+  "select case when exists (
+     select 1 from pg_policies where tablename='profiles' and cmd='INSERT'
+      and coalesce(with_check,'') not like '%auth.uid()%')
+   then 'open' else 'denied' end"
+run_eq "signup: another signed-in user cannot read Frank's private profile row" "0" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ALICE\"}';
+   select count(*) from public.profiles where id = '$FRANK'"
+run_eq "signup: profiles still has no role column" "0" \
+  "select count(*) from information_schema.columns where table_name='profiles' and column_name='role'"
+
+ANDY='00000000-0000-0000-0000-0000000000c9'
+qs "insert into auth.users (id, email) select '$ANDY','c9@test.local' where not exists (select 1 from auth.users where id='$ANDY');" >/dev/null
+run_eq "anonymous: an is_anonymous session can create its profile" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ANDY\",\"is_anonymous\":true}';
+   with i as (insert into public.profiles (id) values ('$ANDY') returning 1) select count(*) from i"
+ANONPOST=$(qs "set role authenticated; set request.jwt.claims = '{\"sub\":\"$ANDY\",\"is_anonymous\":true}';
+   insert into public.community_posts (author_id, body) values ('$ANDY','anon post');" 2>&1)
+case "$ANONPOST" in
+  *"row-level security"*) ok "anonymous: it still cannot write a community post directly" ;;
+  *) bad "anonymous: it still cannot write a community post directly" "row-level security" "$ANONPOST" ;;
+esac
+
+BOBFAV=$(qs "select count(*) from public.favourites where user_id = '$BOB'")
+run_eq "merge: a guest's favourites can be inserted for the new account" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   with i as (insert into public.favourites (user_id, anilist_id) values ('$FRANK', 44000) returning 1) select count(*) from i"
+run_eq "merge: the account reads its own merged row" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select count(*) from public.favourites where user_id = '$FRANK' and anilist_id = 44000"
+# NOTE: public.favourites has RLS disabled (no policies exist), so this harness
+# cannot prove per-user isolation for it. That is a pre-existing gap in the
+# prompt9 user_data tables, outside Community Phase 1, and is reported rather
+# than silently asserted as safe.
+run_eq "merge: the account only sees its own merged favourite" "1" \
+  "set role authenticated; set request.jwt.claims = '{\"sub\":\"$FRANK\"}';
+   select count(*) from public.favourites where user_id = '$FRANK'"
+
+run_eq "anon cannot read staff_roles even after every file" "t" \
+  "select not has_table_privilege('anon','public.staff_roles','select')"
+
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'failed: %s\n' "${failed_names[*]}"; exit 1; fi

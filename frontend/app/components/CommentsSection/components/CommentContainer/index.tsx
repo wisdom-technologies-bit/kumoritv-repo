@@ -45,7 +45,13 @@ export type CommentContainerTypes = {
   children?: React.ReactNode;
 };
 
+/** A comment whose author deleted their account. The row keeps no user id. */
+export function isDeletedAuthor(comment: CommentFeedRow) {
+  return comment.user_id === null || comment.user_id === undefined;
+}
+
 function authorLabel(comment: CommentFeedRow) {
+  if (isDeletedAuthor(comment)) return "[deleted]";
   return comment.username || comment.display_name || "Anonymous";
 }
 

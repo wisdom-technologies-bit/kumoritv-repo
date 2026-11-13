@@ -217,6 +217,7 @@ function json(res, status, body, extraHeaders = {}) {
 
 /** Fixture state: the feed can be told there are no announcements at all. */
 let fixtureAnnouncements = true;
+let fixtureEmpty = false;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", ORIGIN);
@@ -248,7 +249,9 @@ const server = createServer(async (req, res) => {
     }
     const kind = payload.p_kind ?? "all";
     const isAnnouncement = (row) => String(row.feed_key ?? row.kind ?? "").startsWith("announcement");
-    const rows = feedRows(kind).filter((row) => fixtureAnnouncements || !isAnnouncement(row));
+    const rows = fixtureEmpty
+      ? []
+      : feedRows(kind).filter((row) => fixtureAnnouncements || !isAnnouncement(row));
     return json(res, 200, rows);
   }
 
@@ -260,7 +263,9 @@ const server = createServer(async (req, res) => {
   if (pathname === "/__fixture") {
     const flag = url.searchParams.get("announcements");
     if (flag === "0" || flag === "1") fixtureAnnouncements = flag === "1";
-    return json(res, 200, { announcements: fixtureAnnouncements });
+    const empty = url.searchParams.get("empty");
+    if (empty === "0" || empty === "1") fixtureEmpty = empty === "1";
+    return json(res, 200, { announcements: fixtureAnnouncements, empty: fixtureEmpty });
   }
 
   if (pathname.startsWith("/rest/v1/")) {
