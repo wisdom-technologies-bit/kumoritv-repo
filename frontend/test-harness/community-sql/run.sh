@@ -66,6 +66,7 @@ for f in \
   docs/sql/profiles-rls.sql \
   docs/sql/community.sql \
   docs/sql/community-patch-1.sql \
+  docs/sql/comments-deleted-users.sql \
   test-harness/community-sql/fixtures.sql ; do
   if ! psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" >/dev/null 2>&1; then
     echo "FATAL: applying $f failed"; psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" 2>&1 | grep -E 'ERROR' | head -3; exit 1
@@ -247,7 +248,8 @@ echo
 echo "== 14. the migration is idempotent =="
 if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/profiles-rls.sql" >/dev/null 2>&1 \
    && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community.sql" >/dev/null 2>&1 \
-   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1; then
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1; then
   ok "profiles-rls.sql and community.sql can both run twice"
 else
   bad "re-running the migrations" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community.sql" 2>&1 | grep ERROR | head -2)"
@@ -369,6 +371,127 @@ fi
 run_eq "patch re-applied: announcement like is back" "1" \
   "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
     where feed_key = 'announcement:$ANN_RL'"
+
+
+echo
+echo "== 17. account deletion keeps the conversation: [deleted] authors =="
+DAVE='00000000-0000-0000-0000-0000000000f6'
+qs "insert into auth.users (id, email) select '$DAVE', 'f6@test.local'
+     where not exists (select 1 from auth.users where id = '$DAVE');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$DAVE', 'Dave'
+     where not exists (select 1 from public.profiles where id = '$DAVE');" >/dev/null
+
+run_eq "deletion: comments.user_id is nullable" "YES" \
+  "select is_nullable from information_schema.columns where table_name='comments' and column_name='user_id'"
+run_eq "deletion: the foreign key is ON DELETE SET NULL" "n" \
+  "select confdeltype from pg_constraint where conname = 'comments_user_id_fkey'"
+run_eq "deletion: authenticated cannot run the anonymiser" "f" \
+  "select has_function_privilege('authenticated','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: anon cannot run the anonymiser" "f" \
+  "select has_function_privilege('anon','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: service_role can run the anonymiser" "t" \
+  "select has_function_privilege('service_role','public.anonymise_user_comments(uuid)','execute')"
+run_eq "deletion: the anonymiser has no mutable search_path" "1" \
+  "select count(*) from pg_proc where proname='anonymise_user_comments'
+     and exists (select 1 from unnest(proconfig) c where c = 'search_path=\"\"')"
+
+# Dave writes twice early enough to dodge the 10s rule, gets a reply on one,
+# and leaves a trail of his own rows behind.
+CPARENT=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (17000, 1, '$DAVE', 'Dave comment that gets a reply', now() - interval '5 minutes') returning id)
+  select id from i;")
+CORPHAN=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (18000, 2, '$DAVE', 'Dave comment nobody answered', now() - interval '4 minutes') returning id)
+  select id from i;")
+qs "insert into public.comments (anilist_id, episode_number, user_id, body, parent_id, created_at)
+    values (17000, 1, '$BOB', 'Bob replies to Dave', '$CPARENT', now() - interval '3 minutes');" >/dev/null
+qs "insert into public.comment_reactions (comment_id, user_id, value) values ('$CPARENT','$CAROL',1);" >/dev/null
+DPOST=$(qs "with i as (insert into public.community_posts (author_id, body) values ('$DAVE','dave post') returning id) select id from i;")
+qs "insert into public.community_reactions (user_id, target_kind, post_id, value) values ('$DAVE','post','$DPOST',1) on conflict do nothing;" >/dev/null
+qs "insert into public.community_reports (reporter_id, target_kind, target_id, reason)
+    values ('$DAVE','post','$DPOST','spam');" >/dev/null 2>&1
+qs "insert into public.community_blocks (blocker_id, blocked_id) values ('$DAVE','$ALICE') on conflict do nothing;" >/dev/null 2>&1
+qs "insert into public.user_notifications (user_id, kind, title, comment_id)
+    values ('$DAVE','reply','a reply','$CORPHAN') on conflict do nothing;" >/dev/null 2>&1
+
+RES=$(qs "select kept || '/' || removed from public.anonymise_user_comments('$DAVE');")
+eq "deletion: one comment kept, one removed" "1/1" "$RES"
+run_eq "deletion: the kept comment is anonymised" "1" \
+  "select count(*) from public.comments where id='$CPARENT' and user_id is null and body='[deleted]'"
+run_eq "deletion: the unanswered comment is gone" "0" \
+  "select count(*) from public.comments where id='$CORPHAN'"
+run_eq "deletion: the reply survives and keeps its author" "1" \
+  "select count(*) from public.comments where parent_id='$CPARENT' and user_id='$BOB' and body='Bob replies to Dave'"
+run_eq "deletion: no row keeps Dave's id in comments" "0" \
+  "select count(*) from public.comments where user_id = '$DAVE'"
+run_eq "deletion: his posts are gone" "0" "select count(*) from public.community_posts where author_id='$DAVE'"
+run_eq "deletion: his reactions are gone" "0" \
+  "select count(*) from public.community_reactions where user_id='$DAVE'"
+run_eq "deletion: his comment reactions are gone" "0" \
+  "select count(*) from public.comment_reactions where user_id='$DAVE'"
+run_eq "deletion: his reports are gone" "0" \
+  "select count(*) from public.community_reports where reporter_id='$DAVE'"
+run_eq "deletion: his blocks are gone" "0" \
+  "select count(*) from public.community_blocks where blocker_id='$DAVE' or blocked_id='$DAVE'"
+run_eq "deletion: his notifications are gone" "0" \
+  "select count(*) from public.user_notifications where user_id='$DAVE'"
+
+run_eq "deletion: the view shows the kept comment as an authorless row" "1" \
+  "select count(*) from public.comment_feed where id='$CPARENT' and user_id is null"
+run_eq "deletion: the view exposes no name for the deleted author" "0" \
+  "select count(*) from public.comment_feed where id='$CPARENT' and (username is not null or display_name is not null)"
+run_eq "deletion: the view still returns the reply's real author" "Bob" \
+  "select display_name from public.comment_feed where parent_id='$CPARENT'"
+run_eq "deletion: the view kept its original shape" "16" \
+  "select count(*) from information_schema.columns where table_name='comment_feed'"
+
+# the guard is unchanged for a live account
+qs "insert into public.comments (anilist_id, episode_number, user_id, body) values (19000, 3, '$CAROL', 'carol one');" >/dev/null
+FAST=$(qs "insert into public.comments (anilist_id, episode_number, user_id, body) values (19000, 3, '$CAROL', 'carol two');" 2>&1)
+case "$FAST" in
+  *"too fast"*) ok "deletion: the 10-second comment rule still fires" ;;
+  *) bad "deletion: the 10-second comment rule still fires" "too fast" "$FAST" ;;
+esac
+run_eq "deletion: a signed-in user can still comment after the window" "1" \
+  "select count(*) from public.comments where user_id='$CAROL' and body='carol one'"
+
+# safety net: deleting the auth user directly nulls the author, it does not cascade
+ERIN='00000000-0000-0000-0000-0000000000a7'
+qs "insert into auth.users (id, email) select '$ERIN','a7@test.local' where not exists (select 1 from auth.users where id='$ERIN');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$ERIN','Erin' where not exists (select 1 from public.profiles where id='$ERIN');" >/dev/null
+EPARENT=$(qs "with i as (insert into public.comments (anilist_id, episode_number, user_id, body, created_at)
+  values (20000, 1, '$ERIN', 'Erin is deleted by the auth table', now() - interval '9 minutes') returning id) select id from i;")
+qs "insert into public.comments (anilist_id, episode_number, user_id, body, parent_id, created_at)
+    values (20000, 1, '$ALICE', 'reply to Erin', '$EPARENT', now() - interval '8 minutes');" >/dev/null
+DEL=$(qs "delete from auth.users where id = '$ERIN';")
+eq "deletion: deleting the auth user directly succeeds" "" "$DEL"
+run_eq "deletion: the FK safety net keeps the row and nulls the author" "1" \
+  "select count(*) from public.comments where id='$EPARENT' and user_id is null"
+run_eq "deletion: the reply under it survives" "1" \
+  "select count(*) from public.comments where parent_id='$EPARENT'"
+
+echo
+echo "== 18. comments-deleted-users rollback =="
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users-rollback.sql" >/dev/null 2>&1; then
+  ok "rollback runs clean"
+else
+  bad "rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/comments-deleted-users-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: user_id is NOT NULL again" "NO" \
+  "select is_nullable from information_schema.columns where table_name='comments' and column_name='user_id'"
+run_eq "rollback: the foreign key cascades again" "c" \
+  "select confdeltype from pg_constraint where conname = 'comments_user_id_fkey'"
+run_eq "rollback: the anonymiser is gone" "0" \
+  "select count(*) from pg_proc where proname='anonymise_user_comments'"
+run_eq "rollback: no authorless rows are left" "0" \
+  "select count(*) from public.comments where user_id is null"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/comments-deleted-users.sql" >/dev/null 2>&1; then
+  ok "comments-deleted-users.sql can run twice"
+else
+  bad "comments-deleted-users.sql can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/comments-deleted-users.sql" 2>&1 | grep ERROR | head -2)"
+fi
 
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
