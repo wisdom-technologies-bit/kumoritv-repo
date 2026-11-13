@@ -1,4 +1,5 @@
 "use client";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "../page.module.css";
 import { Avatar } from "./shared";
@@ -74,7 +75,12 @@ export default function Composer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [canPortal, setCanPortal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // The sheet has to escape .page (position: relative; z-index: 1), otherwise it
+  // paints under the site header and the header eats the clicks on its controls.
+  useEffect(() => setCanPortal(true), []);
 
   useEffect(() => {
     const draft = readDraft();
@@ -139,7 +145,7 @@ export default function Composer({
     // a phone). It used to return the inline card here, so tapping "+" produced
     // no dialog at all while the body scroll stayed locked.
     if (variant === "sheet") {
-      return (
+      const guestSheet = (
         <div className={`${styles.sheet} ${styles.sheet_guest}`} role="dialog" aria-modal="true" aria-label="New post">
           <div className={styles.sheet_head}>
             <span className={styles.sheet_title}>New post</span>
@@ -150,6 +156,7 @@ export default function Composer({
           <div className={`${styles.sheet_body} ${styles.signin_card}`}>{guest}</div>
         </div>
       );
+      return canPortal && typeof document !== "undefined" ? createPortal(guestSheet, document.body) : guestSheet;
     }
 
     return <div className={`${styles.card} ${styles.signin_card}`}>{guest}</div>;
@@ -210,7 +217,7 @@ export default function Composer({
   );
 
   if (variant === "sheet") {
-    return (
+    const sheet = (
       <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="New post">
         <div className={styles.sheet_head}>
           <span className={styles.sheet_title}>New post</span>
@@ -240,6 +247,8 @@ export default function Composer({
         </div>
       </div>
     );
+
+    return canPortal && typeof document !== "undefined" ? createPortal(sheet, document.body) : sheet;
   }
 
   return <div className={styles.card}>{form}</div>;

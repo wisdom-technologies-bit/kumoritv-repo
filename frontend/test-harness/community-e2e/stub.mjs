@@ -215,6 +215,9 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(payload);
 }
 
+/** Fixture state: the feed can be told there are no announcements at all. */
+let fixtureAnnouncements = true;
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", ORIGIN);
   const pathname = url.pathname;
@@ -244,13 +247,20 @@ const server = createServer(async (req, res) => {
       payload = {};
     }
     const kind = payload.p_kind ?? "all";
-    // The announcements filter is the one that can be empty in this fixture.
-    if (kind === "announcement") return json(res, 200, []);
-    return json(res, 200, feedRows(kind));
+    const isAnnouncement = (row) => String(row.feed_key ?? row.kind ?? "").startsWith("announcement");
+    const rows = feedRows(kind).filter((row) => fixtureAnnouncements || !isAnnouncement(row));
+    return json(res, 200, rows);
   }
 
   if (pathname === "/rest/v1/rpc/community_react") {
     return json(res, 200, [{ likes: 13, dislikes: 0, mine: 1 }]);
+  }
+
+  // GET, so the harness never has to parse a body here.
+  if (pathname === "/__fixture") {
+    const flag = url.searchParams.get("announcements");
+    if (flag === "0" || flag === "1") fixtureAnnouncements = flag === "1";
+    return json(res, 200, { announcements: fixtureAnnouncements });
   }
 
   if (pathname.startsWith("/rest/v1/")) {

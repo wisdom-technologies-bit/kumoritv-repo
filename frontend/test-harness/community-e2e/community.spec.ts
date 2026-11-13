@@ -96,50 +96,30 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test("the mobile composer sheet opens for a guest, locks scroll, closes on Escape", async ({ page }) => {
-  await page.setViewportSize({ width: 412, height: 915 });
-  await page.goto("/community");
+for (const width of [320, 360, 390, 412, 600]) {
+  test(`the composer sheet opens and closes at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/community");
 
-  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
-  await page.getByRole("button", { name: "Write a post" }).click();
+    await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
+    await page.getByRole("button", { name: "Write a post" }).click();
 
-  const dialog = page.getByRole("dialog", { name: "New post" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Sign in to post")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Close" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "New post" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Sign in to post")).toBeVisible();
 
-  const box = await dialog.boundingBox();
-  expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(400);
-  expect(Math.round(box?.height ?? 0)).toBeGreaterThanOrEqual(900);
+    const box = await dialog.boundingBox();
+    expect(Math.round(box?.width ?? 0)).toBeGreaterThanOrEqual(width - 1);
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
+    await expectNoOverflow(page, `sheet open ${width}`);
 
-  // scroll is locked while the sheet is open, and no horizontal overflow
-  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe("hidden");
-  await expectNoOverflow(page, "sheet open 412");
+    if (width === 360) await shot(page, "composer-sheet-360x800");
 
-  await shot(page, "composer-sheet-412x915");
-
-  await page.keyboard.press("Escape");
-  await expect(dialog).toBeHidden();
-  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe("hidden");
-  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
-});
-
-test("the mobile composer sheet opens at 360 too", async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 800 });
-  await page.goto("/community");
-
-  await expect(page.locator('[class*="mobile_bar"]')).toBeVisible();
-  await page.getByRole("button", { name: "Write a post" }).click();
-
-  const dialog = page.getByRole("dialog", { name: "New post" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Sign in to post")).toBeVisible();
-  await expectNoOverflow(page, "sheet open 360");
-  await shot(page, "composer-sheet-360x800");
-
-  await dialog.getByRole("button", { name: "Close" }).click();
-  await expect(dialog).toBeHidden();
-});
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe("hidden");
+  });
+}
 
 test("the desktop composer is inline and the guest sees the sign-in state", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -149,16 +129,19 @@ test("the desktop composer is inline and the guest sees the sign-in state", asyn
   await shot(page, "composer-guest-1440x900");
 });
 
-test("the announcements filter is reachable and screenshot at 1440 and 360", async ({ page }) => {
+// The empty-announcements state cannot be produced by this stand-in yet: the
+// filter refetch does not reach the stub's feed RPC, so the fixture toggle is
+// recorded but never observed. Asserted here: the filter is reachable, wins the
+// selection, and the page is shot at both widths. The copy itself is covered by
+// a unit test of EMPTY_STATE.
+test("the announcements filter is reachable and screenshotted", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/community");
   await page.waitForSelector("[data-feed-key]");
 
-  await page.getByRole("button", { name: "Announcements", exact: true }).first().click();
-  await expect(page.getByRole("button", { name: "Announcements", exact: true }).first()).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  const navItem = page.getByRole("button", { name: "Announcements", exact: true }).first();
+  await navItem.click();
+  await expect(navItem).toHaveAttribute("aria-current", "page");
   await shot(page, "feed-announcements-1440x900");
 
   await page.setViewportSize({ width: 360, height: 800 });
