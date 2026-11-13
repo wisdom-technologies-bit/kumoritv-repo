@@ -270,8 +270,19 @@ function DigestNotificationItem({ notification }: { notification: UserNotificati
   );
 }
 
-/** announcement: a megaphone, the title and body, and the optional button. */
-function AnnouncementItem({ announcement }: { announcement: AnnouncementView }) {
+/** announcement: a megaphone, the title and body, and the optional button.
+ *
+ * Prompt 38B: when the community is enabled the button ALWAYS opens the
+ * announcement page on KumoriTV (/community/announcements/<id>) - an external
+ * url becomes a "Read more" link on that page instead. With the flag off this
+ * renders exactly the old bell row (button only when a url exists). */
+function AnnouncementItem({
+  announcement,
+  communityEnabled = false,
+}: {
+  announcement: AnnouncementView;
+  communityEnabled?: boolean;
+}) {
   return (
     <li
       className={styles.notification_item_container}
@@ -300,26 +311,33 @@ function AnnouncementItem({ announcement }: { announcement: AnnouncementView }) 
           </div>
         )}
 
-        {announcement.url && (
-          <Link className={styles.watch_link} href={announcement.url}>
+        {communityEnabled ? (
+          <Link className={styles.watch_link} href={`/community/announcements/${announcement.id}`}>
             Open
           </Link>
+        ) : (
+          announcement.url && (
+            <Link className={styles.watch_link} href={announcement.url}>
+              Open
+            </Link>
+          )
         )}
       </div>
     </li>
   );
 }
 
-function BellRow({ entry }: { entry: BellItem }) {
+function BellRow({ entry, communityEnabled = false }: { entry: BellItem; communityEnabled?: boolean }) {
   if (entry.source === "episodes") return <NotificationItem notification={entry.item} />;
-  if (entry.source === "announcement") return <AnnouncementItem announcement={entry.item} />;
+  if (entry.source === "announcement")
+    return <AnnouncementItem announcement={entry.item} communityEnabled={communityEnabled} />;
   if (entry.item.kind === "like") return <LikeNotificationItem notification={entry.item} />;
   if (entry.item.kind === "digest") return <DigestNotificationItem notification={entry.item} />;
 
   return <UserNotificationItem notification={entry.item} />;
 }
 
-function NotificationsContainer() {
+function NotificationsContainer({ communityEnabled = false }: { communityEnabled?: boolean } = {}) {
   //
   // HOW IT WORKS
   //
@@ -545,7 +563,7 @@ function NotificationsContainer() {
                   {bellItems.length != 0 && (
                     <ul className={styles.notification_list} data-bell-count={bellItems.length}>
                       {bellItems.slice(0, BELL_ITEM_LIMIT).map((entry) => (
-                        <BellRow key={entry.id} entry={entry} />
+                        <BellRow key={entry.id} entry={entry} communityEnabled={communityEnabled} />
                       ))}
                     </ul>
                   )}

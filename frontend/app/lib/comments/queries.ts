@@ -27,8 +27,14 @@ export type CommentsResult<T> = { data: T; error: null } | { data: null; error: 
 
 export type CommentsSort = "recent" | "oldest" | "likes" | "dislikes";
 
+/** Comments now hang off three kinds of thing; these are the two new ones. */
+export type CommentTarget = { kind: "post" | "announcement"; id: string };
+
 export type ListCommentsParams = {
-  anilistId: number;
+  anilistId?: number;
+  /** When set, the list belongs to a post or an announcement and the
+   *  anime/episode filters are not used at all. */
+  target?: CommentTarget;
   /** undefined/null = every comment of the anime (media page), a number = that
    *  episode only (watch page). */
   episodeNumber?: number | null;
@@ -38,7 +44,8 @@ export type ListCommentsParams = {
 };
 
 export type AddCommentParams = {
-  anilistId: number;
+  anilistId?: number | null;
+  target?: CommentTarget;
   userId: string;
   body: string;
   isSpoiler?: boolean;
@@ -98,11 +105,16 @@ export const SORT_OPTIONS: { value: CommentsSort; label: string }[] = [
 /** Top-level comments, newest first by default. Paginated in the database. */
 export async function listComments(
   client: CommentsClient,
-  { anilistId, episodeNumber, sort = "recent", limit, offset = 0 }: ListCommentsParams,
+  { anilistId, target, episodeNumber, sort = "recent", limit, offset = 0 }: ListCommentsParams,
 ): Promise<CommentsResult<CommentFeedRow[]>> {
   try {
-    let query = client.from("comment_feed").select("*").eq("anilist_id", anilistId).is("parent_id", null);
-    query = applyEpisodeFilter(query, episodeNumber);
+    let query = client.from("comment_feed").select("*").is("parent_id", null);
+    if (target) {
+      query = query.eq(target.kind === "post" ? "post_id" : "announcement_id", target.id);
+    } else {
+      query = query.eq("anilist_id", anilistId);
+      query = applyEpisodeFilter(query, episodeNumber);
+    }
     query = applySort(query, sort);
 
     const size = Math.max(1, limit);
@@ -117,15 +129,23 @@ export async function listComments(
 /** Total number of top-level comments for the current filter. */
 export async function countComments(
   client: CommentsClient,
-  { anilistId, episodeNumber }: { anilistId: number; episodeNumber?: number | null },
+  { anilistId, target, episodeNumber }: {
+    anilistId?: number;
+    target?: CommentTarget;
+    episodeNumber?: number | null;
+  },
 ): Promise<CommentsResult<number>> {
   try {
     let query = client
       .from("comment_feed")
       .select("id", { count: "exact", head: true })
-      .eq("anilist_id", anilistId)
       .is("parent_id", null);
-    query = applyEpisodeFilter(query, episodeNumber);
+    if (target) {
+      query = query.eq(target.kind === "post" ? "post_id" : "announcement_id", target.id);
+    } else {
+      query = query.eq("anilist_id", anilistId);
+      query = applyEpisodeFilter(query, episodeNumber);
+    }
 
     const { count, error } = await query;
     if (error) return { data: null, error: toFailure(error) };
@@ -232,17 +252,33 @@ export async function listMyReactions(
 
 export async function addComment(
   client: CommentsClient,
-  { anilistId, userId, body, isSpoiler = false, episodeNumber = null, parentId = null }: AddCommentParams,
+  { anilistId, target, userId, body, isSpoiler = false, episodeNumber = null, parentId = null }: AddCommentParams,
 ): Promise<CommentsResult<CommentRow>> {
   const cleaned = normaliseCommentBody(body);
   if (!cleaned) return { data: null, error: { message: "Write something first.", code: "empty_body" } };
+
+  // The database check constraint allows exactly one target per row: an anime
+  // comment carries anilist_id, a community comment carries post_id or
+  // announcement_id (never both, never the anime id).
+  const targetPayload = target
+    ? {
+        target_type: target.kind,
+        anilist_id: null,
+        post_id: target.kind === "post" ? target.id : null,
+        announcement_id: target.kind === "announcement" ? target.id : null,
+        episode_number: null,
+      }
+    : {
+        target_type: "anime" as const,
+        anilist_id: anilistId,
+        episode_number: episodeNumber ?? null,
+      };
 
   try {
     const { data, error } = await client
       .from("comments")
       .insert({
-        anilist_id: anilistId,
-        episode_number: episodeNumber ?? null,
+        ...targetPayload,
         user_id: userId,
         parent_id: parentId ?? null,
         body: cleaned,

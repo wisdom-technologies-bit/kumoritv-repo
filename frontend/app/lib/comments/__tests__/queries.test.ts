@@ -33,6 +33,9 @@ function feedRow(overrides: Partial<CommentFeedRow> = {}): CommentFeedRow {
     avatar_url: null,
     likes: 0,
     dislikes: 0,
+    target_type: "anime",
+    post_id: null,
+    announcement_id: null,
     ...overrides,
   };
 }

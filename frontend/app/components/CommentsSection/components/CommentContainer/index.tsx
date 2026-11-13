@@ -103,6 +103,8 @@ export default function CommentContainer({
 
   return (
     <li
+      // Deep-link anchor: notifications and "view comment" links point here.
+      id={`comment-${comment.id}`}
       className={styles.comment}
       data-reply={isReply ? "true" : "false"}
       data-comment-id={comment.id}

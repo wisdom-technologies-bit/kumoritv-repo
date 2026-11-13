@@ -16,6 +16,7 @@ import Dropdown from "./components/Dropdown";
 import {
   CommentFeedRow,
   CommentsSort,
+  CommentTarget,
   ReactionValue,
   SORT_OPTIONS,
   addComment,
@@ -34,7 +35,10 @@ import {
 export type CommentsMediaInfo = { id: number } & Partial<Pick<MediaData, "title" | "format">>;
 
 type CommentsSectionTypes = {
-  mediaInfo: CommentsMediaInfo;
+  /** An anime or episode thread. Exactly one of mediaInfo / target is given. */
+  mediaInfo?: CommentsMediaInfo;
+  /** A community post or announcement thread (Prompt 38B). */
+  target?: CommentTarget;
   isOnWatchPage?: boolean;
   episodeNumber?: number;
 };
@@ -67,6 +71,7 @@ export function episodeFilterOptions(
  */
 export default function CommentsSection({
   mediaInfo,
+  target,
   isOnWatchPage,
   episodeNumber,
 }: CommentsSectionTypes) {
@@ -81,7 +86,8 @@ export default function CommentsSection({
     profile?.username || profile?.display_name || user?.user_metadata?.username || "Anonymous";
   const avatarUrl = profile?.avatar_url || null;
 
-  const mediaId = mediaInfo.id;
+  const mediaId = mediaInfo?.id ?? null;
+  const isCommunityThread = !!target;
 
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [sort, setSort] = useState<CommentsSort>("likes");
@@ -127,7 +133,7 @@ export default function CommentsSection({
   // Which episodes actually carry comments (for the left menu).
   useEffect(() => {
     let active = true;
-    if (!client) return () => { active = false; };
+    if (!client || !mediaId || isCommunityThread) return () => { active = false; };
 
     (async () => {
       const result = await listCommentedEpisodes(client, { anilistId: mediaId });
@@ -136,7 +142,7 @@ export default function CommentsSection({
     })();
 
     return () => { active = false; };
-  }, [client, mediaId]);
+  }, [client, mediaId, isCommunityThread]);
 
   // The page itself plus the total; both come from the database.
   useEffect(() => {
@@ -153,12 +159,13 @@ export default function CommentsSection({
     (async () => {
       const [listResult, countResult] = await Promise.all([
         listComments(client, {
-          anilistId: mediaId,
+          anilistId: mediaId ?? undefined,
+          target,
           episodeNumber: episodeFilter,
           sort,
           limit: pageLimit,
         }),
-        countComments(client, { anilistId: mediaId, episodeNumber: episodeFilter }),
+        countComments(client, { anilistId: mediaId ?? undefined, target, episodeNumber: episodeFilter }),
       ]);
 
       if (!active) return;
@@ -178,7 +185,7 @@ export default function CommentsSection({
     })();
 
     return () => { active = false; };
-  }, [client, mediaId, episodeFilter, sort, pageLimit]);
+  }, [client, mediaId, target?.kind, target?.id, episodeFilter, sort, pageLimit]);
 
   // How many replies each visible comment has, and my own reactions.
   useEffect(() => {
@@ -213,7 +220,7 @@ export default function CommentsSection({
   // A new episode, sort or media starts again from the first page.
   useEffect(() => {
     setPageLimit(COMMENTS_PAGE_SIZE);
-  }, [mediaId, episodeFilter, sort]);
+  }, [mediaId, target?.id, episodeFilter, sort]);
 
   const applyReactionLocally = useCallback(
     (commentId: string, from: ReactionValue | null, to: ReactionValue | null) => {
@@ -352,7 +359,8 @@ export default function CommentsSection({
         : null;
 
       const result = await addComment(client, {
-        anilistId: mediaId,
+        anilistId: mediaId ?? undefined,
+        target,
         userId,
         body: submission.body,
         isSpoiler: submission.isSpoiler,
@@ -365,13 +373,16 @@ export default function CommentsSection({
 
       const created: CommentFeedRow = {
         id: result.data.id,
-        anilist_id: result.data.anilist_id,
+        anilist_id: result.data.anilist_id ?? null,
         episode_number: result.data.episode_number,
         parent_id: result.data.parent_id,
         user_id: result.data.user_id,
         body: result.data.body,
         is_spoiler: result.data.is_spoiler,
         created_at: result.data.created_at,
+        target_type: result.data.target_type,
+        post_id: result.data.post_id ?? null,
+        announcement_id: result.data.announcement_id ?? null,
         username: profile?.username ?? null,
         display_name: profile?.display_name ?? null,
         avatar_url: profile?.avatar_url ?? null,
@@ -397,13 +408,15 @@ export default function CommentsSection({
 
       return { error: null };
     },
-    [client, comments, mediaId, newCommentEpisode, openLoginModal, profile, repliesByParent, userId],
+    [client, comments, mediaId, target, newCommentEpisode, openLoginModal, profile, repliesByParent, userId],
   );
 
   // Media page: an anime-wide comment, or one tied to an episode that has some.
   const composerepisodeOptions = [...new Set(commentedEpisodes)].sort((a, b) => a - b);
   const hasMore = total > comments.length;
-  const episodeOptions = episodeFilterOptions(commentedEpisodes, isOnWatchPage ? episodeNumber : null);
+  const episodeOptions = isCommunityThread
+    ? []
+    : episodeFilterOptions(commentedEpisodes, isOnWatchPage ? episodeNumber : null);
 
   function renderReplies(comment: CommentFeedRow) {
     if (!expandedReplies[comment.id]) return null;
@@ -463,13 +476,15 @@ export default function CommentsSection({
 
       {!isCollapsed && (
         <div id={styles.body}>
-          <div className={styles.controls}>
+          <div className={styles.controls} data-single={isCommunityThread ? "true" : "false"}>
+            {!isCommunityThread && (
             <Dropdown
               ariaLabel="Filter comments by episode"
               value={episodeChoice}
               options={episodeOptions}
               onChange={setEpisodeChoice}
             />
+            )}
 
             <Dropdown
               ariaLabel="Sort comments"
@@ -488,7 +503,7 @@ export default function CommentsSection({
             username={username}
             avatarUrl={avatarUrl}
             episodeNumber={newCommentEpisode}
-            episodeOptions={isOnWatchPage ? [] : composerepisodeOptions}
+            episodeOptions={isCommunityThread || isOnWatchPage ? [] : composerepisodeOptions}
             onEpisodeChange={setNewCommentEpisode}
             onSubmit={(submission) => handleCreateComment(submission, null)}
             onGuestAttempt={openLoginModal}
