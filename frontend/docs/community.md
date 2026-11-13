@@ -23,6 +23,11 @@ each has its own rollback.
 2. `docs/sql/community.sql`
 3. `docs/sql/community-patch-1.sql`
 4. `docs/sql/comments-deleted-users.sql`
+5. `docs/sql/community-comments-arm.sql` (Phase 2: comments in the feed)
+
+File 5 may be run before or after the Phase 2 app deploy: it keeps the function
+signature and adds one column (`is_adult`) at the end, which the older client
+ignores. Until it runs there are simply no comment cards in the feed.
 
 Do **not** also run `supabase/migrations/20261120000000_prompt38_community.sql`
 in the same project: it is the same statements, kept in step with the two files
@@ -129,6 +134,7 @@ select proname, proacl from pg_proc
 
 Exact reverse of the run order, because each file depends on the one before it:
 
+0. `docs/sql/community-comments-arm-rollback.sql`
 1. `docs/sql/comments-deleted-users-rollback.sql`
 2. `docs/sql/community-patch-1-rollback.sql`
 3. `docs/sql/community-rollback.sql`
@@ -137,3 +143,36 @@ Exact reverse of the run order, because each file depends on the one before it:
 The database is left exactly as it was: `profiles` RLS off again, the community
 tables and the schedule/trigger additions dropped, `comments_guard` and
 `comment_feed` restored to the versions recorded in the rollback file.
+
+## 7. Adult content in the community feed
+
+Comments of an anime with `anime.is_adult = true` are hidden from
+`community_feed_page` unless the caller passes `p_show_adult = true`. The app
+passes the value it already uses everywhere else: the signed-in profile's
+`show_adult`, else the `is_adult_content_enabled` cookie, and `false` for a
+guest.
+
+This is a **display preference, not an authorization boundary and not age
+verification**. A signed-in viewer can turn it on in settings, `/media/<id>` is
+reachable either way, and the RPC is granted to `anon`. It is the same switch
+the rest of the site has always honoured; nothing here is a legal or safety
+gate, and it must not be described as one.
+
+The card shows an "18+" chip when a row is returned with `is_adult = true`, so a
+viewer who has the setting on can still tell what they are reading in a mixed
+feed.
+
+## Phase 3 requirements (agreed, not built yet)
+
+Clips shared in the community whose anime is adult (AniList `isAdult`, which
+covers the Hentai genre) must be treated as follows:
+
+- The post card is labelled **"Adult content 18+"**.
+- The preview/thumbnail is hidden: blurred or replaced by a neutral card.
+- Unless the viewer's adult setting is on, guests and viewers with the setting
+  off see only the label and **"Turn on adult content in settings to view"**,
+  never the thumbnail and **never the anime title**.
+- The same rule applies to the new-post toast (no thumbnail, generic text) and
+  to the clip URL preview in the composer.
+
+This is the site's existing adult-content preference, not age verification.

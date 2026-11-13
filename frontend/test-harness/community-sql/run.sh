@@ -546,6 +546,293 @@ run_eq "merge: the account only sees its own merged favourite" "1" \
 run_eq "anon cannot read staff_roles even after every file" "t" \
   "select not has_table_privilege('anon','public.staff_roles','select')"
 
+echo
+echo "== 20. Phase 2: the comment arm =="
+# Sections 16 and 18 rolled their own file back and re-applied the earlier one,
+# which leaves the two-arm function behind. Re-applying this file here is also
+# the recovery test: a database that never saw it and one that lost it end up
+# with the same function.
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-comments-arm.sql" >/dev/null 2>&1; then
+  ok "the comment-arm file applies on top of the four existing files"
+else
+  bad "the comment-arm file applies" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-comments-arm.sql" 2>&1 | grep ERROR | head -2)"
+fi
+
+# Fixing created_at after the fact cannot work (the guard freezes it), and an
+# earlier section leaves a comment from a few seconds ago behind, which trips the
+# site-wide 10 s limit. Fixture loading is therefore done with the guard trigger
+# disabled and re-enabled immediately, exactly as a bulk loader would.
+guard_off() { psql -d "$DB" -q -c "alter table public.comments disable trigger comments_guard_trg"; }
+guard_on()  { psql -d "$DB" -q -c "alter table public.comments enable trigger comments_guard_trg"; }
+guard_off
+GINA='00000000-0000-0000-0000-0000000000a7'
+qs "insert into auth.users (id, email) select '$GINA','a7@test.local'
+     where not exists (select 1 from auth.users where id='$GINA');" >/dev/null
+
+qs "insert into public.anime (anilist_id, title, title_english, cover_url, is_adult) values
+     (303, 'Sousou no Frieren II', null, 'https://cdn.test/frieren2.jpg', false)
+   on conflict (anilist_id) do nothing;" >/dev/null
+
+C1='40000000-0000-0000-0000-000000000001'
+C2='40000000-0000-0000-0000-000000000002'
+C3='40000000-0000-0000-0000-000000000003'
+C4='40000000-0000-0000-0000-000000000004'
+C5='40000000-0000-0000-0000-000000000005'
+C6='40000000-0000-0000-0000-000000000006'
+C7='40000000-0000-0000-0000-000000000007'
+C8='40000000-0000-0000-0000-000000000008'
+C9='40000000-0000-0000-0000-000000000009'
+R1='40000000-0000-0000-0000-000000000011'
+R2='40000000-0000-0000-0000-000000000012'
+R3='40000000-0000-0000-0000-000000000013'
+
+qs "insert into public.comments (id, anilist_id, episode_number, user_id, body, is_spoiler, created_at) values
+  ('$C1', 101, 5,    '$ALICE', 'Episode five was wild',            false, now() - interval '6 hours'),
+  ('$C2', 101, null, '$BOB',   'Anime-level comment',              false, now() - interval '6 hours 1 minute'),
+  ('$C3', 101, 5,    '$CAROL', 'spoiler body that must hide',      true,  now() - interval '6 hours 2 minutes'),
+  ('$C4', 202, 1,    '$CAROL', 'comment on an adult title',        false, now() - interval '6 hours 3 minutes'),
+  ('$C5', 303, 2,    '$BOB',   'title with no english name',       false, now() - interval '6 hours 4 minutes'),
+  ('$C6', 999, 1,    '$BOB',   'anime row is missing',             false, now() - interval '6 hours 5 minutes'),
+  ('$C7', 101, 6,    '$GINA',  'comment by a blocked author',      false, now() - interval '6 hours 6 minutes'),
+  ('$C9', 101, 9,    '$CAROL', 'comment by a deleted account',     false, now() - interval '6 hours 8 minutes')
+on conflict (id) do nothing;" >/dev/null
+qs "update public.comments set user_id = null where id = '$C9';" >/dev/null
+qs "insert into public.comments (id, anilist_id, episode_number, user_id, body, created_at) values
+  ('$C8', 101, 7, '$CAROL', 'soft deleted comment', now() - interval '6 hours 7 minutes')
+on conflict (id) do nothing;" >/dev/null
+qs "update public.comments set deleted_at = now() where id = '$C8';" >/dev/null
+qs "insert into public.comments (id, anilist_id, parent_id, user_id, body, created_at) values
+  ('$R1', 101, '$C1', '$BOB',   'first reply',  now() - interval '5 hours'),
+  ('$R2', 101, '$C1', '$CAROL', 'second reply', now() - interval '5 hours 1 minute'),
+  ('$R3', 101, '$C1', '$BOB',   'deleted reply', now() - interval '5 hours 2 minutes')
+on conflict (id) do nothing;" >/dev/null
+qs "update public.comments set deleted_at = now() where id = '$R3';" >/dev/null
+qs "insert into public.community_blocks (blocker_id, blocked_id) values ('$ALICE', '$GINA')
+    on conflict do nothing;" >/dev/null
+
+# one post, one announcement and one comment, each with known counts, so a single
+# page proves likes/dislikes are right for all three row kinds at once.
+P2=$(qs "insert into public.community_posts (author_id, body, created_at)
+         values ('$ALICE', 'post with reactions', now() - interval '30 minutes') returning id;")
+A2=$(qs "insert into public.announcements (title, body, created_at)
+         values ('Announcement with reactions', 'body', now() - interval '40 minutes') returning id;")
+qs "insert into public.comment_reactions (comment_id, user_id, value) values
+      ('$C1', '$ALICE', 1), ('$C1', '$BOB', 1), ('$C1', '$CAROL', -1)
+    on conflict do nothing;" >/dev/null
+qs "insert into public.community_reactions (user_id, target_kind, post_id, value) values
+      ('$ALICE', 'post', '$P2', 1), ('$BOB', 'post', '$P2', 1), ('$CAROL', 'post', '$P2', -1)
+    on conflict do nothing;" >/dev/null
+qs "insert into public.community_reactions (user_id, target_kind, announcement_id, value) values
+      ('$ALICE', 'announcement', '$A2', 1)
+    on conflict do nothing;" >/dev/null
+
+ALL='public.community_feed_page(50, null, null, %s, false, null, null, %s)'
+page() { printf "$ALL" "'$1'" "$2"; }
+
+run_eq  "a top-level episode comment is a card"        "1" "select count(*) from $(page all true) where feed_key = 'comment:$C1'"
+run_eq  "its author is resolved through public_profiles" "Alice" "select author_display_name from $(page comment true) where feed_key = 'comment:$C1'"
+run_eq  "the episode number reaches the card"          "5" "select episode_number from $(page comment true) where feed_key = 'comment:$C1'"
+run_eq  "the title uses english first"                 "Frieren: Beyond Journey's End" "select anime_title from $(page comment true) where feed_key = 'comment:$C1'"
+run_eq  "falls back to the plain title when english is null" "Sousou no Frieren II" "select anime_title from $(page comment true) where feed_key = 'comment:$C5'"
+run_eq  "the cover travels with the card"              "1" "select count(*) from $(page comment true) where feed_key = 'comment:$C1' and anime_cover = 'https://cdn.test/frieren.jpg'"
+run_eq  "an anime-level comment has a null episode"    "1" "select count(*) from $(page comment true) where feed_key = 'comment:$C2' and episode_number is null"
+run_eq  "the deep link is the media page for an anime-level comment" "1" \
+  "select count(*) from $(page comment true) where feed_key = 'comment:$C2' and target_url = '/media/101#comment-$C2'"
+run_eq  "the deep link carries the episode for an episode comment" "1" \
+  "select count(*) from $(page comment true) where feed_key = 'comment:$C1' and target_url = '/watch/101?ep=5#comment-$C1'"
+
+run_eq  "a comment with no author ([deleted]) is not a card" "0" "select count(*) from $(page comment true) where feed_key = 'comment:$C9'"
+run_eq  "a reply is never its own card"                "0" "select count(*) from $(page comment true) where feed_key in ('comment:$R1','comment:$R2','comment:$R3')"
+run_eq  "reply_count counts the live replies only"     "2" "select reply_count from $(page comment true) where feed_key = 'comment:$C1'"
+run_eq  "a soft-deleted comment is gone"               "0" "select count(*) from $(page comment true) where feed_key = 'comment:$C8'"
+run_eq  "a spoiler comment sends no body"              "1" "select count(*) from $(page comment true) where feed_key = 'comment:$C3' and body is null and is_spoiler"
+run_eq  "a comment whose anime row is missing is excluded" "0" "select count(*) from $(page comment true) where feed_key = 'comment:$C6'"
+run_eq  "an adult title's comment is hidden by default" "0" "select count(*) from $(page comment true) where feed_key = 'comment:$C4'"
+run_eq  "and hidden for an anonymous visitor too"      "0" "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, null, true) where feed_key = 'comment:$C4'"
+run_eq  "p_show_adult = true includes it and flags it" "1" \
+  "select count(*) from public.community_feed_page(50, null, null, 'comment', true, null, null, true) where feed_key = 'comment:$C4' and is_adult"
+run_eq  "non-adult rows report is_adult = false"       "1" "select count(*) from $(page comment true) where feed_key = 'comment:$C1' and not is_adult"
+run_as_eq "a blocked author's comment is hidden"       "0" "authenticated" "$ALICE" \
+  "select count(*) from $(page comment true) where feed_key = 'comment:$C7'"
+run_as_eq "p_hide_blocked = false still shows it"      "1" "authenticated" "$ALICE" \
+  "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, null, false) where feed_key = 'comment:$C7'"
+run_eq  "another viewer is unaffected by that block"   "1" "select count(*) from $(page comment true) where feed_key = 'comment:$C7'"
+
+run_eq  "p_anilist_id returns one title's comments"    "1|comment:$C5" \
+  "select count(*) || '|' || min(feed_key) from public.community_feed_page(50, null, null, 'all', false, null, 303, true)"
+run_eq  "and nothing from another title"              "0" "select count(*) from public.community_feed_page(50, null, null, 'all', false, null, 101, true) where anime_id <> 101"
+run_eq  "p_kind = comment returns only comments"      "0" "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, null, true) where kind <> 'comment'"
+run_eq  "p_kind = post returns only posts"            "0" "select count(*) from public.community_feed_page(50, null, null, 'post', false, null, null, true) where kind <> 'post'"
+run_eq  "p_kind = announcement returns only announcements" "0" "select count(*) from public.community_feed_page(50, null, null, 'announcement', false, null, null, true) where kind <> 'announcement'"
+run_eq  "p_kind = all carries all three kinds"        "3" "select count(distinct kind) from $(page all true)"
+
+run_eq  "a comment's likes and dislikes come from comment_reactions" "2|1" \
+  "select likes || '|' || dislikes from $(page comment true) where feed_key = 'comment:$C1'"
+run_eq  "a post's counts are still right next to it"  "2|1" \
+  "select likes || '|' || dislikes from $(page all true) where feed_key = 'post:$P2'"
+run_eq  "an announcement's counts are still right next to them" "1|0" \
+  "select likes || '|' || dislikes from $(page all true) where feed_key = 'announcement:$A2'"
+
+run_eq  "the output keeps every old column and adds is_adult last" "1" \
+  "select case when pg_get_function_result('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure)
+     like '%dislikes integer, is_adult boolean)%' then 1 else 0 end"
+run_eq  "security definer is kept"                    "t" \
+  "select prosecdef from pg_proc where proname = 'community_feed_page'"
+run_eq  "the empty search_path is kept"               "1" \
+  "select count(*) from pg_proc where proname = 'community_feed_page'
+     and exists (select 1 from unnest(proconfig) c where c = 'search_path=\"\"')"
+run_eq  "the new indexes exist"                       "2" \
+  "select count(*) from pg_indexes where indexname in ('comments_parent_idx','comments_anilist_feed_idx')"
+run_eq  "anon and authenticated can execute"          "true|true" \
+  "select has_function_privilege('anon','public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)','execute')
+       || '|' || has_function_privilege('authenticated','public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)','execute')"
+run_eq  "PUBLIC cannot execute it"                    "closed" \
+  "select case when exists (select 1 from pg_proc p, aclexplode(p.proacl) a
+     where p.proname = 'community_feed_page' and a.grantee = 0 and a.privilege_type = 'EXECUTE')
+   then 'open' else 'closed' end"
+
+echo
+echo "   cursor walk over three sources, identical timestamps, page size 2"
+SAME=$(qs "select '2026-01-01 12:00:00+00'::timestamptz")
+qs "insert into public.community_posts (id, author_id, body, status, created_at) values
+      ('40000000-0000-0000-0000-0000000000f1', '$ALICE', 'tie post', 'published', '$SAME')
+    on conflict (id) do nothing;" >/dev/null
+qs "insert into public.announcements (id, title, body, created_at, expires_at) values
+      ('40000000-0000-0000-0000-0000000000f2', 'Tie announcement', 'body', '$SAME', now() + interval '10 days')
+    on conflict (id) do nothing;" >/dev/null
+qs "insert into public.comments (id, anilist_id, episode_number, user_id, body, created_at) values
+      ('40000000-0000-0000-0000-0000000000f3', 101, 3, '$ALICE', 'tie comment one', '$SAME'),
+      ('40000000-0000-0000-0000-0000000000f4', 101, 4, '$BOB',   'tie comment two', '$SAME'),
+      ('40000000-0000-0000-0000-0000000000f5', 303, 5, '$CAROL', 'tie comment three', '$SAME')
+    on conflict (id) do nothing;" >/dev/null
+guard_on
+
+walk_feed() { # prints one feed_key per line, walking with p_limit 2
+  local ts="null" key="null" out line last
+  for _ in $(seq 1 40); do
+    out=$(psql -d "$DB" -tAF'|' -c "select created_at, feed_key from public.community_feed_page(2, $ts, $key)" 2>&1)
+    [ -z "$out" ] && break
+    printf '%s\n' "$out" | cut -d'|' -f2
+    last=$(printf '%s\n' "$out" | tail -1)
+    ts="'$(printf '%s' "$last" | cut -d'|' -f1)'"
+    key="'$(printf '%s' "$last" | cut -d'|' -f2)'"
+  done
+}
+walk_feed > /tmp/walk1.txt 2>&1
+walk_feed > /tmp/walk2.txt 2>&1
+qs "select feed_key from public.community_feed_page(50) order by 1" | sort > /tmp/walkall.txt
+
+if [ -z "$(sort /tmp/walk1.txt | uniq -d)" ]; then
+  ok "the walk has no duplicates"
+else
+  bad "the walk has no duplicates" "no duplicate key" "$(sort /tmp/walk1.txt | uniq -d | head -2 | tr '\n' ' ')"
+fi
+eq "the walk visits every row exactly once"           "$(grep -c . /tmp/walkall.txt)" "$(grep -c . /tmp/walk1.txt)"
+if diff -q <(sort /tmp/walk1.txt) /tmp/walkall.txt >/dev/null; then
+  ok "the walk sees exactly the full page's keys"
+else
+  bad "the walk sees exactly the full page's keys" "same key set" "$(diff <(sort /tmp/walk1.txt) /tmp/walkall.txt | head -4 | tr '\n' ' ')"
+fi
+if diff -q /tmp/walk1.txt /tmp/walk2.txt >/dev/null; then
+  ok "the walk is stable when repeated"
+else
+  bad "the walk is stable when repeated" "identical order" "differs"
+fi
+
+echo
+echo "== 20b. the comment-arm file is idempotent and its rollback is complete =="
+H1=$(qs "select md5(pg_get_functiondef('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure))")
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-comments-arm.sql" >/dev/null 2>&1; then
+  ok "the file can run twice"
+else
+  bad "the file can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-comments-arm.sql" 2>&1 | grep ERROR | head -2)"
+fi
+H2=$(qs "select md5(pg_get_functiondef('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure))")
+eq "the second run leaves the function identical" "$H1" "$H2"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-comments-arm-rollback.sql" >/dev/null 2>&1; then
+  ok "the rollback runs clean"
+else
+  bad "the rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-comments-arm-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: the previous function is back (no is_adult)" "f" \
+  "select pg_get_function_result('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure) like '%is_adult%'"
+run_eq "rollback: the comment arm returns nothing"    "0" \
+  "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, null, true)"
+run_eq "rollback: posts and announcements still work" "t" \
+  "select count(*) > 0 from public.community_feed_page(50, null, null, 'all', false, null, null, true)"
+run_eq "rollback: the two new indexes are gone"       "0" \
+  "select count(*) from pg_indexes where indexname in ('comments_parent_idx','comments_anilist_feed_idx')"
+run_eq "rollback: the earlier indexes are untouched"  "1" \
+  "select count(*) from pg_indexes where indexname = 'comments_community_feed_idx'"
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-comments-arm-rollback.sql" >/dev/null 2>&1; then
+  ok "the rollback can run twice"
+else
+  bad "the rollback can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-comments-arm-rollback.sql")"
+fi
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-comments-arm.sql" >/dev/null 2>&1
+run_eq "re-applied: the comment arm is back"          "1" \
+  "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, null, true) where feed_key = 'comment:$C1'"
+
+echo
+echo "== 21. Phase 2: EXPLAIN (ANALYZE, BUFFERS) on 50k comments / 500 anime =="
+# Seeded here, not in fixtures: it is only here to make the planner choose
+# honestly, and it must never leak into the behaviour tests above.
+guard_off
+qs "insert into public.anime (anilist_id, title, title_english, cover_url, is_adult)
+    select 1000 + g, 'Seed title ' || g, 'Seed title ' || g,
+           'https://cdn.test/seed-' || g || '.jpg', (g % 50 = 0)
+      from generate_series(1, 500) g
+    on conflict (anilist_id) do nothing;" >/dev/null
+qs "insert into public.comments (anilist_id, episode_number, user_id, body, is_spoiler, created_at)
+    select 1000 + (g % 500),
+           case when g % 3 = 0 then null else (g % 24) + 1 end,
+           (array['$ALICE','$BOB','$CAROL'])[1 + (g % 3)]::uuid,
+           'seed comment ' || g,
+           (g % 97 = 0),
+           now() - (g || ' minutes')::interval
+      from generate_series(1, 50000) g;" >/dev/null
+run_eq "the seed put more than 50k top-level anime comments in place" "1" \
+  "select case when count(*) >= 50000 then 1 else 0 end from public.comments
+     where target_type = 'anime' and parent_id is null and deleted_at is null"
+guard_on
+qs "analyze public.comments; analyze public.anime;" >/dev/null
+
+plan_for() { psql -d "$DB" -tAq -c "explain (analyze, buffers) select * from $1" 2>&1; }
+ms_for()   { plan_for "$1" | grep -i 'Execution Time' | sed 's/.*: //'; }
+ALL_Q='public.community_feed_page(20, null, null, %s, false, null, %s, true)'
+q_all()      { printf "$ALL_Q" "'all'" "null"; }
+q_comments() { printf "$ALL_Q" "'comment'" "null"; }
+q_one()      { printf "$ALL_Q" "'comment'" "1050"; }
+
+# The function is SECURITY DEFINER with SET search_path, so PostgreSQL never
+# inlines it and EXPLAIN only shows "Function Scan on community_feed_page". The
+# honest evidence that an index was used is the index's own scan counter.
+idx_used() { # idx_used <indexname> <query> -> 1 when the index was scanned
+  psql -d "$DB" -tAq -c "select pg_stat_reset()" >/dev/null
+  qs "select count(*) from $2" >/dev/null
+  psql -d "$DB" -tAq -c "select pg_stat_clear_snapshot()" >/dev/null
+  sleep 0.6
+  qs "select case when coalesce(sum(idx_scan),0) >= 1 then 1 else 0 end
+        from pg_stat_user_indexes where indexrelname = '$1'"
+}
+echo "   index used by the comment arm:"
+eq "the comment arm uses comments_community_feed_idx" "1" \
+  "$(idx_used comments_community_feed_idx "$(q_comments)")"
+eq "the single-title filter uses comments_anilist_feed_idx" "1" \
+  "$(idx_used comments_anilist_feed_idx "$(q_one)")"
+
+echo "   timings (after both indexes, buffers included in the plan above)"
+printf '     All                %s\n' "$(ms_for "$(q_all)")"
+printf '     Comments           %s\n' "$(ms_for "$(q_comments)")"
+printf '     One anime (1050)   %s\n' "$(ms_for "$(q_one)")"
+
+qs "drop index if exists public.comments_anilist_feed_idx;" >/dev/null
+printf '     One anime, before comments_anilist_feed_idx   %s\n' "$(ms_for "$(q_one)")"
+qs "create index comments_anilist_feed_idx on public.comments (anilist_id, created_at desc, id desc)
+     where deleted_at is null and parent_id is null and target_type = 'anime' and user_id is not null;" >/dev/null
+printf '     One anime, after comments_anilist_feed_idx    %s\n' "$(ms_for "$(q_one)")"
+
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'failed: %s\n' "${failed_names[*]}"; exit 1; fi
