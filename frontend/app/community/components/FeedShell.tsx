@@ -334,7 +334,7 @@ export default function FeedShell({
           <aside className={styles.left_column}>
             <FeedFilters {...filtersProps} variant="nav" ariaLabel="Filter the feed" />
             <div className={`${styles.card} ${styles.guidelines}`}>
-              <p className={styles.panel_heading}>House rules</p>
+              <p className={`${styles.panel_heading} ${styles.guidelines_heading}`}>House rules</p>
               <ul>
                 <li>Tag spoilers. Untagged ones get hidden.</li>
                 <li>Be decent to people, not just to characters.</li>

@@ -195,18 +195,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The House rules card looked unlike every other card for two reasons, both
+   outside this rule: globals.css sets `li { list-style-type: none }`, so the
+   list had no markers at all, and the column it lives in is display:none below
+   1200px, so at 1024 the card simply was not there. Both are handled here and
+   in the breakpoints at the bottom of this file. */
 .guidelines {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.65;
   color: var(--white-75);
 }
 
+.guidelines .guidelines_heading {
+  margin: 0 0 12px;
+}
+
 .guidelines ul {
-  margin: 8px 0 0;
-  padding-left: 16px;
+  margin: 0;
+  padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  /* globals.css removes list markers from every li; the card needs them back. */
+  list-style: disc outside;
+}
+
+.guidelines li {
+  display: list-item;
+  list-style: disc outside;
+}
+
+.guidelines li::marker {
+  color: var(--accent, #8b5cf6);
 }
 
 /* --------------------------------------------------------------- chips -- */
@@ -921,8 +941,23 @@
     grid-template-columns: minmax(0, 680px) 300px;
   }
 
+  /* The filters move to .filters_inline, but the House rules card is content,
+     not navigation: it keeps its place as a full-width row above the feed at
+     >= 900px instead of disappearing. */
   .left_column {
+    display: flex;
+    grid-column: 1 / -1;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .left_column > nav {
     display: none;
+  }
+
+  .left_column .guidelines {
+    flex: 1 1 100%;
   }
 
   .filters_inline {
@@ -931,6 +966,12 @@
 }
 
 @media (max-width: 899px) {
+  /* The mobile filter bar takes over; the House rules card sits in the feed's
+     own surfaces instead of a rail that does not exist at this width. */
+  .left_column {
+    display: none;
+  }
+
   .grid {
     grid-template-columns: minmax(0, 680px);
     gap: 16px;
