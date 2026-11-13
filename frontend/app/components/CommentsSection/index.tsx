@@ -74,7 +74,8 @@ export default function CommentsSection({
   target,
   isOnWatchPage,
   episodeNumber,
-}: CommentsSectionTypes) {
+  focusCommentId,
+}: CommentsSectionTypes & { /** Optional explicit target; the #comment-<uuid> hash is read anyway. */ focusCommentId?: string }) {
   const [client, setClient] = useState<ReturnType<typeof createBrowserSupabaseClient>>(null);
   const { user } = useUser();
   const dispatch = useAppDispatch();
@@ -221,6 +222,94 @@ export default function CommentsSection({
   useEffect(() => {
     setPageLimit(COMMENTS_PAGE_SIZE);
   }, [mediaId, target?.id, episodeFilter, sort]);
+
+  /** Deep link: a #comment-<uuid> hash (or an explicit id) opened this thread. */
+  const [pendingFocus, setPendingFocus] = useState<string | null>(focusCommentId ?? null);
+
+  // Read on the client only: the server cannot know what is below the fold, and
+  // reading window during render would break hydration. A listener rather than a
+  // one-shot, because the watch page remounts this section when ?ep= changes and
+  // the hash has to apply again after that remount.
+  useEffect(() => {
+    if (focusCommentId) {
+      setPendingFocus(focusCommentId);
+      return;
+    }
+    const read = () => {
+      const hash = typeof window === "undefined" ? "" : window.location.hash;
+      if (hash.startsWith("#comment-")) setPendingFocus(hash.slice("#comment-".length));
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, [focusCommentId]);
+
+  /** Scroll the row into view and tint it for 2.4 s. The tint and the
+   *  scroll-margin live in globals.css so every thread page gets them. */
+  const focusComment = useCallback((id: string) => {
+    const node = document.getElementById(`comment-${id}`);
+    if (!node) return false;
+    node.setAttribute("data-comment-highlight", "true");
+    const reduce =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    window.setTimeout(() => node.removeAttribute("data-comment-highlight"), 2400);
+    return true;
+  }, []);
+
+  // Not on the first page: fetch that one row from comment_feed. Replies are one
+  // level deep, so a reply pulls in and expands its parent thread.
+  useEffect(() => {
+    if (!pendingFocus || isLoading) return;
+    if (focusComment(pendingFocus)) {
+      setPendingFocus(null);
+      return;
+    }
+    if (!client) return;
+    // A collapsed thread renders no rows at all, so open it before looking.
+    setIsCollapsed(false);
+
+    const target = pendingFocus;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await (client as any)
+          .from("comment_feed")
+          .select("*")
+          .eq("id", target)
+          .maybeSingle();
+        if (cancelled) return;
+        if (!data) {
+          setActionError("That comment is no longer available.");
+          setPendingFocus(null);
+          return;
+        }
+        const row = data as CommentFeedRow;
+        const parentId = row.parent_id;
+        if (parentId) {
+          setRepliesByParent((previous) => ({
+            ...previous,
+            [parentId]: [...(previous[parentId] ?? []), row],
+          }));
+          setExpandedReplies((previous) => ({ ...previous, [parentId]: true }));
+        } else {
+          setComments((previous) =>
+            previous.some((existing) => existing.id === row.id) ? previous : [row, ...previous],
+          );
+        }
+        setPendingFocus(null);
+        window.setTimeout(() => focusComment(target), 80);
+      } catch {
+        if (cancelled) return;
+        setActionError("That comment is no longer available.");
+        setPendingFocus(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingFocus, isLoading, client, focusComment]);
 
   const applyReactionLocally = useCallback(
     (commentId: string, from: ReactionValue | null, to: ReactionValue | null) => {
