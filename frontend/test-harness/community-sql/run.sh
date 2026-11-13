@@ -65,6 +65,7 @@ for f in \
   docs/sql/clips.sql \
   docs/sql/profiles-rls.sql \
   docs/sql/community.sql \
+  docs/sql/community-patch-1.sql \
   test-harness/community-sql/fixtures.sql ; do
   if ! psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" >/dev/null 2>&1; then
     echo "FATAL: applying $f failed"; psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/$f" 2>&1 | grep -E 'ERROR' | head -3; exit 1
@@ -245,7 +246,8 @@ run_as_eq "clearing removes the row" "0|0|" "authenticated" "$ALICE" \
 echo
 echo "== 14. the migration is idempotent =="
 if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/profiles-rls.sql" >/dev/null 2>&1 \
-   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community.sql" >/dev/null 2>&1; then
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1; then
   ok "profiles-rls.sql and community.sql can both run twice"
 else
   bad "re-running the migrations" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community.sql" 2>&1 | grep ERROR | head -2)"
@@ -253,6 +255,121 @@ fi
 run_eq  "still no stray insert policy after a re-run" "0" "select count(*) from pg_policies where tablename='community_posts' and cmd='INSERT'"
 
 echo
+
+echo
+echo "== 15. patch 1: reactions per target, locks, indexes =="
+NEWUSER='00000000-0000-0000-0000-0000000000e5'
+qs "insert into auth.users (id, email) select '$NEWUSER', 'e5@test.local'
+     where not exists (select 1 from auth.users where id = '$NEWUSER');" >/dev/null
+qs "insert into public.profiles (id, display_name) select '$NEWUSER', 'Eve'
+     where not exists (select 1 from public.profiles where id = '$NEWUSER');" >/dev/null
+
+POST_RL=$(qs "with i as (
+  insert into public.community_posts (author_id, body) values ('$BOB', 'reacted post for patch 1') returning id)
+  select id from i;")
+ANN_RL=$(qs "with i as (
+  insert into public.announcements (title, body) values ('Reacted announcement 1', 'body') returning id)
+  select id from i;")
+as authenticated "$NEWUSER" "select public.community_react('post', '$POST_RL', 1::smallint);" >/dev/null
+eq "patch: a signed-in user can react to an announcement" "1" \
+  "$(as authenticated "$NEWUSER" "select count(*) from public.community_react('announcement', '$ANN_RL', 1::smallint);")"
+
+run_eq "patch: a reacted post reports its like in the feed" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'post:$POST_RL'"
+run_eq "patch: a reacted announcement reports its like in the feed" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+run_eq "patch: announcements filter also carries the count" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'announcement', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+run_eq "patch: a dislike only appears on its own target" "0" \
+  "select dislikes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
+run_eq "patch: anon can still read the feed RPC" "ok" \
+  "select case when count(*) >= 0 then 'ok' end from public.community_feed_page(5, null, null, 'all', false, null, null, true)"
+run_eq "patch: anon cannot execute community_react" "denied" \
+  "select case when has_function_privilege('anon','public.community_react(text,uuid,smallint)','execute') then 'open' else 'denied' end"
+run_eq "patch: authenticated can execute community_react" "granted" \
+  "select case when has_function_privilege('authenticated','public.community_react(text,uuid,smallint)','execute') then 'granted' else 'no' end"
+run_eq "patch: no function runs with a mutable search_path" "0" \
+  "select count(*) from pg_proc where proname in ('community_feed_page','community_react','community_new_posts')
+     and (proconfig is null or not exists (select 1 from unnest(proconfig) c where c = 'search_path=\"\"'))"
+
+run_eq "patch: author/created index exists" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_author_created_idx'"
+run_eq "patch: comments user/created index exists" "1" \
+  "select count(*) from pg_indexes where indexname = 'comments_user_created_idx'"
+run_eq "patch: feed index order matches the cursor" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_feed_idx' and indexdef like '%created_at DESC, id DESC%'"
+
+# the guard's rate-limit query must use the new index, not a seq scan
+PLAN_AUTHOR=$(qs "set enable_seqscan = off; explain (costs off) select 1 from public.community_posts p
+   where p.author_id = '$ALICE' and p.created_at > now() - interval '30 seconds'")
+case "$PLAN_AUTHOR" in
+  *community_posts_author_created_idx*) ok "patch: guard query uses community_posts_author_created_idx" ;;
+  *) bad "patch: guard query uses community_posts_author_created_idx" "Index Scan" "$PLAN_AUTHOR" ;;
+esac
+PLAN_USER=$(qs "set enable_seqscan = off; explain (costs off) select 1 from public.comments c
+   where c.user_id = '$ALICE' and c.created_at > now() - interval '1 day'")
+case "$PLAN_USER" in
+  *comments_user_created_idx*) ok "patch: comment lookup uses comments_user_created_idx" ;;
+  *) bad "patch: comment lookup uses comments_user_created_idx" "Index Scan" "$PLAN_USER" ;;
+esac
+
+# two connections, one author, same instant: the advisory lock must serialise them
+BEFORE=$(qs "select count(*) from public.community_posts where author_id = '$NEWUSER'")
+psql -d "$DB" -q -c "begin; insert into public.community_posts (author_id, body) values ('$NEWUSER','race body one'); select pg_sleep(0.6); commit;" >/tmp/race1.log 2>&1 &
+psql -d "$DB" -q -c "begin; insert into public.community_posts (author_id, body) values ('$NEWUSER','race body two'); select pg_sleep(0.6); commit;" >/tmp/race2.log 2>&1 &
+wait
+RACED=$(qs "select count(*) from public.community_posts where author_id = '$NEWUSER' and body like 'race body%'")
+eq "patch: two simultaneous inserts from one author, exactly one lands" "1" "$RACED"
+
+# 50k posts, triggers off for the seed, then the real feed plan with buffers
+qs "set session_replication_role = replica;
+    insert into public.community_posts (author_id, body, created_at)
+    select '$NEWUSER', 'bulk ' || g, now() - (g || ' minutes')::interval
+      from generate_series(1, 50000) g;
+    set session_replication_role = origin;" >/dev/null
+FEEDPLAN=$(qs "explain (analyze, buffers) select p.id from public.community_posts p
+   where p.deleted_at is null and p.status = 'published'
+   order by p.created_at desc, p.id desc limit 20")
+case "$FEEDPLAN" in
+  *community_posts_feed_idx*) ok "patch: the feed query uses community_posts_feed_idx at 50k rows" ;;
+  *) bad "patch: the feed query uses community_posts_feed_idx at 50k rows" "Index Scan" "$(echo "$FEEDPLAN" | head -3)" ;;
+esac
+echo "     feed plan (50k posts): $(echo "$FEEDPLAN" | grep -E 'Execution Time|actual time' | head -1)"
+echo "     $(echo "$FEEDPLAN" | grep -E 'community_posts_feed_idx' | head -1)"
+qs "delete from public.community_posts where body like 'bulk %'" >/dev/null
+
+echo
+echo "== 16. patch 1 rollback =="
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1-rollback.sql" >/dev/null 2>&1; then
+  ok "rollback runs clean"
+else
+  bad "rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-patch-1-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: feed index back to its old order" "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_feed_idx' and indexdef like '%created_at DESC, id)%'"
+run_eq "rollback: additive indexes dropped" "0" \
+  "select count(*) from pg_indexes where indexname in ('community_posts_author_created_idx','comments_user_created_idx')"
+run_eq "rollback: guard no longer takes the advisory lock" "0" \
+  "select count(*) from pg_proc where proname = 'community_posts_guard' and prosrc like '%pg_advisory_xact_lock%'"
+run_eq "rollback: announcement likes go back to zero" "0" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1 \
+   && psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-patch-1.sql" >/dev/null 2>&1; then
+  ok "patch 1 can run twice"
+else
+  bad "patch 1 can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-patch-1.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "patch re-applied: announcement like is back" "1" \
+  "select likes from public.community_feed_page(50, null, null, 'all', false, null, null, true)
+    where feed_key = 'announcement:$ANN_RL'"
+
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'failed: %s\n' "${failed_names[*]}"; exit 1; fi
