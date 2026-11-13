@@ -803,7 +803,9 @@
 .sheet {
   position: fixed;
   inset: 0;
-  z-index: var(--z-modal);
+  /* Above the site header and every piece of app chrome. */
+  z-index: 2147483000;
+  pointer-events: auto;
   background: var(--midnight);
   display: flex;
   flex-direction: column;
