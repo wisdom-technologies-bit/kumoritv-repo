@@ -40,3 +40,30 @@ test("episode comments keep the pre-38B watch link", () => {
     `/watch/21?ep=7#comment-${COMMENT}`,
   );
 });
+
+// --- Prompt 38E: comment rows in the feed reuse these exact strings ---------
+// public.comment_link(comments) is the other side of this contract: the feed's
+// target_url column is produced by it, and the card links to target_url. A
+// phone-sized episode number and a reply id are the two cases the feed adds.
+
+test("big episode numbers are not rounded or reformatted", () => {
+  assert.equal(
+    commentUrl({ target_type: "anime", id: COMMENT, anilist_id: 16498, episode_number: 1234 }),
+    `/watch/16498?ep=1234#comment-${COMMENT}`,
+  );
+});
+
+test("a reply deep-links to its own id, on its episode", () => {
+  const reply = "40000000-0000-0000-0000-000000000009";
+  assert.equal(
+    commentUrl({ target_type: "anime", id: reply, anilist_id: 21, episode_number: 3 }),
+    `/watch/21?ep=3#comment-${reply}`,
+  );
+});
+
+test("an anime title with no episode is a media page, never ep=null", () => {
+  const url = commentUrl({ target_type: "anime", id: COMMENT, anilist_id: 21, episode_number: null });
+  assert.equal(url, `/media/21#comment-${COMMENT}`);
+  assert.ok(!url.includes("ep=null"));
+  assert.ok(!url.includes("ep=undefined"));
+});

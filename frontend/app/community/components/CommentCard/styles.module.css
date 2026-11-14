@@ -1,0 +1,143 @@
+/* The comment card: where it was made, then who said it. Everything here is
+   layout on top of the shared .card surface, so it sits in the feed like the
+   post and announcement cards do. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--color_accent, #8b5cf6);
+  outline-offset: 3px;
+}
+
+.where {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cover {
+  position: relative;
+  width: 40px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover_empty {
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.where_text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.anime_title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.chip {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.time {
+  white-space: nowrap;
+}
+
+.adult {
+  margin-left: auto;
+  border: 1px solid rgba(255, 120, 120, 0.5);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.author_name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.replies,
+.read_in_thread {
+  white-space: nowrap;
+}
+
+.read_in_thread {
+  margin-left: auto;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

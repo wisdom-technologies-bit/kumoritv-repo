@@ -7,7 +7,7 @@
 // through /api/community/posts because there is no insert policy at all.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type CommunityKind = "post" | "announcement";
+export type CommunityKind = "post" | "announcement" | "comment";
 
 export type FeedItem = {
   feed_key: string;
@@ -33,9 +33,12 @@ export type FeedItem = {
   reply_count: number;
   likes: number;
   dislikes: number;
+  /** True when the anime is flagged adult. Only ever true for a viewer whose
+   *  adult setting is on: the value is a display preference, not a gate. */
+  is_adult: boolean;
 };
 
-export type FeedFilter = "all" | "post" | "announcement";
+export type FeedFilter = "all" | "post" | "comment" | "announcement";
 
 export type FeedPage = { items: FeedItem[]; cursor: { createdAt: string; key: string } | null };
 
@@ -66,7 +69,10 @@ export async function listFeedPage(
     filter?: FeedFilter;
     limit?: number;
     cursor?: { createdAt: string; key: string } | null;
+    /** Display preference only. The server decides what a guest may see. */
     showAdult?: boolean;
+    /** One title's comments: /community?anime=<anilistId>. */
+    anilistId?: number | null;
   } = {},
 ): Promise<CommunityResult<FeedPage>> {
   if (!client) return { data: null, error: { message: "Community is unavailable right now.", code: "unavailable" } };
@@ -80,7 +86,7 @@ export async function listFeedPage(
       p_kind: options.filter ?? "all",
       p_show_adult: options.showAdult === true,
       p_author: null,
-      p_anilist_id: null,
+      p_anilist_id: options.anilistId ?? null,
       p_hide_blocked: true,
     });
     if (error) return { data: null, error: toFailure(error) };

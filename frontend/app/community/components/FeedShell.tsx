@@ -17,6 +17,7 @@ import Composer, { type ComposeResult } from "./Composer";
 import FeedFilters from "./FeedFilters";
 import PostCard from "./PostCard";
 import AnnouncementCard from "./AnnouncementCard";
+import CommentCard from "./CommentCard";
 import ReportDialog from "./ReportDialog";
 
 export type FeedShellProps = {
@@ -25,6 +26,10 @@ export type FeedShellProps = {
   initialItems: FeedItem[];
   initialCursor: { createdAt: string; key: string } | null;
   initialFailed: boolean;
+  /** True when the viewer's adult setting is on. Display preference only. */
+  initialShowAdult?: boolean;
+  /** /community?anime=<id>: one title's comments. */
+  initialAnimeId?: number | null;
   /** Server-rendered right rail (announcements + airing this week). */
   rightRail?: React.ReactNode;
 };
@@ -42,6 +47,10 @@ const EMPTY_STATE: Record<FeedFilter, { title: string; text: string }> = {
     title: "No posts yet",
     text: "Nobody has posted yet today. Say what you are watching.",
   },
+  comment: {
+    title: "No comments yet",
+    text: "No comments yet. Be the first on any episode.",
+  },
   announcement: {
     title: "No announcements right now",
     text: "When the team has something to say, it lands here first.",
@@ -53,6 +62,8 @@ export default function FeedShell({
   initialItems,
   initialCursor,
   initialFailed,
+  initialShowAdult = false,
+  initialAnimeId = null,
   rightRail,
 }: FeedShellProps) {
   const [client, setClient] = useState<ReturnType<typeof createBrowserSupabaseClient>>(null);
@@ -109,6 +120,10 @@ export default function FeedShell({
         filter: activeFilter,
         limit: FEED_PAGE_SIZE,
         cursor: mode === "more" ? activeCursor : null,
+        // Never trusted for anything but display: the RPC has no authority to
+        // give a guest more than the server decided.
+        showAdult: initialShowAdult,
+        anilistId: initialAnimeId,
       });
 
       if (ticket !== requestId.current) return;
@@ -269,6 +284,7 @@ export default function FeedShell({
           reply_count: 0,
           likes: 0,
           dislikes: 0,
+          is_adult: false,
         };
 
         if (filter === "announcement") {
@@ -318,7 +334,7 @@ export default function FeedShell({
           <aside className={styles.left_column}>
             <FeedFilters {...filtersProps} variant="nav" ariaLabel="Filter the feed" />
             <div className={`${styles.card} ${styles.guidelines}`}>
-              <p className={styles.panel_heading}>House rules</p>
+              <p className={`${styles.panel_heading} ${styles.guidelines_heading}`}>House rules</p>
               <ul>
                 <li>Tag spoilers. Untagged ones get hidden.</li>
                 <li>Be decent to people, not just to characters.</li>
@@ -415,6 +431,10 @@ export default function FeedShell({
                           onReport={(target) => setReportTarget(target)}
                           onGuestWrite={openLoginModal}
                         />
+                      </li>
+                    ) : item.kind === "comment" ? (
+                      <li key={item.feed_key}>
+                        <CommentCard item={item} />
                       </li>
                     ) : (
                       <li key={item.feed_key}>

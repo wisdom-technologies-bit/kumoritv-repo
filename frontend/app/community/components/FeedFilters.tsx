@@ -1,12 +1,10 @@
 "use client";
 import styles from "../page.module.css";
 import type { FeedFilter } from "@/app/lib/community/queries";
+import { FEED_FILTERS } from "@/app/lib/community/filters";
 
-export const FILTERS: { value: FeedFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "post", label: "Posts" },
-  { value: "announcement", label: "Announcements" },
-];
+/** Kept as a re-export so nothing that imported the list has to move. */
+export const FILTERS = FEED_FILTERS;
 
 type FeedFiltersProps = {
   value: FeedFilter;

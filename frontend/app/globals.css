@@ -517,3 +517,17 @@ li {
     min-height: 18px;
   }
 }
+
+/* A comment opened from a #comment-<uuid> deep link: tint it briefly so the
+   reader sees where they landed. Deliberately no animation, so
+   prefers-reduced-motion needs no separate branch. The scroll-margin keeps the
+   row clear of the sticky header, and of the player on a watch page. */
+li[id^="comment-"] {
+  scroll-margin-top: 96px;
+}
+
+[data-comment-highlight="true"] {
+  border-left: 3px solid #8b5cf6;
+  background: rgba(139, 92, 246, 0.08);
+  border-radius: 6px;
+}
