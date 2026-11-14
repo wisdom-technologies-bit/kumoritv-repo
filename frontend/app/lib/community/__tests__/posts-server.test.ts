@@ -171,3 +171,174 @@ test("an invalid report never reaches the database", async () => {
   assert.equal(result.status, 400);
   assert.equal(called, false);
 });
+
+// ---------------------------------------------------------------- Phase 3 ----
+// A clip attachment: resolved server-side, one attachment per post, and a
+// clip-only post still has a body because the table demands one.
+
+function resolver(clip: { id: string; title: string | null } | null, calls: string[] = []) {
+  return async (code: string) => {
+    calls.push(code);
+    return clip;
+  };
+}
+
+test("a clip code is resolved and only its id is stored", async () => {
+  const insert = insertReturning();
+  const codes: string[] = [];
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "look at this", clip_code: "abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: "The best fight" }, codes),
+  });
+  assert.equal(result.status, 201);
+  assert.deepEqual(codes, ["abc2345"]);
+  assert.equal(insert.calls.length, 1);
+  assert.equal(insert.calls[0].clip_id, "clip-1");
+  assert.equal(insert.calls[0].link_url, null);
+  assert.equal(insert.calls[0].body, "look at this");
+});
+
+test("an unknown or deleted clip is a 400 and writes nothing", async () => {
+  const insert = insertReturning();
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "x", clip_code: "abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver(null),
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, "unknown_clip");
+  assert.equal(insert.calls.length, 0);
+});
+
+test("no resolver at all means no attachment, never an unattached post", async () => {
+  const insert = insertReturning();
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "x", clip_code: "abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, "unknown_clip");
+  assert.equal(insert.calls.length, 0);
+});
+
+test("a clip-only post gets the clip title as its body", async () => {
+  const insert = insertReturning();
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "", clip_code: "abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: "  The best fight  " }),
+  });
+  assert.equal(result.status, 201);
+  assert.equal(insert.calls[0].body, "The best fight");
+});
+
+test("a clip-only post with an untitled clip says Shared a clip", async () => {
+  for (const title of [null, "", "   "]) {
+    const insert = insertReturning();
+    await handleCreatePost({
+      session: SESSION,
+      raw: { body: "   ", clip_code: "abc2345" },
+      ip: "1.1.1.1",
+      limiter: limiter() as any,
+      insert: insert.fn,
+      resolveClip: resolver({ id: "clip-1", title }),
+    });
+    assert.equal(insert.calls[0].body, "Shared a clip", `title ${JSON.stringify(title)}`);
+  }
+});
+
+test("a clip title used as a body is cleaned like any other text", async () => {
+  const insert = insertReturning();
+  await handleCreatePost({
+    session: SESSION,
+    raw: { body: "", clip_code: "abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: "this fight is fucking unreal" }),
+  });
+  assert.equal(insert.calls[0].clip_id, "clip-1");
+  assert.ok(!/\bfucking\b/i.test(insert.calls[0].body));
+  assert.match(insert.calls[0].body, /\*/);
+});
+
+test("someone else's public clip is a fine attachment: ownership is not consulted", async () => {
+  // The resolver is given the code and nothing else: there is nowhere for an
+  // owner check to live, which is the point (a clip is a public pointer).
+  const insert = insertReturning();
+  const codes: string[] = [];
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "someone else's clip", clip_code: "zzz9999" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-9", title: null }, codes),
+  });
+  assert.equal(result.status, 201);
+  assert.deepEqual(codes, ["zzz9999"]);
+  assert.equal(insert.calls[0].clip_id, "clip-9");
+});
+
+test("a plain link is stored as a link and never as a clip", async () => {
+  const insert = insertReturning();
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "read this", link_url: "https://example.com/an-article" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: null }),
+  });
+  assert.equal(result.status, 201);
+  assert.equal(insert.calls[0].clip_id, null);
+  assert.equal(insert.calls[0].link_url, "https://example.com/an-article");
+});
+
+test("a clip URL pasted into link_url is resolved, not stored as a link", async () => {
+  const insert = insertReturning();
+  const codes: string[] = [];
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "", link_url: "https://kumoritv.top/clip/abc2345" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: "Attached from a link" }, codes),
+  });
+  assert.equal(result.status, 201);
+  assert.deepEqual(codes, ["abc2345"]);
+  assert.equal(insert.calls[0].clip_id, "clip-1");
+  assert.equal(insert.calls[0].link_url, null);
+  assert.equal(insert.calls[0].body, "Attached from a link");
+});
+
+test("two attachments are refused before anything is resolved", async () => {
+  const insert = insertReturning();
+  const codes: string[] = [];
+  const result = await handleCreatePost({
+    session: SESSION,
+    raw: { body: "x", clip_code: "abc2345", link_url: "https://example.com/a" },
+    ip: "1.1.1.1",
+    limiter: limiter() as any,
+    insert: insert.fn,
+    resolveClip: resolver({ id: "clip-1", title: null }, codes),
+  });
+  assert.equal(result.status, 400);
+  assert.equal(result.body.error, "clip_and_link");
+  assert.deepEqual(codes, []);
+  assert.equal(insert.calls.length, 0);
+});

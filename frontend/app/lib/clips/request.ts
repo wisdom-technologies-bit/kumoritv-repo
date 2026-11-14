@@ -9,18 +9,26 @@ import { cookies } from "next/headers";
 import { createClient } from "@/app/lib/supabase/server";
 import { CLIP_OWNER_COOKIE } from "./constants";
 
-export type ClipViewer = { userId: string | null };
+export type ClipViewer = {
+  userId: string | null;
+  /** A "continue as guest" Supabase session: a real row, but not an account. */
+  isAnonymous: boolean;
+};
 
 /** A signed-in session id, or null for a guest. Never throws. */
 export async function readClipViewer(): Promise<ClipViewer> {
   try {
     const client: any = createClient();
-    if (!client) return { userId: null };
+    if (!client) return { userId: null, isAnonymous: false };
     const { data } = await client.auth.getUser();
-    const id = data?.user?.id;
-    return { userId: typeof id === "string" && id ? id : null };
+    const user = data?.user;
+    const id = user?.id;
+    return {
+      userId: typeof id === "string" && id ? id : null,
+      isAnonymous: user?.is_anonymous === true,
+    };
   } catch {
-    return { userId: null };
+    return { userId: null, isAnonymous: false };
   }
 }
 

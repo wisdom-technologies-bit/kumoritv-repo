@@ -13,6 +13,7 @@
 // "remove the insert policy and write through the API" option from amendment 4;
 // it makes the API the single choke point instead of one of two.
 import { cleanPostBody, validateCreateReport, validateCreatePost } from "./body";
+import { POST_BODY_MAX } from "./constants";
 import { POST_CREATE_PER_MINUTE, REPORT_PER_HOUR } from "./rate-limit";
 import type { RateLimiter } from "@/app/lib/clips/rate-limit";
 
@@ -31,7 +32,24 @@ export type InsertPost = (row: {
   author_id: string;
   body: string;
   is_spoiler: boolean;
+  clip_id: string | null;
+  link_url: string | null;
 }) => Promise<{ data: PostRow | null; error: { message?: string } | null }>;
+
+/** The one thing a post needs from a clip: its id, and its title for the body. */
+export type ResolvedClip = { id: string; title: string | null };
+
+/**
+ * The body stored for a post that is nothing but an attachment. The table
+ * requires 1..1000 characters, and a clip on its own is a complete post, so the
+ * clip's own title is used when it has one and a plain phrase otherwise.
+ */
+export const CLIP_ONLY_BODY = "Shared a clip";
+
+export function clipOnlyBody(clip: ResolvedClip | null): string {
+  const title = typeof clip?.title === "string" ? clip.title.trim() : "";
+  return title ? title.slice(0, POST_BODY_MAX) : CLIP_ONLY_BODY;
+}
 
 /** Maps a database guard message onto an HTTP answer. The guard is the truth. */
 export function classifyPostWriteError(message: string): HandlerResult {
@@ -59,6 +77,12 @@ export async function handleCreatePost(deps: {
   ip: string;
   limiter: RateLimiter;
   insert: InsertPost;
+  /**
+   * Looks a clip code up. Injected so the rules can be tested without a
+   * database; the route passes getClipByCode, which already excludes deleted
+   * clips. Returning null means "this clip does not exist any more".
+   */
+  resolveClip?: (code: string) => Promise<ResolvedClip | null>;
 }): Promise<HandlerResult> {
   const { session } = deps;
 
@@ -85,10 +109,31 @@ export async function handleCreatePost(deps: {
     return { status: 400, body: { error: parsed.error, message: parsed.message } };
   }
 
+  // A clip attachment is resolved here, with the server's own database, never
+  // from anything the browser said about it. Someone else's public clip is a
+  // perfectly good attachment: a clip is a public pointer, not a private file.
+  let clip: ResolvedClip | null = null;
+  if (parsed.value.clipCode) {
+    clip = deps.resolveClip ? await deps.resolveClip(parsed.value.clipCode) : null;
+    if (!clip) {
+      return {
+        status: 400,
+        body: { error: "unknown_clip", message: "That clip does not exist any more." },
+      };
+    }
+  }
+
+  // Clip-only post: the default body is the clip's title, else a plain phrase.
+  // The profanity filter has already run on whatever the author typed; the
+  // default text is cleaned too, because a clip title is user text as well.
+  const body = parsed.value.body || cleanPostBody(clipOnlyBody(clip)).trim() || CLIP_ONLY_BODY;
+
   const { data, error } = await deps.insert({
     author_id: session.userId,
-    body: parsed.value.body,
+    body,
     is_spoiler: parsed.value.isSpoiler,
+    clip_id: clip?.id ?? null,
+    link_url: parsed.value.linkUrl,
   });
 
   if (error) return classifyPostWriteError(error.message ?? "");

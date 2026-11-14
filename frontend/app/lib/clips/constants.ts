@@ -48,3 +48,5 @@ export const WATCH_RANGE_MAX_SECONDS = CLIP_MAX_SECONDS_USER;
 
 /** How many clips `/clips` shows in one page. */
 export const CLIPS_PAGE_SIZE = 50;
+/** How many clips the community composer's picker offers. */
+export const CLIP_MINE_LIMIT = 20;

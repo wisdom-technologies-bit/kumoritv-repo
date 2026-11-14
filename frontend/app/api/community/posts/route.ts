@@ -10,6 +10,7 @@ import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { postCreateLimiter } from "@/app/lib/community/rate-limit";
 import { handleCreatePost, type CommunitySession } from "@/app/lib/community/posts-server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import { getClipByCode } from "@/app/lib/clips/server";
 import { createAuthServerClient } from "@/app/lib/supabase/auth-server";
 
 export const runtime = "nodejs";
@@ -45,11 +46,17 @@ export async function POST(request: Request) {
     raw,
     ip: clientIp(request),
     limiter: postCreateLimiter,
+    // The clip is looked up with the service role and only its id and title are
+    // kept; nothing the browser said about the clip is trusted.
+    resolveClip: async (code) => {
+      const row = await getClipByCode(code);
+      return row ? { id: row.id, title: row.title } : null;
+    },
     insert: async (row) => {
       const { data, error } = await (admin as any)
         .from("community_posts")
         .insert({ ...row, status: "published" })
-        .select("id, author_id, body, is_spoiler, created_at")
+        .select("id, author_id, body, is_spoiler, created_at, clip_id, link_url")
         .single();
       return { data: data ?? null, error: error ?? null };
     },
