@@ -85,7 +85,10 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByRole("button", { name: "Write a post" })).toBeVisible();
       const bar = page.locator('[class*="mobile_bar"] [role="tablist"]');
       await expect(bar).toBeVisible();
-      await expect(bar.getByRole("tab")).toHaveCount(3);
+      // Phase 2 added the fourth chip (Comments) to this bar; the bar still has
+      // to be one row and still must not scroll the page sideways, which the
+      // rest of this test (and community-phase2.spec.ts) checks at 320-412.
+      await expect(bar.getByRole("tab")).toHaveCount(4);
       await expect(bar.getByRole("tab", { name: "All" })).toBeVisible();
       await expect(bar.getByRole("tab", { name: "Posts" })).toBeVisible();
       await expect(bar.getByRole("tab", { name: "Announcements" })).toBeVisible();

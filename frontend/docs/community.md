@@ -162,6 +162,38 @@ The card shows an "18+" chip when a row is returned with `is_adult = true`, so a
 viewer who has the setting on can still tell what they are reading in a mixed
 feed.
 
+
+## 8. Phase 2 verification (what was run, and what it proved)
+
+The Phase 2 harness runs the real production build against a local stand-in for
+Supabase and AniList (`test-harness/community-e2e/stub.mjs`), so every claim
+below is a measurement, not an inspection.
+
+```bash
+npm run build                                   # NEXT_PUBLIC_* is inlined at build time
+npx playwright test -c test-harness/community-e2e/playwright.config.ts
+```
+
+The config starts the stand-in, the ON server and the OFF server itself, and it
+deletes `.next/cache/fetch-cache` first: a stale cached AniList answer otherwise
+makes the rights rail look empty and hides a real regression.
+
+Result of the last full run: **44 passed, 0 failed, 0 flaky** (26 from
+`community.spec.ts`, 18 from `community-phase2.spec.ts`). Screenshots land in
+`test-harness/community-e2e/screenshots/phase2/`.
+
+Three things learned building it, worth keeping:
+
+- `NEXT_PUBLIC_SUPABASE_URL` and friends are inlined at **build** time. A harness
+  that only sets them for `next start` tests a client with no database at all.
+- The `/media/<id>` thread paints its rows about 11 s after the deep link under
+  the stand-in, so a deep link has to hold its landing window open until the row
+  actually exists. Tinting a server-rendered node is not enough: the page
+  re-renders that list and the node carrying the tint is replaced.
+- The app rate-limits its own AniList calls (24 a minute). Several harness runs in
+  a row can make `/media` answer "Page Not Found" for a moment, which is why the
+  Playwright config allows one retry. No assertion depends on that retry.
+
 ## Phase 3 requirements (agreed, not built yet)
 
 Clips shared in the community whose anime is adult (AniList `isAdult`, which

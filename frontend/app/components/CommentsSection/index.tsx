@@ -244,25 +244,110 @@ export default function CommentsSection({
     return () => window.removeEventListener("hashchange", read);
   }, [focusCommentId]);
 
-  /** Scroll the row into view and tint it for 2.4 s. The tint and the
-   *  scroll-margin live in globals.css so every thread page gets them. */
-  const focusComment = useCallback((id: string) => {
+  /** When the current tint expires, and how long the page will keep trying. */
+  const tintUntil = useRef(0);
+  const landingUntil = useRef(0);
+  /** True once a deep-link focus has landed; starts the bounded repaint below. */
+  const [landing, setLanding] = useState(false);
+  const clearTint = useRef<number | undefined>(undefined);
+
+  /** Paint the tint on whichever node currently carries the id, and schedule its
+   *  removal 2.4 s after the last paint. The tint and the scroll-margin live in
+   *  globals.css so every thread page gets them. */
+  const paintTint = useCallback((id: string) => {
     const node = document.getElementById(`comment-${id}`);
     if (!node) return false;
     node.setAttribute("data-comment-highlight", "true");
-    const reduce =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    node.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-    window.setTimeout(() => node.removeAttribute("data-comment-highlight"), 2400);
+    tintUntil.current = Date.now() + 2400;
+    window.clearTimeout(clearTint.current);
+    clearTint.current = window.setTimeout(() => {
+      document.getElementById(`comment-${id}`)?.removeAttribute("data-comment-highlight");
+    }, 2400);
     return true;
   }, []);
+
+  /** The row this page has already landed on. Without it the retry below would
+   *  re-tint the same comment every time the list changed. */
+  const focusedRef = useRef<string | null>(null);
+
+  /** Scroll the row into view and tint it for 2.4 s. */
+  const focusComment = useCallback(
+    (id: string) => {
+      if (!paintTint(id)) return false;
+      if (!landingUntil.current) landingUntil.current = Date.now() + 15_000;
+      setLanding(true);
+      const node = document.getElementById(`comment-${id}`);
+      const reduce =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      node?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+      return true;
+    },
+    [paintTint],
+  );
+
+  // The thread is streamed and then re-rendered, so the element that carried the
+  // tint can be replaced a moment later (the media page does exactly that).
+  // Repaint whichever node currently has the id, and never remove it here: a
+  // cleanup that stripped the attribute made the tint flicker away mid-scroll.
+  useEffect(() => {
+    if (!landing) return;
+    const timer = window.setInterval(() => {
+      const target = focusedRef.current;
+      if (!target || Date.now() > landingUntil.current) {
+        window.clearInterval(timer);
+        setLanding(false);
+        return;
+      }
+      const node = document.getElementById(`comment-${target}`);
+      // Only repaint a row that lost its tint to a re-render; a painted row keeps
+      // its own 2.4 s window.
+      if (node && node.getAttribute("data-comment-highlight") !== "true") paintTint(target);
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [landing, paintTint]);
+
+  useEffect(() => {
+    const target = focusedRef.current;
+    if (!target) return;
+    // A slow thread can mount long after the link was followed: keep trying for
+    // a bounded window instead of tinting a row the reader never saw.
+    if (Date.now() > landingUntil.current) return;
+    paintTint(target);
+  }, [comments, visibleIdsKey, paintTint]);
+
+  /** An explicit id wins; otherwise the URL hash. Read at call time, never
+   *  during render: the hash is not known to the server. */
+  const deepLinkTarget = useCallback(() => {
+    if (focusCommentId) return focusCommentId;
+    if (typeof window === "undefined") return null;
+    const hash = window.location.hash;
+    return hash.startsWith("#comment-") ? hash.slice("#comment-".length) : null;
+  }, [focusCommentId]);
+
+  // Retried rather than one-shot: the media page mounts this section after the
+  // URL is already set, and the first page of comments can arrive after the
+  // mount. A one-shot read there found no row and gave up, so /media/21#comment-x
+  // scrolled nowhere while /watch/x?ep=y#comment-x worked.
+  useEffect(() => {
+    if (isLoading) return;
+    const target = pendingFocus ?? deepLinkTarget();
+    if (!target || focusedRef.current === target) return;
+    if (focusComment(target)) {
+      focusedRef.current = target;
+      setPendingFocus(null);
+    } else if (pendingFocus !== target) {
+      // Not on this page: let the fetch-by-id pass below look it up.
+      setPendingFocus(target);
+    }
+  }, [isLoading, pendingFocus, comments, deepLinkTarget, focusComment]);
 
   // Not on the first page: fetch that one row from comment_feed. Replies are one
   // level deep, so a reply pulls in and expands its parent thread.
   useEffect(() => {
     if (!pendingFocus || isLoading) return;
     if (focusComment(pendingFocus)) {
+      focusedRef.current = pendingFocus;
       setPendingFocus(null);
       return;
     }
@@ -299,7 +384,9 @@ export default function CommentsSection({
           );
         }
         setPendingFocus(null);
-        window.setTimeout(() => focusComment(target), 80);
+        window.setTimeout(() => {
+          if (focusComment(target)) focusedRef.current = target;
+        }, 80);
       } catch {
         if (cancelled) return;
         setActionError("That comment is no longer available.");

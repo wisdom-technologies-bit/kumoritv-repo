@@ -91,8 +91,11 @@ export async function listFeedPage(
     });
     if (error) return { data: null, error: toFailure(error) };
 
+    // Phase 2: the comment arm is part of the feed. Dropping it here made every
+    // client fetch (first mount, a chip, Load more) silently remove the very
+    // cards the server had just rendered.
     const items = ((data ?? []) as FeedItem[]).filter(
-      (row) => row && (row.kind === "post" || row.kind === "announcement"),
+      (row) => row && (row.kind === "post" || row.kind === "announcement" || row.kind === "comment"),
     );
     const last = items[items.length - 1];
     return {

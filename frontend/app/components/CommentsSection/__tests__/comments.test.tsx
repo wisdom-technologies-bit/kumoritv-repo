@@ -323,3 +323,134 @@ test("replies render nested under their top-level comment and attach to it", asy
 
   await tree.unmount();
 });
+
+/* --------------------------------------------------------------------------
+ * Phase 2: the deep link. A #comment-<uuid> (or an explicit focusCommentId)
+ * has to land on that row, tint it, and - when the row is a reply - open the
+ * thread it belongs to. When the row is not on the first page it is fetched by
+ * id instead of being silently dropped.
+ * ------------------------------------------------------------------------ */
+
+type ScrollCall = { id: string; block: string | null; behavior: string | null };
+const scrollCalls = () => (globalThis as unknown as { __scrollCalls: ScrollCall[] }).__scrollCalls;
+
+async function mountWithFocus(options: {
+  client: FakeSupabaseClient;
+  focusCommentId?: string;
+  episodeNumber?: number;
+}) {
+  globals.__commentsTestClient = options.client;
+  setSession({ id: "user-1" });
+  const { store } = makeTestStore();
+
+  const tree = await render(
+    <Provider store={store}>
+      <CommentsSection
+        mediaInfo={MEDIA}
+        isOnWatchPage={options.episodeNumber !== undefined}
+        episodeNumber={options.episodeNumber}
+        focusCommentId={options.focusCommentId}
+      />
+    </Provider>,
+  );
+  await flush();
+
+  return tree;
+}
+
+/** The by-id lookup finishes in a later tick (and re-focuses 80 ms after it
+ *  inserts the row), so the tint is awaited rather than assumed immediate. */
+async function waitForTint(container: HTMLElement, id: string, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const node = container.querySelector(`#comment-${id}`);
+    if (node?.getAttribute("data-comment-highlight") === "true") return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return false;
+}
+
+function highlighted(container: HTMLElement, id: string) {
+  const node = container.querySelector(`#comment-${id}`);
+  assert.ok(node, `#comment-${id} should be rendered`);
+  return { node, tinted: node.getAttribute("data-comment-highlight") === "true" };
+}
+
+test("deep link: the named comment is scrolled to and tinted", async () => {
+  const client = new FakeSupabaseClient({ comment_feed: [feedRow({ id: "comment-a" })] });
+  const tree = await mountWithFocus({ client, focusCommentId: "comment-a" });
+
+  const { tinted } = highlighted(tree.container, "comment-a");
+  assert.equal(tinted, true, "the row the link named carries the tint");
+  assert.ok(
+    scrollCalls().some((call) => call.id === "comment-comment-a"),
+    "the row is scrolled into view, not just styled",
+  );
+
+  await tree.unmount();
+});
+
+test("deep link: a #comment-<id> hash on load behaves the same", async () => {
+  window.location.hash = "#comment-comment-b";
+  const client = new FakeSupabaseClient({ comment_feed: [feedRow({ id: "comment-b" })] });
+  const tree = await mountWithFocus({ client });
+
+  const { tinted } = highlighted(tree.container, "comment-b");
+  assert.equal(tinted, true, "the hash names the row, so the hash is what is focused");
+
+  await tree.unmount();
+  window.location.hash = "";
+});
+
+test("deep link: a reply opens the thread it belongs to", async () => {
+  const client = new FakeSupabaseClient({
+    comment_feed: [
+      feedRow({ id: "comment-parent", body: "the parent" }),
+      feedRow({
+        id: "comment-reply",
+        parent_id: "comment-parent",
+        user_id: "user-2",
+        body: "the reply that was linked to",
+        created_at: "2026-10-01T10:05:00.000Z",
+      }),
+    ],
+  });
+
+  const tree = await mountWithFocus({ client, focusCommentId: "comment-reply" });
+
+  // Both rows, because a reply is only meaningful inside its thread.
+  const tinted = await waitForTint(tree.container, "comment-reply");
+  const parent = highlighted(tree.container, "comment-parent");
+  const reply = highlighted(tree.container, "comment-reply");
+  assert.equal(tinted, true, "the reply that was linked to ends up tinted");
+  assert.equal(parent.tinted, false, "the parent is not the row that was opened");
+  assert.equal(reply.tinted, true, "the reply is the row that was opened");
+  assert.ok((reply.node.textContent ?? "").includes("the reply that was linked to"));
+
+  await tree.unmount();
+});
+
+test("deep link: a comment past the first page is fetched by id, not dropped", async () => {
+  // Twenty-five top-level comments; the first page is twenty of the newest, so
+  // the oldest one is only reachable through the by-id lookup.
+  const rows = Array.from({ length: 25 }, (_, index) =>
+    feedRow({
+      id: `comment-${String(index).padStart(2, "0")}`,
+      body: `comment number ${index}`,
+      created_at: new Date(Date.UTC(2026, 9, 1, 10, index)).toISOString(),
+    }),
+  );
+  const client = new FakeSupabaseClient({ comment_feed: rows });
+
+  const tree = await mountWithFocus({ client, focusCommentId: "comment-00" });
+
+  assert.equal(await waitForTint(tree.container, "comment-00"), true);
+  const { tinted } = highlighted(tree.container, "comment-00");
+  assert.equal(tinted, true, "the fetched row is the row that was opened");
+  assert.ok(
+    tree.container.querySelectorAll('[id^="comment-"]').length > 20,
+    "the row was added to the thread, not replaced by it",
+  );
+
+  await tree.unmount();
+});

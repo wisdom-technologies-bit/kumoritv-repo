@@ -12,8 +12,14 @@ export const FEED_FILTERS: { value: FeedFilter; label: string }[] = [
 
 const VALUES = new Set<string>(FEED_FILTERS.map((filter) => filter.value));
 
+/** The plural is what people type and what the prompt's examples use
+ *  (/community?filter=comments). It means the singular filter, so both work. */
+const ALIASES: Record<string, FeedFilter> = { comments: "comment" };
+
 /** Anything unknown is the full feed, never an error page. */
 export function readFeedFilter(value: string | string[] | undefined): FeedFilter {
   const raw = Array.isArray(value) ? value[0] : value;
-  return typeof raw === "string" && VALUES.has(raw) ? (raw as FeedFilter) : "all";
+  if (typeof raw !== "string") return "all";
+  if (VALUES.has(raw)) return raw as FeedFilter;
+  return ALIASES[raw] ?? "all";
 }

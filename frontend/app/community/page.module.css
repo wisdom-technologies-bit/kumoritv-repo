@@ -1033,6 +1033,8 @@
     backdrop-filter: blur(12px);
     overflow-x: auto;
     scrollbar-width: none;
+    /* The bar is what scrolls, so the snap lives here. */
+    scroll-snap-type: x proximity;
   }
 
   .mobile_bar::-webkit-scrollbar {
@@ -1044,6 +1046,13 @@
   .mobile_bar .chip_row {
     flex-wrap: nowrap;
     width: 100%;
+    /* If a narrower phone ever pushes the four chips past the row, it scrolls
+       with snap rather than clipping a chip. */
+    scroll-snap-type: x proximity;
+  }
+
+  .mobile_bar .chip {
+    scroll-snap-align: center;
   }
 
   .mobile_bar .chip {

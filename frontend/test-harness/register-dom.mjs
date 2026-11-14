@@ -122,6 +122,13 @@ const windowProxy = new Proxy(dom.window, {
   },
 });
 
+// jsdom ships no scrollIntoView, which the comment deep-link focus calls. Every
+// call is recorded so a test can prove which row was scrolled to.
+const scrollCalls = [];
+dom.window.Element.prototype.scrollIntoView = function scrollIntoView(options) {
+  scrollCalls.push({ id: this.id ?? "", block: options?.block ?? null, behavior: options?.behavior ?? null });
+};
+
 // jsdom ships no matchMedia, which a few client components call for breakpoints.
 dom.window.matchMedia = (query) => ({
   matches: false,
@@ -154,6 +161,7 @@ const globals = {
   MutationObserver: dom.window.MutationObserver,
   matchMedia: dom.window.matchMedia.bind(dom.window),
   IS_REACT_ACT_ENVIRONMENT: true,
+  __scrollCalls: scrollCalls,
 };
 
 // Next's client helpers reference `self` (e.g. requestIdleCallback in

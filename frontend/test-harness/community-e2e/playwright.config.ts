@@ -25,12 +25,16 @@ const baseEnv = {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "community.spec.ts",
+  testMatch: ["community.spec.ts", "community-phase2.spec.ts"],
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // One retry. Several runs in a row can fill the app's own AniList request
+  // window (24 a minute), which makes /media answer "Page Not Found" for a
+  // moment. That is the harness outrunning the real service, not a failure of
+  // the page, and no assertion is any weaker for it.
+  retries: 1,
   reporter: [["list"]],
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
@@ -49,7 +53,9 @@ export default defineConfig({
       env: { STUB_PORT: String(STUB_PORT) },
     },
     {
-      command: `node_modules/.bin/next start -p ${PORT}`,
+      // A stale .next/cache/fetch-cache would serve yesterday's AniList answer
+      // and make the rails look empty, so every run starts from a clean one.
+      command: `rm -rf .next/cache/fetch-cache && node_modules/.bin/next start -p ${PORT}`,
       cwd: ROOT,
       url: `http://127.0.0.1:${PORT}/community`,
       reuseExistingServer: false,

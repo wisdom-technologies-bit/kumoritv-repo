@@ -93,7 +93,10 @@ export default function FeedShell({
   const [isComposerFocused, setIsComposerFocused] = useState(false);
 
   const requestId = useRef(0);
-  const isFirstRun = useRef(true);
+  /** Which filter the rows on screen belong to. The server rendered the first
+   *  one, so re-fetching it on mount only caused a skeleton flash (and, before
+   *  Phase 2, silently dropped the comment cards the server had just sent). */
+  const loadedFilter = useRef<FeedFilter | null>(initialItems.length > 0 ? initialFilter : null);
   const composerRef = useRef<HTMLDivElement>(null);
 
   const openLoginModal = useCallback(() => dispatch(toggleShowLoginModalValue()), [dispatch]);
@@ -155,12 +158,12 @@ export default function FeedShell({
     [client, cursor, filter],
   );
 
-  // The server rendered the first "all" page; any other first load is a fetch.
+  // Fetch only when the filter actually changed, or when the server had nothing
+  // to render in the first place.
   useEffect(() => {
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      if (filter === "all" && initialItems.length > 0) return;
-    }
+    if (!client) return;
+    if (loadedFilter.current === filter) return;
+    loadedFilter.current = filter;
     void loadPage("reset", filter, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, client]);

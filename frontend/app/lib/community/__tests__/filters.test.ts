@@ -18,7 +18,10 @@ test("the labels stay short enough for one row at 360px", () => {
 });
 
 test("readFeedFilter maps the URL, and anything unknown is the full feed", () => {
-  assert.equal(readFeedFilter("comments"), "all");
+  // ?filter=comments (the plural a shared link carries) is the comment feed,
+  // not a silent fall back to "all": an unknown value showing everything was
+  // the bug that made a shared filtered link look broken.
+  assert.equal(readFeedFilter("comments"), "comment");
   assert.equal(readFeedFilter("comment"), "comment");
   assert.equal(readFeedFilter("post"), "post");
   assert.equal(readFeedFilter("announcement"), "announcement");

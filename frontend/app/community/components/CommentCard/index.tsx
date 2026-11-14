@@ -25,6 +25,7 @@ export default function CommentCard({ item }: { item: FeedItem }) {
     <a
       className={`${page.card} ${styles.card}`}
       href={item.target_url}
+      data-feed-key={item.feed_key}
       data-community-card="comment"
       data-adult={item.is_adult ? "true" : undefined}
     >
