@@ -133,7 +133,9 @@ const CLIP_POSTS = [
     body: "The clip I posted last week is gone, sorry.",
     created_at: iso(30),
     title: null,
-    code: null,
+    // The post still points at a clip that has since been deleted: that is what
+    // makes the post page say "This clip was removed" rather than draw nothing.
+    code: "gone123",
     start: null,
     end: null,
     animeId: null,
@@ -196,7 +198,11 @@ function feedRows(kind = "all") {
   }));
 
   const clipRows = CLIP_POSTS.map((post) => {
-    const state = post.id === `${uid(32)}` ? "hidden_adult" : post.code ? "live" : "removed";
+    // The state is per fixture, not inferred from the code: the removed post
+    // keeps a code (its post page needs one to look up) but the feed row must
+    // arrive masked, the way community_feed_page masks it.
+    const state =
+      post.id === `${uid(32)}` ? "hidden_adult" : post.id === `${uid(33)}` ? "removed" : "live";
     const masked = state !== "live";
     return {
       feed_key: `post:${post.id}`,

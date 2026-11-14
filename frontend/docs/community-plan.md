@@ -326,6 +326,12 @@ nobody needs: the "N new posts" counter is a separate cheap query (2.6,
 
 ### 1.3 Clips
 
+> **Built (Phase 3).** The plan below is what shipped: `docs/sql/community-clips-arm.sql`
+> (the sixth file), `clip_code`/`link_url` xor, `GET /api/clips/mine`, the
+> composer picker and paste, the four card states, the post page and the Clips
+> filter. The adult rule is stated in `docs/community.md` §8, including that the
+> setting is the site's existing preference and not age verification.
+
 **Tables** (`docs/sql/clips.sql` - *not* in `supabase/migrations`, applied by
 hand):
 
