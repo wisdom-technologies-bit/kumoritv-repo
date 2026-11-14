@@ -17,6 +17,7 @@ import Composer, { type ComposeResult } from "./Composer";
 import type { AttachedClip } from "@/app/lib/community/clip-attachment";
 import FeedFilters from "./FeedFilters";
 import PostCard from "./PostCard";
+import ClipPostCard, { isClipPost } from "./ClipPostCard";
 import AnnouncementCard from "./AnnouncementCard";
 import CommentCard from "./CommentCard";
 import ReportDialog from "./ReportDialog";
@@ -443,16 +444,32 @@ export default function FeedShell({
                   {items.map((item) =>
                     item.kind === "post" ? (
                       <li key={item.feed_key}>
-                        <PostCard
-                          item={item}
-                          myReaction={myReactions[item.feed_key.slice(5)] ?? null}
-                          isSignedIn={isSignedIn}
-                          canDelete={Boolean(userId) && item.author_id === userId}
-                          onReact={handleReact}
-                          onDelete={handleDelete}
-                          onReport={(target) => setReportTarget(target)}
-                          onGuestWrite={openLoginModal}
-                        />
+                        {/* A post with a clip draws as a clip card. The state came
+                            from community_feed_page, so nothing here decides
+                            whether the clip may be shown. */}
+                        {isClipPost(item) ? (
+                          <ClipPostCard
+                            item={item}
+                            myReaction={myReactions[item.feed_key.slice(5)] ?? null}
+                            isSignedIn={isSignedIn}
+                            canDelete={Boolean(userId) && item.author_id === userId}
+                            onReact={handleReact}
+                            onDelete={handleDelete}
+                            onReport={(target) => setReportTarget(target)}
+                            onGuestWrite={openLoginModal}
+                          />
+                        ) : (
+                          <PostCard
+                            item={item}
+                            myReaction={myReactions[item.feed_key.slice(5)] ?? null}
+                            isSignedIn={isSignedIn}
+                            canDelete={Boolean(userId) && item.author_id === userId}
+                            onReact={handleReact}
+                            onDelete={handleDelete}
+                            onReport={(target) => setReportTarget(target)}
+                            onGuestWrite={openLoginModal}
+                          />
+                        )}
                       </li>
                     ) : item.kind === "comment" ? (
                       <li key={item.feed_key}>

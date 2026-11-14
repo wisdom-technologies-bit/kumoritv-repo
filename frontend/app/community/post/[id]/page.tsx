@@ -11,6 +11,10 @@ import SpoilerBody from "@/app/community/components/SpoilerBody";
 import ThreadActions from "@/app/community/components/ThreadActions";
 import styles from "@/app/community/page.module.css";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
+import { clipCardFor, type ClipCard } from "@/app/lib/community/clip-post";
+import { ADULT_LABEL, clipDurationLabel, clipMetaLabel, clipRangeLabel, clipThumbPath } from "@/app/lib/community/clip-attachment";
+import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
+import { getAnimeSummary, getClipByCode } from "@/app/lib/clips/server";
 import { createClient } from "@/app/lib/supabase/server";
 import { getAuthUser } from "@/app/lib/supabase/auth-server";
 
@@ -24,6 +28,7 @@ type PostRow = {
   body: string;
   is_spoiler: boolean;
   created_at: string;
+  clip_code: string | null;
 };
 
 const loadPost = cache(async function loadPost(id: string): Promise<PostRow | null> {
@@ -32,7 +37,7 @@ const loadPost = cache(async function loadPost(id: string): Promise<PostRow | nu
     if (!client) return null;
     const { data, error } = await (client as any)
       .from("community_posts")
-      .select("id, author_id, body, is_spoiler, created_at")
+      .select("id, author_id, body, is_spoiler, created_at, clip_code")
       .eq("id", id)
       .maybeSingle();
     if (error) return null;
@@ -88,6 +93,22 @@ export default async function CommunityPostPage({ params }: { params: { id: stri
     author = null;
   }
 
+  // The clip this post carries, resolved and gated here on the server: an
+  // adult clip with the reader's adult setting off becomes the masked card and
+  // the clip row's title, range and code never enter the response.
+  let clip: ClipCard = { state: "none" };
+  if (post.clip_code) {
+    let showAdult = false;
+    try {
+      showAdult = await readShowAdultContent();
+    } catch {
+      showAdult = false;
+    }
+    const row = await getClipByCode(post.clip_code);
+    const summary = row ? await getAnimeSummary(Number(row.anilist_id)) : null;
+    clip = clipCardFor(post.clip_code, row, summary, showAdult);
+  }
+
   const name = author?.display_name || author?.username || "Someone";
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   const createdAt = new Date(post.created_at);
@@ -131,6 +152,42 @@ export default async function CommunityPostPage({ params }: { params: { id: stri
           ) : (
             <p className={styles.thread_body}>{post.body}</p>
           )}
+
+          {clip.state === "live" ? (
+            <a
+              className={styles.feed_clip}
+              href={`/clip/${clip.code}`}
+              data-clip-post="live"
+              aria-label={`Watch the clip${clip.animeTitle ? ` from ${clip.animeTitle}` : ""}`}
+            >
+              <span className={styles.feed_clip_thumb}>
+                {clipThumbPath(clip.anilistId, clip.episode) ? (
+                  <img src={clipThumbPath(clip.anilistId, clip.episode)} alt="" width={160} height={90} />
+                ) : (
+                  <span className={styles.feed_clip_placeholder} aria-hidden="true" data-placeholder="true" />
+                )}
+              </span>
+              <span className={styles.feed_clip_text}>
+                <span className={styles.feed_clip_title}>{clip.title || clip.animeTitle || "Shared a clip"}</span>
+                <span className={styles.feed_clip_meta}>
+                  {[clipMetaLabel(clip.animeTitle, clip.episode), clipRangeLabel(clip.start, clip.end), clipDurationLabel(clip.start, clip.end)]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                <span className={styles.feed_clip_cta}>Watch the clip</span>
+              </span>
+            </a>
+          ) : clip.state === "hidden_adult" ? (
+            <div className={styles.adult_card} data-clip-post="hidden_adult" data-adult-hidden="true">
+              <span className={styles.adult_label}>{ADULT_LABEL}</span>
+              <p className={styles.adult_text}>{clip.text}</p>
+            </div>
+          ) : clip.state === "removed" ? (
+            <div className={styles.clip_removed} data-clip-post="removed">
+              <span className={styles.clip_removed_title}>This clip was removed</span>
+              <span className={styles.clip_removed_text}>The post is still here, but the clip is gone.</span>
+            </div>
+          ) : null}
 
           <ThreadActions kind="post" id={post.id} url={`/community/post/${post.id}`} canDelete={canDelete} />
         </article>

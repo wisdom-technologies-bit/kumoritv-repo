@@ -15,7 +15,7 @@
 // The session cookie is the one @supabase/ssr reads on the client
 // (sb-<project-ref>-auth-token); the stand-in accepts any bearer token on
 // /auth/v1/user and sends CORS headers so the browser can call it directly.
-import { chromium } from "./node_modules/@playwright/test/index.mjs";
+import { chromium } from "../../node_modules/@playwright/test/index.mjs";
 import { mkdirSync } from "node:fs";
 
 const OUT = "test-harness/community-e2e/screenshots";
