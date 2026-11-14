@@ -46,7 +46,6 @@ export default async function CommunityPage({
 
   let initialItems: FeedItem[] = [];
   let initialCursor: { createdAt: string; key: string } | null = null;
-  let initialFailed = false;
 
   try {
     const client = createClient();
@@ -62,7 +61,11 @@ export default async function CommunityPage({
         p_hide_blocked: true,
       });
       if (error) {
-        initialFailed = true;
+        // Swallowing this is why the page could only ever say "could not load".
+        // PostgREST's code and message are the two things that explain it, and
+        // neither is sensitive: a wrong signature, a missing grant or a column
+        // the deployed schema does not have.
+        console.error("[community] first feed page failed on the server", error);
       } else {
         initialItems = ((data ?? []) as FeedItem[]).filter(
           (row) => row && (row.kind === "post" || row.kind === "announcement" || row.kind === "comment"),
@@ -71,8 +74,8 @@ export default async function CommunityPage({
         initialCursor = last ? { createdAt: last.created_at, key: last.feed_key } : null;
       }
     }
-  } catch {
-    initialFailed = true;
+  } catch (error) {
+    console.error("[community] first feed page threw on the server", error);
   }
 
   return (
@@ -80,7 +83,10 @@ export default async function CommunityPage({
       initialFilter={initialFilter}
       initialItems={initialItems}
       initialCursor={initialCursor}
-      initialFailed={initialFailed}
+      // A failed first page is not a dead end: the shell fetches the same page
+      // in the browser, where the client is a different connection and the user
+      // has their session. The error card only appears if that also fails.
+      initialFailed={false}
       initialShowAdult={initialShowAdult}
       initialAnimeId={initialAnimeId}
       rightRail={<CommunityRails />}
