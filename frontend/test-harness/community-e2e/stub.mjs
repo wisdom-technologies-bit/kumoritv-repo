@@ -97,6 +97,53 @@ const PROFILES = {
 };
 
 /** The feed the SQL function would return: announcements pinned first, then newest. */
+// Prompt 38F: three clip posts, one per state the SQL arm can return. The
+// rows are shaped exactly like community_feed_page: a masked adult row carries
+// no code, no range and no anime, which is what the card must be able to draw.
+const CLIP_POSTS = [
+  {
+    id: `${uid(31)}`,
+    author_id: `${uid(101)}`,
+    body: "This fight is the whole reason the arc works.",
+    created_at: iso(6),
+    title: "The best fight",
+    code: "abc2345",
+    start: 62,
+    end: 77,
+    animeId: 21,
+    animeTitle: "Frieren: Beyond Journey's End",
+    episode: 12,
+  },
+  {
+    id: `${uid(32)}`,
+    author_id: `${uid(102)}`,
+    body: "",
+    created_at: iso(18),
+    title: "Adult Title",
+    code: "adult77",
+    start: 5,
+    end: 20,
+    animeId: 23,
+    animeTitle: "Adult Title",
+    episode: 3,
+  },
+  {
+    id: `${uid(33)}`,
+    author_id: `${uid(103)}`,
+    body: "The clip I posted last week is gone, sorry.",
+    created_at: iso(30),
+    title: null,
+    // The post still points at a clip that has since been deleted: that is what
+    // makes the post page say "This clip was removed" rather than draw nothing.
+    code: "gone123",
+    start: null,
+    end: null,
+    animeId: null,
+    animeTitle: null,
+    episode: null,
+  },
+];
+
 function feedRows(kind = "all") {
   const postRows = POSTS.map((post) => ({
     feed_key: `post:${post.id}`,
@@ -150,8 +197,50 @@ function feedRows(kind = "all") {
     dislikes: 0,
   }));
 
+  const clipRows = CLIP_POSTS.map((post) => {
+    // The state is per fixture, not inferred from the code: the removed post
+    // keeps a code (its post page needs one to look up) but the feed row must
+    // arrive masked, the way community_feed_page masks it.
+    const state =
+      post.id === `${uid(32)}` ? "hidden_adult" : post.id === `${uid(33)}` ? "removed" : "live";
+    const masked = state !== "live";
+    return {
+      feed_key: `post:${post.id}`,
+      kind: "post",
+      created_at: post.created_at,
+      author_id: post.author_id,
+      author_username: "adaeze",
+      author_display_name: post.id === `${uid(32)}` ? "Chidi" : "Adaeze",
+      author_avatar: null,
+      body: post.body,
+      is_spoiler: false,
+      title: masked ? null : post.title,
+      image_url: null,
+      link_url: null,
+      clip_code: masked ? null : post.code,
+      clip_start: masked ? null : post.start,
+      clip_end: masked ? null : post.end,
+      anime_id: masked ? null : post.animeId,
+      anime_title: masked ? null : post.animeTitle,
+      anime_cover: null,
+      episode_number: masked ? null : post.episode,
+      target_url: `/community/post/${post.id}`,
+      reply_count: 0,
+      likes: post.id === `${uid(31)}` ? 5 : 1,
+      dislikes: 0,
+      is_adult: post.id === `${uid(32)}`,
+      clip_state: state,
+    };
+  });
+
   const rows =
-    kind === "post" ? postRows : kind === "announcement" ? announcementRows : [...announcementRows, ...postRows];
+    kind === "post"
+      ? [...postRows, ...clipRows]
+      : kind === "announcement"
+        ? announcementRows
+        : kind === "clips"
+          ? clipRows
+          : [...announcementRows, ...clipRows, ...postRows];
 
   return rows.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "announcement" ? -1 : 1));
 }
@@ -201,15 +290,93 @@ const EPISODES = [
 ];
 
 const ANIME = [
-  { anilist_id: 21, title: "Sousou no Frieren", title_english: "Frieren: Beyond Journey's End" },
-  { anilist_id: 22, title: "Dandadan", title_english: "Dandadan" },
+  { anilist_id: 21, title: "Sousou no Frieren", title_english: "Frieren: Beyond Journey's End", is_adult: false },
+  { anilist_id: 22, title: "Dandadan", title_english: "Dandadan", is_adult: false },
+  // Prompt 38F: the adult rule needs a title that is actually flagged.
+  { anilist_id: 23, title: "Adult Title", title_english: "Adult Title", is_adult: true },
 ];
+
+// Prompt 38F fixtures: three clips - two ordinary, one on an adult title.
+const CLIPS = [
+  {
+    id: "20000000-0000-4000-8000-000000000009",
+    code: "adult77",
+    user_id: `${uid(102)}`,
+    owner_token_hash: null,
+    anilist_id: 23,
+    episode_number: 3,
+    start_seconds: 5,
+    end_seconds: 20,
+    title: "Adult Title",
+    source_audio: "sub",
+    views: 4,
+    created_at: iso(70),
+    deleted_at: null,
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000001",
+    code: "abc2345",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 21,
+    episode_number: 12,
+    start_seconds: 62,
+    end_seconds: 77,
+    title: "The best fight",
+    source_audio: "sub",
+    views: 12,
+    created_at: iso(40),
+    deleted_at: null,
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000002",
+    code: "bcd3456",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 22,
+    episode_number: 5,
+    start_seconds: 130,
+    end_seconds: 148,
+    title: null,
+    source_audio: "sub",
+    views: 3,
+    created_at: iso(30),
+    deleted_at: null,
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000003",
+    code: "cde4567",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 23,
+    episode_number: 1,
+    start_seconds: 10,
+    end_seconds: 25,
+    title: "Adult scene",
+    source_audio: "sub",
+    views: 0,
+    created_at: iso(20),
+    deleted_at: null,
+  },
+];
+
+// Prompt 38F: the browser talks to this stand-in directly once a page is
+// signed in (supabase-js fetches /auth/v1/user from the client), and the page
+// origin is a different port, so every response is CORS-open. Without this the
+// browser blocks the call and the app quietly stays in its guest state.
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "*",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "access-control-max-age": "600",
+};
 
 function json(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body ?? null);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-range": `0-${Math.max((Array.isArray(body) ? body.length : 1) - 1, 0)}/*`,
+    ...CORS,
     ...extraHeaders,
   });
   res.end(payload);
@@ -223,12 +390,29 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", ORIGIN);
   const pathname = url.pathname;
   const method = (req.method ?? "GET").toUpperCase();
+  // STUB_LOG=1 prints one line per request: the record of what the app actually
+  // asked for, which is how a 404 on a post page is told apart from a bad row.
+  if (process.env.STUB_LOG === "1") console.log(`${method} ${url.pathname}${url.search}`);
+
+  if (method === "OPTIONS") {
+    res.writeHead(204, CORS);
+    return res.end();
+  }
 
   if (pathname === "/health") return json(res, 200, { ok: true });
 
   // Someone is signed in only when the spec says so.
   if (pathname === "/auth/v1/user") {
-    if (req.headers["x-standin-user"] === "1" || (req.headers.cookie ?? "").includes("standin-user=1")) {
+    // Signed in when the browser carries the stand-in cookie OR when the
+    // request arrives with a bearer token, which is how a SERVER-side
+    // supabase client (an API route, an RSC) presents the session: those calls
+    // never forward the browser's cookies.
+    const bearer = String(req.headers.authorization ?? "");
+    if (
+      req.headers["x-standin-user"] === "1" ||
+      (req.headers.cookie ?? "").includes("standin-user=1") ||
+      bearer.startsWith("Bearer ")
+    ) {
       return json(res, 200, {
         id: `${uid(101)}`,
         is_anonymous: false,
@@ -272,11 +456,17 @@ const server = createServer(async (req, res) => {
     const table = pathname.slice("/rest/v1/".length);
     let rows = tableRows(table) ?? [];
 
-    // PostgREST filters: only equality on id is used by these pages.
-    const idFilter = url.searchParams.get("id");
-    if (idFilter?.startsWith("eq.")) {
-      const wanted = idFilter.slice(3);
-      rows = rows.filter((row) => row.id === wanted);
+    // PostgREST filters. `id` was the only one Phase 1/2 needed; the clip
+    // queries also filter on code, user_id and owner_token_hash, and ask for
+    // deleted_at=is.null, so equality on any column is honoured here.
+    for (const [column, raw] of url.searchParams.entries()) {
+      if (!raw) continue;
+      if (raw.startsWith("eq.")) {
+        const wanted = raw.slice(3);
+        rows = rows.filter((row) => String(row[column] ?? "") === wanted);
+      } else if (raw === "is.null") {
+        rows = rows.filter((row) => row[column] === null || row[column] === undefined);
+      }
     }
 
     // .maybeSingle()/.single() ask for a bare object, not an array.
@@ -303,12 +493,32 @@ function readBody(req) {
 
 function tableRows(table) {
   if (table === "announcements") return ANNOUNCEMENTS;
-  if (table === "community_posts") return POSTS;
+  if (table === "community_posts") {
+    // Prompt 38F: the post page reads community_posts directly and resolves
+    // the clip itself, so the three clip posts live here as well.
+    return [
+      ...POSTS,
+      ...CLIP_POSTS.map((post) => ({
+        id: post.id,
+        author_id: post.author_id,
+        body: post.body,
+        is_spoiler: false,
+        created_at: post.created_at,
+        // The post page filters on status/deleted_at, so these rows need the
+        // same published shape as the text posts or the page 404s.
+        status: "published",
+        deleted_at: null,
+        pinned: false,
+        clip_code: post.id === `${uid(32)}` ? "adult77" : post.code,
+      })),
+    ];
+  }
   if (table === "comment_feed") return COMMENTS;
   if (table === "public_profiles") return Object.values(PROFILES);
   if (table === "episodes") return EPISODES;
   if (table === "anime") return ANIME;
   if (table === "community_reactions") return [];
+  if (table === "clips") return CLIPS;
   if (table === "notifications" || table === "user_notifications") return [];
   if (table === "profiles") return [{ id: `${uid(101)}`, display_name: "Adaeze", username: "adaeze", avatar_url: null }];
   return [];

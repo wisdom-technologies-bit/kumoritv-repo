@@ -48,11 +48,15 @@ export default function FeedFilters({ value, onChange, variant, ariaLabel }: Fee
           type="button"
           role="tab"
           aria-selected={value === filter.value}
+          aria-label={filter.label}
           className={styles.chip}
           data-active={value === filter.value}
           onClick={() => onChange(filter.value)}
         >
-          {filter.label}
+          <span className={styles.chip_label}>{filter.label}</span>
+          <span className={styles.chip_label_short} aria-hidden="true">
+            {filter.short}
+          </span>
         </button>
       ))}
     </div>

@@ -1,10 +1,9 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import styles from "../page.module.css";
 import type { FeedItem } from "@/app/lib/community/queries";
-import { Avatar, TimeStamp, useCopyLink } from "./shared";
-import { CommentIcon, FlagIcon, HeartIcon, ShareIcon, ThumbDownIcon, TrashIcon } from "./icons";
+import { Avatar, TimeStamp } from "./shared";
+import PostActions from "./PostActions";
 
 export type PostCardProps = {
   item: FeedItem;
@@ -29,8 +28,6 @@ export default function PostCard({
   onGuestWrite,
 }: PostCardProps) {
   const [revealed, setRevealed] = useState(false);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  const { copied, copy } = useCopyLink();
 
   const displayName = item.author_display_name || item.author_username || "Someone";
   const isHiddenBody = item.is_spoiler && !revealed && !!item.body;
@@ -67,82 +64,16 @@ export default function PostCard({
         item.body && <p className={styles.post_body}>{item.body}</p>
       )}
 
-      <footer className={styles.post_actions}>
-        <button
-          type="button"
-          className={styles.button_link}
-          data-active={myReaction === 1}
-          aria-pressed={myReaction === 1}
-          aria-label={`Like, ${item.likes} ${item.likes === 1 ? "like" : "likes"}`}
-          onClick={() => (isSignedIn ? onReact(item, 1) : onGuestWrite())}
-        >
-          <HeartIcon />
-          {item.likes > 0 ? item.likes : "Like"}
-        </button>
-
-        <button
-          type="button"
-          className={styles.button_link}
-          data-active={myReaction === -1}
-          aria-pressed={myReaction === -1}
-          aria-label={`Dislike, ${item.dislikes}`}
-          onClick={() => (isSignedIn ? onReact(item, -1) : onGuestWrite())}
-        >
-          <ThumbDownIcon />
-          {item.dislikes > 0 ? item.dislikes : "Dislike"}
-        </button>
-
-        <Link className={styles.button_link} href={item.target_url} aria-label="Open the post and its comments">
-          <CommentIcon />
-          {item.reply_count > 0 ? item.reply_count : "Comment"}
-        </Link>
-
-        <button type="button" className={styles.button_link} onClick={() => void copy(item.target_url)}>
-          <ShareIcon />
-          {copied ? "Copied" : "Share"}
-        </button>
-
-        <div className={styles.post_actions_end}>
-          {canDelete ? (
-            isConfirmingDelete ? (
-              <span className={styles.confirm_row}>
-                Delete?
-                <button
-                  type="button"
-                  className={styles.button_link}
-                  onClick={async () => {
-                    setIsConfirmingDelete(false);
-                    await onDelete(item);
-                  }}
-                >
-                  Yes
-                </button>
-                <button type="button" className={styles.button_link} onClick={() => setIsConfirmingDelete(false)}>
-                  No
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className={styles.button_link}
-                aria-label="Delete your post"
-                onClick={() => setIsConfirmingDelete(true)}
-              >
-                <TrashIcon />
-              </button>
-            )
-          ) : (
-            <button
-              type="button"
-              className={styles.button_link}
-              aria-label="Report this post"
-              onClick={() => onReport(item)}
-            >
-              <FlagIcon />
-            </button>
-          )}
-        </div>
-      </footer>
+      <PostActions
+        item={item}
+        myReaction={myReaction}
+        isSignedIn={isSignedIn}
+        canDelete={canDelete}
+        onReact={onReact}
+        onDelete={onDelete}
+        onReport={onReport}
+        onGuestWrite={onGuestWrite}
+      />
     </article>
   );
 }

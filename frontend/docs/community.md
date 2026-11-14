@@ -24,10 +24,16 @@ each has its own rollback.
 3. `docs/sql/community-patch-1.sql`
 4. `docs/sql/comments-deleted-users.sql`
 5. `docs/sql/community-comments-arm.sql` (Phase 2: comments in the feed)
+6. `docs/sql/community-clips-arm.sql` (Phase 3: shared clips in the feed)
 
 File 5 may be run before or after the Phase 2 app deploy: it keeps the function
 signature and adds one column (`is_adult`) at the end, which the older client
 ignores. Until it runs there are simply no comment cards in the feed.
+
+File 6 appends one column (`clip_state`) and one optional argument
+(`p_show_adult`) the same way, so it is safe either side of the Phase 3 deploy:
+until it runs, a clip post is simply an ordinary text post. Running it before
+the app deploy also means the API's `clip_code` insert has its column already.
 
 Do **not** also run `supabase/migrations/20261120000000_prompt38_community.sql`
 in the same project: it is the same statements, kept in step with the two files
@@ -134,11 +140,14 @@ select proname, proacl from pg_proc
 
 Exact reverse of the run order, because each file depends on the one before it:
 
-0. `docs/sql/community-comments-arm-rollback.sql`
-1. `docs/sql/comments-deleted-users-rollback.sql`
-2. `docs/sql/community-patch-1-rollback.sql`
-3. `docs/sql/community-rollback.sql`
-4. `docs/sql/profiles-rls-rollback.sql`
+0. `docs/sql/community-clips-arm-rollback.sql` (restores the Phase 2 feed
+   function and the three-argument `community_new_posts`, and drops the clips
+   index)
+1. `docs/sql/community-comments-arm-rollback.sql`
+2. `docs/sql/comments-deleted-users-rollback.sql`
+3. `docs/sql/community-patch-1-rollback.sql`
+4. `docs/sql/community-rollback.sql`
+5. `docs/sql/profiles-rls-rollback.sql`
 
 The database is left exactly as it was: `profiles` RLS off again, the community
 tables and the schedule/trigger additions dropped, `comments_guard` and
@@ -162,17 +171,82 @@ The card shows an "18+" chip when a row is returned with `is_adult = true`, so a
 viewer who has the setting on can still tell what they are reading in a mixed
 feed.
 
-## Phase 3 requirements (agreed, not built yet)
+## 8. Sharing clips (Phase 3)
 
-Clips shared in the community whose anime is adult (AniList `isAdult`, which
-covers the Hentai genre) must be treated as follows:
+A post can carry one of your clips instead of, or as well as, text. The clip
+travels as `community_posts.clip_code` (the 7-character clip code), never as a
+URL: `link_url` keeps its Phase 1 meaning and the posts API accepts exactly one
+of the two. A pasted `https://kumoritv.top/clip/<code>` becomes a code before it
+is stored.
+
+What the four surfaces do:
+
+- **Composer.** A clip chip opens a picker with two tabs, *My recent clips*
+  (`GET /api/clips/mine`) and *Paste clip URL*. Choosing a clip attaches a
+  preview card with the anime, episode, range and length; Remove takes it back
+  off. Pasting a clip link into the post box attaches it and strips the link
+  from the text, so the post says the words and the card says the clip. A post
+  may be a clip with no text.
+- **Feed card.** `community_feed_page` returns `clip_state` and the card draws
+  that and nothing else: `live` is a poster, the title and
+  `Anime · E12 · 1:02-1:17 · 15s`; `removed` is "This clip was removed"; a text
+  post stays a text post.
+- **Post page.** `/community/post/<id>` resolves the clip through the same
+  check and shows the same card, including in `generateMetadata`.
+- **Feed filter.** A fifth chip, *Clips*, asks the RPC for `p_kind = 'clips'`.
+  Five chips do not fit a 360px phone with the full labels, so the phone bar
+  uses short ones (the announcement chip reads *News* there).
+
+`app/lib/community/clip-post.ts` holds the rule as one pure function
+(`buildClipCard`, `clipCardFor`, `clipPostHeadline`), so the feed, the post page
+and their tests cannot drift apart.
+
+### The adult rule for clips
+
+A clip whose anime is adult (AniList `isAdult`, which covers the Hentai genre)
+is treated as follows, and every part of it is enforced before the data leaves
+the server:
 
 - The post card is labelled **"Adult content 18+"**.
-- The preview/thumbnail is hidden: blurred or replaced by a neutral card.
-- Unless the viewer's adult setting is on, guests and viewers with the setting
-  off see only the label and **"Turn on adult content in settings to view"**,
-  never the thumbnail and **never the anime title**.
-- The same rule applies to the new-post toast (no thumbnail, generic text) and
-  to the clip URL preview in the composer.
+- The thumbnail, the title, the anime name, the range and the clip link are all
+  withheld: the viewer with the setting off sees only the label and
+  **"Turn on adult content in settings to view"**.
+- `community_feed_page` returns `clip_state = 'hidden_adult'` and NULLs
+  `clip_code`, `clip_start`, `clip_end`, `anime_id`, `anime_title`,
+  `anime_cover`, `episode_number` and `title` for that row, so there is nothing
+  in the response to leak.
+- The composer picker masks the same rows, the composer preview is masked
+  server-side by `GET /api/clips/<code>` (`{isAdult: true, hidden: true}`), and
+  `community_new_posts` returns `has_clip = true` with a generic "Shared a clip"
+  and no code or anime until the caller's setting is on.
 
-This is the site's existing adult-content preference, not age verification.
+This is the site's existing adult-content preference, **not age verification**
+and not an authorization boundary: a signed-in viewer can turn it on in
+settings, the clip page is reachable either way, and the RPC is granted to
+`anon`. It must not be described as a safety or legal gate.
+
+## 9. Checking Phase 3
+
+The SQL arm has its own harness, which builds a throwaway database, applies
+every file in order, runs the assertions and then applies the rollbacks:
+
+```bash
+cd frontend
+bash test-harness/community-sql/run.sh
+```
+
+The clip surfaces have two specs against the production build and a local
+stand-in for Supabase (no real project, no AniList):
+
+```bash
+cd frontend
+npm run build
+npx playwright test -c test-harness/community-e2e/playwright.clips.config.ts
+```
+
+Ten tests: the picker on desktop and at 360px, paste-to-attach, the four card
+states in the feed, the Clips chip, the post page for a live clip, a removed
+clip, a masked adult clip (asserting it carries no `<img>`, no `<a>`, no title
+and no `/clip/` path anywhere in the HTML), and the five-chip phone bar. The
+config also starts a second server with `COMMUNITY_ENABLED` unset, which must
+404.

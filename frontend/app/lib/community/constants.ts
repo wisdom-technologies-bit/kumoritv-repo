@@ -7,6 +7,8 @@ export const POST_BODY_MAX = 1000;
 export const POST_BODY_MIN = 1;
 export const COMMUNITY_COMMENT_MAX = 400;
 export const REPORT_DETAILS_MAX = 500;
+/** A plain link attached to a post. Long enough for a real article URL. */
+export const POST_LINK_MAX = 2000;
 
 export const REPORT_REASONS = [
   "spam",

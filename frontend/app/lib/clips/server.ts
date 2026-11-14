@@ -310,7 +310,7 @@ export async function reportClip({
 }
 
 /** `/clips` - newest first, live rows only. */
-export async function listUserClips(userId: string): Promise<ClipRow[]> {
+export async function listUserClips(userId: string, limit = CLIPS_PAGE_SIZE): Promise<ClipRow[]> {
   const client = db();
   if (!client || !userId) return [];
   try {
@@ -320,7 +320,45 @@ export async function listUserClips(userId: string): Promise<ClipRow[]> {
       .eq("user_id", userId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(CLIPS_PAGE_SIZE);
+      .limit(Math.min(Math.max(limit, 1), CLIPS_PAGE_SIZE));
+    return (data as ClipRow[] | null) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Prompt 38F: the clips this BROWSER made before it had an account.
+ *
+ * A guest clip has `user_id is null` and an `owner_token_hash` derived from the
+ * first-party cookie. Handing those to the account that signs in on the same
+ * browser is the whole point of the clip picker: "make one from any episode"
+ * should not require signing in first.
+ *
+ * The filter is deliberately narrow, and all three parts matter:
+ *   * `user_id is null` - a clip that belongs to an account is NEVER matched by
+ *     a cookie hash, so signing in on someone else's browser cannot surface
+ *     their clips;
+ *   * the hash is compared, never the token, and only the hash is stored;
+ *   * a null/blank hash returns nothing at all, so a caller with no cookie
+ *     (or a malformed one) gets an empty list rather than a wildcard match.
+ */
+export async function listClipsByOwnerHash(
+  ownerHash: string | null,
+  limit = 20,
+): Promise<ClipRow[]> {
+  const client = db();
+  const hash = typeof ownerHash === "string" ? ownerHash.trim() : "";
+  if (!client || hash.length < 32) return [];
+  try {
+    const { data } = await client
+      .from("clips")
+      .select(SELECT)
+      .eq("owner_token_hash", hash)
+      .is("user_id", null)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(Math.min(Math.max(limit, 1), CLIPS_PAGE_SIZE));
     return (data as ClipRow[] | null) ?? [];
   } catch {
     return [];

@@ -1210,3 +1210,500 @@
 .airing_skeleton_line_short {
   width: 60%;
 }
+
+/* ======================= Phase 3: clips in the community ==================
+   The picker, the attachment strip in the composer and the clip card.
+
+   The picker is a dialog in document.body (see ClipPicker.tsx): /community's
+   .page root is a stacking context, so anything painted inside it sits under
+   the site header and the header swallows the clicks. Its z-index is one above
+   the composer sheet's, because the picker can open FROM that sheet.
+   Everything below uses min-height: 44px on anything tappable. */
+
+.picker_scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483100;
+  background: rgba(4, 6, 14, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+/* Desktop: a popover under the "Add clip" chip. */
+.picker_popover {
+  position: fixed;
+  z-index: 2147483101;
+  max-height: min(460px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+  background: var(--midnight, #0b0e1a);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* Mobile: a bottom sheet that stays above the on-screen keyboard. */
+.picker_sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2147483101;
+  max-height: 86dvh;
+  height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--midnight, #0b0e1a);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow: hidden;
+}
+
+.picker_head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: none;
+}
+
+.picker_title {
+  font-size: 15px;
+  color: var(--white-100);
+}
+
+.picker_tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px 4px;
+  flex: none;
+}
+
+.picker_tab {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--white-75);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.picker_tab[data-active="true"] {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--white-100);
+}
+
+.picker_panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 14px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.picker_panel:focus-visible {
+  outline: 2px solid var(--sakura-pink);
+  outline-offset: -2px;
+}
+
+.picker_list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.picker_row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 62px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker_row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.picker_row[aria-selected="true"],
+.picker_row[data-selected="true"] {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.picker_thumb,
+.attach_thumb {
+  flex: none;
+  display: block;
+  width: 96px;
+  height: 54px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* The site placeholder: the same neutral block whether the art is missing or
+   the request failed. No broken-image icon, no layout shift. */
+.picker_thumb[data-placeholder="true"],
+.attach_thumb[data-placeholder="true"] {
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+.picker_thumb img,
+.attach_thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.picker_thumb_adult {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 54px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  color: var(--white-50);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.picker_row_text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.picker_row_title,
+.attach_title {
+  font-size: 13px;
+  color: var(--white-100);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker_row_meta,
+.attach_meta {
+  font-size: 12px;
+  color: var(--white-50);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker_row_skeleton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 6px 8px;
+}
+
+.picker_thumb_skeleton {
+  flex: none;
+  width: 96px;
+  height: 54px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.picker_lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.picker_line,
+.picker_line_short {
+  height: 9px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.picker_line_short {
+  width: 45%;
+}
+
+.picker_empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 4px;
+}
+
+.picker_empty_title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--white-100);
+}
+
+.picker_empty_text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--white-50);
+}
+
+.picker_label {
+  display: block;
+  margin: 4px 0 6px;
+  font-size: 13px;
+  color: var(--white-75);
+}
+
+.picker_input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--white-100);
+  font-size: 14px;
+}
+
+.picker_input::placeholder {
+  color: var(--white-50);
+}
+
+.picker_help {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--white-50);
+}
+
+.picker_preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: flex-start;
+}
+
+/* ---- the composer's attachment strip ------------------------------------ */
+
+.attach_area {
+  display: contents;
+}
+
+.attach_row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.attach_card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.attach_thumb {
+  width: 112px;
+  height: 63px;
+}
+
+.attach_text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.attach_note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--white-50);
+}
+
+/* ---- the "Adult content 18+" cards -------------------------------------- */
+
+.adult_card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  flex: 1;
+  min-width: 0;
+}
+
+.adult_label {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 120, 120, 0.55);
+  background: rgba(255, 90, 90, 0.14);
+  color: #ffd7d7;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.adult_text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--white-50);
+}
+
+/* ---- a clip post in the feed -------------------------------------------- */
+
+.feed_clip {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.feed_clip:hover {
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.1);
+}
+
+.feed_clip_thumb {
+  position: relative;
+  flex: none;
+  width: 160px;
+  height: 90px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.feed_clip_thumb img,
+.feed_clip_placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feed_clip_text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  justify-content: center;
+}
+
+.feed_clip_title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--white-100);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.feed_clip_meta {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--white-50);
+}
+
+.feed_clip_cta {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9baff;
+}
+
+.clip_removed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.clip_removed_title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white-75);
+}
+
+.clip_removed_text {
+  font-size: 12px;
+  color: var(--white-50);
+}
+
+@media (max-width: 560px) {
+  .feed_clip_thumb {
+    width: 112px;
+    height: 63px;
+  }
+
+  .feed_clip_title {
+    font-size: 14px;
+  }
+}
+
+/* ---- five chips on a phone ---------------------------------------------- */
+
+.chip_label_short {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .mobile_bar .chip_label {
+    display: none;
+  }
+
+  .mobile_bar .chip_label_short {
+    display: inline;
+  }
+
+  .mobile_bar .chip {
+    padding: 0 6px;
+    font-size: 12px;
+  }
+}
