@@ -10,8 +10,17 @@ import { cookies } from "next/headers";
 import { CLIP_OWNER_COOKIE } from "@/app/lib/clips/constants";
 import { validateRenameClipBody } from "@/app/lib/clips/body";
 import { isClipCode } from "@/app/lib/clips/code";
-import { canManageClip, deleteClip, getClipByCode, renameClip, toPublicClip } from "@/app/lib/clips/server";
+import {
+  canManageClip,
+  deleteClip,
+  getAnimeSummaries,
+  getClipByCode,
+  renameClip,
+  toPublicClip,
+} from "@/app/lib/clips/server";
 import { readClipViewer, readOwnerCookie } from "@/app/lib/clips/request";
+import { buildClipPreview } from "@/app/lib/community/clip-preview";
+import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,10 +43,21 @@ export async function GET(
 
   const viewer = await readClipViewer();
   const ownerToken = readOwnerCookie();
+
+  // Prompt 38F: the community composer resolves a pasted clip through this same
+  // route, so the response also carries a preview that has ALREADY been gated
+  // for an adult clip on the server. `clip` is unchanged, so the clip page and
+  // the rename dialog see exactly what they saw before.
+  const [anime, showAdult] = await Promise.all([
+    getAnimeSummaries([Number(row.anilist_id)]),
+    readShowAdultContent(),
+  ]);
+
   return Response.json(
     {
       clip: toPublicClip(row),
       canManage: canManageClip(row, { userId: viewer.userId, ownerToken }),
+      preview: buildClipPreview(row, anime.get(Number(row.anilist_id)) ?? null, showAdult),
     },
     { headers: { "cache-control": "no-store" } },
   );

@@ -14,6 +14,7 @@ import {
   type FeedItem,
 } from "@/app/lib/community/queries";
 import Composer, { type ComposeResult } from "./Composer";
+import type { AttachedClip } from "@/app/lib/community/clip-attachment";
 import FeedFilters from "./FeedFilters";
 import PostCard from "./PostCard";
 import AnnouncementCard from "./AnnouncementCard";
@@ -54,6 +55,10 @@ const EMPTY_STATE: Record<FeedFilter, { title: string; text: string }> = {
   announcement: {
     title: "No announcements right now",
     text: "When the team has something to say, it lands here first.",
+  },
+  clips: {
+    title: "No clips shared yet",
+    text: "No clips shared yet. Make one from any episode and share it here.",
   },
 };
 
@@ -244,12 +249,22 @@ export default function FeedShell({
   );
 
   const handleCompose = useCallback(
-    async ({ body, isSpoiler }: { body: string; isSpoiler: boolean }): Promise<ComposeResult> => {
+    async ({
+      body,
+      isSpoiler,
+      clip,
+    }: {
+      body: string;
+      isSpoiler: boolean;
+      clip: AttachedClip | null;
+    }): Promise<ComposeResult> => {
       try {
         const response = await fetch("/api/community/posts", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ body, isSpoiler }),
+          // clip_code and link_url are mutually exclusive; the composer sends
+          // one or the other, and the API re-checks both.
+          body: JSON.stringify({ body, isSpoiler, clip_code: clip?.code ?? null }),
         });
         const payload = (await response.json().catch(() => ({}))) as {
           message?: string;
@@ -260,6 +275,11 @@ export default function FeedShell({
           return { ok: false, message: payload.message || "We could not post that." };
         }
 
+        // The optimistic row mirrors what the SQL function will return for this
+        // post, adult rule included: a masked attachment is inserted with no
+        // code, no range and no anime, so nothing is drawn that a refresh would
+        // then take away.
+        const isHidden = clip?.hidden === true;
         const created: FeedItem = {
           feed_key: `post:${payload.post.id}`,
           kind: "post",
@@ -270,21 +290,22 @@ export default function FeedShell({
           author_avatar: avatarUrl,
           body: payload.post.body,
           is_spoiler: payload.post.is_spoiler,
-          title: null,
+          title: isHidden ? null : (clip?.title ?? null),
           image_url: null,
           link_url: null,
-          clip_code: null,
-          clip_start: null,
-          clip_end: null,
-          anime_id: null,
-          anime_title: null,
+          clip_code: isHidden ? null : (clip?.code ?? null),
+          clip_start: isHidden ? null : (clip?.start ?? null),
+          clip_end: isHidden ? null : (clip?.end ?? null),
+          anime_id: isHidden ? null : (clip?.anilistId ?? null),
+          anime_title: isHidden ? null : (clip?.animeTitle ?? null),
           anime_cover: null,
-          episode_number: null,
+          episode_number: isHidden ? null : (clip?.episode ?? null),
           target_url: `/community/post/${payload.post.id}`,
           reply_count: 0,
           likes: 0,
           dislikes: 0,
-          is_adult: false,
+          is_adult: clip?.isAdult === true,
+          clip_state: !clip ? "none" : isHidden ? "hidden_adult" : "live",
         };
 
         if (filter === "announcement") {
@@ -362,6 +383,7 @@ export default function FeedShell({
                 onSubmit={handleCompose}
                 onGuestWrite={openLoginModal}
                 autoFocus={isComposerFocused}
+                showAdult={initialShowAdult}
               />
             </div>
 
@@ -489,6 +511,7 @@ export default function FeedShell({
           variant="sheet"
           autoFocus
           onRequestClose={() => setIsSheetOpen(false)}
+          showAdult={initialShowAdult}
         />
       )}
 

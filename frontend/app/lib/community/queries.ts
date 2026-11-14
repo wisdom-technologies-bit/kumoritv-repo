@@ -9,6 +9,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type CommunityKind = "post" | "announcement" | "comment";
 
+/**
+ * Prompt 38F: what happened to the clip of a post, decided by the SQL function.
+ *   none         - a text post
+ *   live         - a clip the viewer may see
+ *   removed      - the clip was deleted; its code and range are gone with it
+ *   hidden_adult - adult clip and the viewer's adult setting is off: EVERY clip
+ *                  and anime field is null in the row, so this flag is the only
+ *                  thing left to render
+ */
+export type ClipState = "none" | "live" | "removed" | "hidden_adult";
+
 export type FeedItem = {
   feed_key: string;
   kind: CommunityKind;
@@ -33,12 +44,15 @@ export type FeedItem = {
   reply_count: number;
   likes: number;
   dislikes: number;
-  /** True when the anime is flagged adult. Only ever true for a viewer whose
-   *  adult setting is on: the value is a display preference, not a gate. */
+  /** True when the anime is adult. Stays true on a hidden row: the label is
+   *  the one thing a hidden adult clip still shows. */
   is_adult: boolean;
+  /** From community_feed_page as of Phase 3. Absent on rows from an older
+   *  function, which is why it is optional. */
+  clip_state?: ClipState | null;
 };
 
-export type FeedFilter = "all" | "post" | "comment" | "announcement";
+export type FeedFilter = "all" | "post" | "comment" | "announcement" | "clips";
 
 export type FeedPage = { items: FeedItem[]; cursor: { createdAt: string; key: string } | null };
 

@@ -201,15 +201,78 @@ const EPISODES = [
 ];
 
 const ANIME = [
-  { anilist_id: 21, title: "Sousou no Frieren", title_english: "Frieren: Beyond Journey's End" },
-  { anilist_id: 22, title: "Dandadan", title_english: "Dandadan" },
+  { anilist_id: 21, title: "Sousou no Frieren", title_english: "Frieren: Beyond Journey's End", is_adult: false },
+  { anilist_id: 22, title: "Dandadan", title_english: "Dandadan", is_adult: false },
+  // Prompt 38F: the adult rule needs a title that is actually flagged.
+  { anilist_id: 23, title: "Adult Title", title_english: "Adult Title", is_adult: true },
 ];
+
+// Prompt 38F fixtures: three clips - two ordinary, one on an adult title.
+const CLIPS = [
+  {
+    id: "20000000-0000-4000-8000-000000000001",
+    code: "abc2345",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 21,
+    episode_number: 12,
+    start_seconds: 62,
+    end_seconds: 77,
+    title: "The best fight",
+    source_audio: "sub",
+    views: 12,
+    created_at: iso(40),
+    deleted_at: null,
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000002",
+    code: "bcd3456",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 22,
+    episode_number: 5,
+    start_seconds: 130,
+    end_seconds: 148,
+    title: null,
+    source_audio: "sub",
+    views: 3,
+    created_at: iso(30),
+    deleted_at: null,
+  },
+  {
+    id: "20000000-0000-4000-8000-000000000003",
+    code: "cde4567",
+    user_id: `${uid(101)}`,
+    owner_token_hash: null,
+    anilist_id: 23,
+    episode_number: 1,
+    start_seconds: 10,
+    end_seconds: 25,
+    title: "Adult scene",
+    source_audio: "sub",
+    views: 0,
+    created_at: iso(20),
+    deleted_at: null,
+  },
+];
+
+// Prompt 38F: the browser talks to this stand-in directly once a page is
+// signed in (supabase-js fetches /auth/v1/user from the client), and the page
+// origin is a different port, so every response is CORS-open. Without this the
+// browser blocks the call and the app quietly stays in its guest state.
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "*",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "access-control-max-age": "600",
+};
 
 function json(res, status, body, extraHeaders = {}) {
   const payload = JSON.stringify(body ?? null);
   res.writeHead(status, {
     "content-type": "application/json",
     "content-range": `0-${Math.max((Array.isArray(body) ? body.length : 1) - 1, 0)}/*`,
+    ...CORS,
     ...extraHeaders,
   });
   res.end(payload);
@@ -224,11 +287,25 @@ const server = createServer(async (req, res) => {
   const pathname = url.pathname;
   const method = (req.method ?? "GET").toUpperCase();
 
+  if (method === "OPTIONS") {
+    res.writeHead(204, CORS);
+    return res.end();
+  }
+
   if (pathname === "/health") return json(res, 200, { ok: true });
 
   // Someone is signed in only when the spec says so.
   if (pathname === "/auth/v1/user") {
-    if (req.headers["x-standin-user"] === "1" || (req.headers.cookie ?? "").includes("standin-user=1")) {
+    // Signed in when the browser carries the stand-in cookie OR when the
+    // request arrives with a bearer token, which is how a SERVER-side
+    // supabase client (an API route, an RSC) presents the session: those calls
+    // never forward the browser's cookies.
+    const bearer = String(req.headers.authorization ?? "");
+    if (
+      req.headers["x-standin-user"] === "1" ||
+      (req.headers.cookie ?? "").includes("standin-user=1") ||
+      bearer.startsWith("Bearer ")
+    ) {
       return json(res, 200, {
         id: `${uid(101)}`,
         is_anonymous: false,
@@ -272,11 +349,17 @@ const server = createServer(async (req, res) => {
     const table = pathname.slice("/rest/v1/".length);
     let rows = tableRows(table) ?? [];
 
-    // PostgREST filters: only equality on id is used by these pages.
-    const idFilter = url.searchParams.get("id");
-    if (idFilter?.startsWith("eq.")) {
-      const wanted = idFilter.slice(3);
-      rows = rows.filter((row) => row.id === wanted);
+    // PostgREST filters. `id` was the only one Phase 1/2 needed; the clip
+    // queries also filter on code, user_id and owner_token_hash, and ask for
+    // deleted_at=is.null, so equality on any column is honoured here.
+    for (const [column, raw] of url.searchParams.entries()) {
+      if (!raw) continue;
+      if (raw.startsWith("eq.")) {
+        const wanted = raw.slice(3);
+        rows = rows.filter((row) => String(row[column] ?? "") === wanted);
+      } else if (raw === "is.null") {
+        rows = rows.filter((row) => row[column] === null || row[column] === undefined);
+      }
     }
 
     // .maybeSingle()/.single() ask for a bare object, not an array.
@@ -309,6 +392,7 @@ function tableRows(table) {
   if (table === "episodes") return EPISODES;
   if (table === "anime") return ANIME;
   if (table === "community_reactions") return [];
+  if (table === "clips") return CLIPS;
   if (table === "notifications" || table === "user_notifications") return [];
   if (table === "profiles") return [{ id: `${uid(101)}`, display_name: "Adaeze", username: "adaeze", avatar_url: null }];
   return [];
