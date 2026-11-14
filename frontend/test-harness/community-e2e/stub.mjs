@@ -233,14 +233,50 @@ function feedRows(kind = "all") {
     };
   });
 
+  // Prompt 38F fix: one episode comment, so the Comments tab has something to
+  // draw. The bug this guards was in the client loader, not the database: the
+  // RPC returned comments and the feed threw them away, so the tab looked empty
+  // while the query was answering.
+  const commentRows = [
+    {
+      feed_key: `comment:${uid(41)}`,
+      kind: "comment",
+      created_at: iso(15),
+      author_id: `${uid(102)}`,
+      author_username: "chidi",
+      author_display_name: "Chidi",
+      author_avatar: null,
+      body: "This episode comment belongs in the community feed.",
+      is_spoiler: false,
+      title: "Frieren: Beyond Journey's End",
+      image_url: null,
+      link_url: null,
+      clip_code: null,
+      clip_start: null,
+      clip_end: null,
+      anime_id: 21,
+      anime_title: "Frieren: Beyond Journey's End",
+      anime_cover: null,
+      episode_number: 12,
+      target_url: `/anime/21?comment=${uid(41)}`,
+      reply_count: 2,
+      likes: 3,
+      dislikes: 0,
+      is_adult: false,
+      clip_state: "none",
+    },
+  ];
+
   const rows =
     kind === "post"
       ? [...postRows, ...clipRows]
-      : kind === "announcement"
-        ? announcementRows
-        : kind === "clips"
-          ? clipRows
-          : [...announcementRows, ...clipRows, ...postRows];
+      : kind === "comment"
+        ? commentRows
+        : kind === "announcement"
+          ? announcementRows
+          : kind === "clips"
+            ? clipRows
+            : [...announcementRows, ...commentRows, ...clipRows, ...postRows];
 
   return rows.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "announcement" ? -1 : 1));
 }
@@ -509,7 +545,15 @@ function tableRows(table) {
         status: "published",
         deleted_at: null,
         pinned: false,
-        clip_code: post.id === `${uid(32)}` ? "adult77" : post.code,
+        // The real table stores the clip's row id, not its code: a post page
+        // selects clip_id and takes the code from the clip. The removed post
+        // points at an id no clip answers to.
+        clip_id:
+          post.id === `${uid(32)}`
+            ? "20000000-0000-4000-8000-000000000009"
+            : post.id === `${uid(33)}`
+              ? "20000000-0000-4000-8000-0000000000ff"
+              : "20000000-0000-4000-8000-000000000001",
       })),
     ];
   }

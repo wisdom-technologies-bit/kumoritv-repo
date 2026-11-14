@@ -105,8 +105,12 @@ export async function listFeedPage(
     });
     if (error) return { data: null, error: toFailure(error) };
 
+    // Every kind the RPC can return is drawn as a card: posts, announcements
+    // and - since Phase 2 - top-level episode/anime comments. Dropping comments
+    // here is what made the Comments tab (and every page after the first) look
+    // empty while the database was returning them.
     const items = ((data ?? []) as FeedItem[]).filter(
-      (row) => row && (row.kind === "post" || row.kind === "announcement"),
+      (row) => row && (row.kind === "post" || row.kind === "announcement" || row.kind === "comment"),
     );
     const last = items[items.length - 1];
     return {

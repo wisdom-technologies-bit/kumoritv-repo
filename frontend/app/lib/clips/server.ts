@@ -74,6 +74,27 @@ function db(): any | null {
 }
 
 /** One live clip by code, or null (missing, deleted, or database down). */
+/**
+ * One clip by its row id. The community stores `community_posts.clip_id`, so a
+ * post page resolves its clip this way and takes the code from the row; the
+ * table has no `clip_code` column to select.
+ */
+export async function getClipById(id: string): Promise<ClipRow | null> {
+  const client = db();
+  if (!client || typeof id !== "string" || !id) return null;
+  try {
+    const { data } = await client
+      .from("clips")
+      .select(SELECT)
+      .eq("id", id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    return (data as ClipRow | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getClipByCode(code: string): Promise<ClipRow | null> {
   const client = db();
   if (!client || typeof code !== "string" || !code) return null;

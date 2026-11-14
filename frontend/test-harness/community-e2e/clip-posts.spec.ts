@@ -59,6 +59,24 @@ test.describe("clip posts", () => {
     await shot(page, "phase3-feed-clip-cards");
   });
 
+  test("the Comments chip draws an episode comment", async ({ page }) => {
+    // The regression: the client loader kept posts and announcements and threw
+    // comments away, so this tab was empty even though the RPC answered.
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/community");
+    await settleFeed(page);
+    await page.getByRole("navigation").getByRole("button", { name: "Comments", exact: true }).click();
+    await expect(
+      page.getByText("This episode comment belongs in the community feed."),
+    ).toBeVisible({ timeout: 15000 });
+    // It is a card like any other: the anime, the episode and a way into the
+    // thread, plus the reply count the RPC sent.
+    await expect(page.getByText("Frieren: Beyond Journey's End").first()).toBeVisible();
+    await expect(page.getByText("Episode 12").first()).toBeVisible();
+    await expect(page.getByText("2 replies").first()).toBeVisible();
+    await shot(page, "phase3-comments-tab");
+  });
+
   test("the Clips chip narrows the feed to clips", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto("/community");

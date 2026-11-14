@@ -11,10 +11,10 @@ import SpoilerBody from "@/app/community/components/SpoilerBody";
 import ThreadActions from "@/app/community/components/ThreadActions";
 import styles from "@/app/community/page.module.css";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
-import { clipCardFor, type ClipCard } from "@/app/lib/community/clip-post";
+import { buildClipCard, type ClipCard } from "@/app/lib/community/clip-post";
 import { ADULT_LABEL, clipDurationLabel, clipMetaLabel, clipRangeLabel, clipThumbPath } from "@/app/lib/community/clip-attachment";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
-import { getAnimeSummary, getClipByCode } from "@/app/lib/clips/server";
+import { getAnimeSummary, getClipById } from "@/app/lib/clips/server";
 import { createClient } from "@/app/lib/supabase/server";
 import { getAuthUser } from "@/app/lib/supabase/auth-server";
 
@@ -28,7 +28,7 @@ type PostRow = {
   body: string;
   is_spoiler: boolean;
   created_at: string;
-  clip_code: string | null;
+  clip_id: string | null;
 };
 
 const loadPost = cache(async function loadPost(id: string): Promise<PostRow | null> {
@@ -37,7 +37,7 @@ const loadPost = cache(async function loadPost(id: string): Promise<PostRow | nu
     if (!client) return null;
     const { data, error } = await (client as any)
       .from("community_posts")
-      .select("id, author_id, body, is_spoiler, created_at, clip_code")
+      .select("id, author_id, body, is_spoiler, created_at, clip_id")
       .eq("id", id)
       .maybeSingle();
     if (error) return null;
@@ -96,17 +96,26 @@ export default async function CommunityPostPage({ params }: { params: { id: stri
   // The clip this post carries, resolved and gated here on the server: an
   // adult clip with the reader's adult setting off becomes the masked card and
   // the clip row's title, range and code never enter the response.
+  // The table keeps the clip's id (community_posts.clip_id), never its code:
+  // selecting `clip_code` from the table - a name that only exists as an OUT
+  // column of community_feed_page - made PostgREST answer 400 and turned every
+  // post page into "Post not found". The code comes from the clip row.
   let clip: ClipCard = { state: "none" };
-  if (post.clip_code) {
+  if (post.clip_id) {
     let showAdult = false;
     try {
       showAdult = await readShowAdultContent();
     } catch {
       showAdult = false;
     }
-    const row = await getClipByCode(post.clip_code);
-    const summary = row ? await getAnimeSummary(Number(row.anilist_id)) : null;
-    clip = clipCardFor(post.clip_code, row, summary, showAdult);
+    const row = await getClipById(post.clip_id);
+    if (!row) {
+      // The post points at a clip that has since been deleted.
+      clip = { state: "removed" };
+    } else {
+      const summary = await getAnimeSummary(Number(row.anilist_id));
+      clip = buildClipCard(row, summary, showAdult);
+    }
   }
 
   const name = author?.display_name || author?.username || "Someone";
