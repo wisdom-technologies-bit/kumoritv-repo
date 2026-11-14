@@ -833,6 +833,329 @@ qs "create index comments_anilist_feed_idx on public.comments (anilist_id, creat
      where deleted_at is null and parent_id is null and target_type = 'anime' and user_id is not null;" >/dev/null
 printf '     One anime, after comments_anilist_feed_idx    %s\n' "$(ms_for "$(q_one)")"
 
+
+echo
+echo "== 22. Phase 3: the clip arm and the adult rule =="
+# This file replaces community_feed_page (one new OUT column, clip_state, last)
+# and community_new_posts (+p_show_adult, last, with a default). It is applied
+# here for the first time in this run, exactly as the owner would apply it after
+# the five earlier files.
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-clips-arm.sql" >/dev/null 2>&1; then
+  ok "the clips-arm file applies on top of the five existing files"
+else
+  bad "the clips-arm file applies" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-clips-arm.sql" 2>&1 | grep ERROR | head -2)"
+fi
+
+# Posts are inserted with the guard trigger disabled: fixtures and the 50k seed
+# above already used up the 20-per-hour budget, and fixing created_at afterwards
+# is refused because the guard freezes it.
+pg_guard_off() { psql -d "$DB" -q -c "alter table public.community_posts disable trigger community_posts_guard_trg"; }
+pg_guard_on()  { psql -d "$DB" -q -c "alter table public.community_posts enable trigger community_posts_guard_trg"; }
+
+CL1='50000000-0000-0000-0000-0000000000c1'   # live clip, non-adult title
+CL2='50000000-0000-0000-0000-0000000000c2'   # soft-deleted clip
+CL3='50000000-0000-0000-0000-0000000000c3'   # live clip on an adult title
+CL4='50000000-0000-0000-0000-0000000000c4'   # live clip with no title
+P1='60000000-0000-0000-0000-0000000000e1'
+P2='60000000-0000-0000-0000-0000000000e2'
+P3='60000000-0000-0000-0000-0000000000e3'
+P4='60000000-0000-0000-0000-0000000000e4'
+
+pg_guard_off
+qs "insert into public.clips (id, code, anilist_id, episode_number, start_seconds, end_seconds, title) values
+      ('$CL1', 'abc2345', 101,  5,   62,  77, 'The best fight'),
+      ('$CL2', 'bcd3456', 101,  6,   10,  25, 'Deleted clip'),
+      ('$CL3', 'cde4567', 202,  1,  100, 115, 'Adult scene'),
+      ('$CL4', 'def5678', 101,  3,    5,  20, null)
+    on conflict (id) do nothing;" >/dev/null
+qs "update public.clips set deleted_at = now() where id = '$CL2';" >/dev/null
+qs "insert into public.community_posts (id, author_id, body, clip_id, created_at) values
+      ('$P1', '$ALICE', 'a post that shares a clip',      '$CL1', now() - interval '4 seconds'),
+      ('$P2', '$ALICE', 'a post whose clip was removed',  '$CL2', now() - interval '3 seconds'),
+      ('$P3', '$BOB',   'a post with an adult clip',      '$CL3', now() - interval '2 seconds'),
+      ('$P4', '$CAROL', 'a post with an untitled clip',   '$CL4', now() - interval '1 second')
+    on conflict (id) do nothing;" >/dev/null
+pg_guard_on
+
+CLIPS_FALSE="public.community_feed_page(50, null, null, 'clips', false, null, null, true)"
+CLIPS_TRUE="public.community_feed_page(50, null, null, 'clips', true, null, null, true)"
+POSTS_ALL="public.community_feed_page(50, null, null, 'post', false, null, null, true)"
+FEED_ALL="public.community_feed_page(50, null, null, 'all', false, null, null, true)"
+
+run_eq "a text post reports clip_state = none"          "none"   "select clip_state from $POSTS_ALL where feed_key = 'post:10000000-0000-0000-0000-000000000001'"
+run_eq "a live clip reports clip_state = live"          "live"   "select clip_state from $POSTS_ALL where feed_key = 'post:$P1'"
+run_eq "a live clip puts the clip title in the post's title column" "The best fight" \
+  "select title from $POSTS_ALL where feed_key = 'post:$P1'"
+run_eq "a live clip returns code, range, anime and episode in one row" "abc2345|62|77|101|Frieren: Beyond Journey's End|https://cdn.test/frieren.jpg|5" \
+  "select clip_code || '|' || clip_start::int || '|' || clip_end::int || '|' || anime_id || '|' || anime_title || '|' || anime_cover || '|' || episode_number
+     from $POSTS_ALL where feed_key = 'post:$P1'"
+run_eq "a deleted clip reports clip_state = removed"     "removed" "select clip_state from $POSTS_ALL where feed_key = 'post:$P2'"
+run_eq "a deleted clip nulls every clip column"          "1" \
+  "select case when clip_code is null and clip_start is null and clip_end is null
+            and anime_id is null and anime_title is null and anime_cover is null
+            and episode_number is null and title is null and not is_adult
+          then 1 else 0 end
+     from $POSTS_ALL where feed_key = 'post:$P2'"
+run_eq "a clip with no title of its own is still live"   "live" \
+  "select clip_state from $POSTS_ALL where feed_key = 'post:$P4'"
+run_eq "and it sends a null title, not an empty string"  "1" \
+  "select case when title is null and clip_code = 'def5678'
+            and anime_title = 'Frieren: Beyond Journey''s End' then 1 else 0 end
+     from $POSTS_ALL where feed_key = 'post:$P4'"
+
+# --- the adult rule, server side -------------------------------------------
+run_eq "an adult clip is hidden_adult by default"        "hidden_adult" "select clip_state from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "and it sends no clip code"                       "1" "select case when clip_code is null then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "and no clip range"                               "1" "select case when clip_start is null and clip_end is null then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "and no anime id, title or cover"                 "1" \
+  "select case when anime_id is null and anime_title is null and anime_cover is null then 1 else 0 end
+     from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "and no episode number"                           "1" "select case when episode_number is null then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "and no clip title"                               "1" "select case when title is null then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "but it keeps is_adult = true, so the card can be labelled" "t" \
+  "select is_adult from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "the post body is still delivered (it is the author's own words)" "1" \
+  "select case when body = 'a post with an adult clip' then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_eq "p_show_adult = true makes it live"               "live" "select clip_state from $CLIPS_TRUE where feed_key = 'post:$P3'"
+run_eq "and only then is the regular clip data sent"     "cde4567|202|Adult Show|1|Adult scene|true" \
+  "select clip_code || '|' || anime_id || '|' || anime_title || '|' || episode_number || '|' || title || '|' || is_adult
+     from $CLIPS_TRUE where feed_key = 'post:$P3'"
+run_eq "the adult filter does not touch a non-adult clip" "live" \
+  "select clip_state from $POSTS_ALL where feed_key = 'post:$P1'"
+
+# --- p_kind = 'clips' -------------------------------------------------------
+run_eq "p_kind = 'clips' returns only post cards"        "0" \
+  "select count(*) from $CLIPS_FALSE where kind <> 'post'"
+run_eq "p_kind = 'clips' returns every post that has a clip" "4" \
+  "select count(*) from $CLIPS_FALSE where feed_key in ('post:$P1','post:$P2','post:$P3','post:$P4')"
+run_eq "p_kind = 'clips' returns nothing that has no clip" "0" \
+  "select count(*) from $CLIPS_FALSE where clip_state = 'none'"
+run_eq "p_kind = 'clips' hides announcements and comments" "0" \
+  "select count(*) from $CLIPS_FALSE where kind in ('announcement','comment')"
+run_eq "p_kind = 'post' still returns text-only posts"    "1" \
+  "select count(*) from public.community_feed_page(50, null, null, 'post', false, null, null, true)
+    where feed_key = 'post:10000000-0000-0000-0000-000000000001'"
+run_eq "every clip state is reachable in one page"         "4" \
+  "select count(distinct clip_state) from $POSTS_ALL"
+run_eq "a post row in the merged feed carries clip_state too" "live" \
+  "select clip_state from $FEED_ALL where feed_key = 'post:$P1'"
+
+# --- guests ----------------------------------------------------------------
+run_as_eq "a guest (anon role) gets the hidden version"   "hidden_adult" "anon" "-" \
+  "select clip_state from $POSTS_ALL where feed_key = 'post:$P3'"
+run_as_eq "a guest gets no clip code for an adult clip"   "1" "anon" "-" \
+  "select case when clip_code is null then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+run_as_eq "a guest still sees is_adult so the label can be drawn" "t" "anon" "-" \
+  "select is_adult from $POSTS_ALL where feed_key = 'post:$P3'"
+run_as_eq "a guest gets an ordinary clip in full"         "abc2345" "anon" "-" \
+  "select clip_code from $POSTS_ALL where feed_key = 'post:$P1'"
+
+# --- the cursor still walks mixed kinds correctly ---------------------------
+CURSOR_CT=$(qs "select created_at from public.community_feed_page(5, null, null, 'post', false, null, null, true)
+                 order by created_at asc, feed_key asc limit 1")
+CURSOR_KEY=$(qs "select feed_key from public.community_feed_page(5, null, null, 'post', false, null, null, true)
+                  order by created_at asc, feed_key asc limit 1")
+run_eq "the second page does not repeat a row from the first" "0" \
+  "select count(*) from public.community_feed_page(5, '$CURSOR_CT', '$CURSOR_KEY', 'all', false, null, null, true)
+    where feed_key in (select feed_key from public.community_feed_page(5, null, null, 'all', false, null, null, true))"
+run_eq "the cursor after the first page is strictly older" "1" \
+  "select case when max(created_at) <= '$CURSOR_CT' then 1 else 0 end
+     from public.community_feed_page(5, '$CURSOR_CT', '$CURSOR_KEY', 'all', false, null, null, true)"
+run_eq "the clip post is on the first page"            "1" \
+  "select count(*) from public.community_feed_page(50, null, null, 'post', false, null, null, true)
+    where feed_key = 'post:$P1'"
+run_eq "and the cursor has moved past it"               "0" \
+  "select count(*) from public.community_feed_page(5, '$CURSOR_CT', '$CURSOR_KEY', 'post', false, null, null, true)
+    where feed_key = 'post:$P1'"
+run_eq "the clips filter pages too, without repeats"    "0" \
+  "select count(*) from public.community_feed_page(2, (select created_at from $CLIPS_FALSE order by created_at asc, feed_key asc limit 1),
+                                                  (select feed_key from $CLIPS_FALSE order by created_at asc, feed_key asc limit 1),
+                                                  'clips', false, null, null, true)
+    where feed_key in (select feed_key from public.community_feed_page(2, null, null, 'clips', false, null, null, true))"
+
+# --- shape, security and ACLs ----------------------------------------------
+run_eq "clip_state is the LAST column and every old column is still there" "1" \
+  "select case when pg_get_function_result('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure)
+     like '%dislikes integer, is_adult boolean, clip_state text)' then 1 else 0 end"
+run_eq "the feed function is security definer with an empty search_path" "true|true" \
+  "select p.prosecdef || '|' || (p.proconfig[1] = 'search_path=\"\"')::text from pg_proc p
+    where p.proname = 'community_feed_page'"
+run_eq "community_new_posts is security definer with an empty search_path" "true|true" \
+  "select p.prosecdef || '|' || (p.proconfig[1] = 'search_path=\"\"')::text from pg_proc p
+    where p.proname = 'community_new_posts'"
+run_eq "anon may call the feed function"                 "t" \
+  "select has_function_privilege('anon','public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)','execute')"
+run_eq "authenticated may call the feed function"        "t" \
+  "select has_function_privilege('authenticated','public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)','execute')"
+run_eq "anon may call community_new_posts"               "t" \
+  "select has_function_privilege('anon','public.community_new_posts(timestamptz,int,uuid,boolean)','execute')"
+run_eq "authenticated may call community_new_posts"      "t" \
+  "select has_function_privilege('authenticated','public.community_new_posts(timestamptz,int,uuid,boolean)','execute')"
+run_eq "the clips feed index exists"                     "1" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_clips_feed_idx'"
+run_eq "and it is partial, on the exact predicate the arm uses" "1" \
+  "select case when pg_get_expr(i.indpred, i.indrelid) is not null
+            and pg_get_indexdef(i.indexrelid) like '%created_at DESC, id DESC%'
+          then 1 else 0 end
+     from pg_index i join pg_class c on c.oid = i.indexrelid
+    where c.relname = 'community_posts_clips_feed_idx'"
+run_eq "the five earlier files were not edited by this one" "1" \
+  "select case when pg_get_function_result('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure)
+     like '%is_adult boolean, clip_state text)%' then 1 else 0 end"
+
+echo
+echo "== 23. Phase 3: community_new_posts keeps adult clips generic =="
+NP_OLD="public.community_new_posts(null, 5, null)"
+NP_NEW="public.community_new_posts(null, 5, null, false)"
+run_eq "the three-argument call still resolves (default at the end)" "t" \
+  "select count(*) >= 1 from $NP_OLD"
+run_eq "by default an adult clip reports has_clip = true" "t" \
+  "select has_clip from $NP_NEW where id = '$P3'"
+run_eq "by default its clip code is withheld"            "1" \
+  "select case when clip_code is null then 1 else 0 end from $NP_NEW where id = '$P3'"
+run_eq "by default its anime id and episode are withheld" "1" \
+  "select case when anime_id is null and episode_number is null then 1 else 0 end from $NP_NEW where id = '$P3'"
+run_eq "by default the snippet is the generic text"      "Shared a clip" \
+  "select snippet from $NP_NEW where id = '$P3'"
+run_eq "p_show_adult = true returns the real clip"       "cde4567|202|1" \
+  "select clip_code || '|' || anime_id || '|' || episode_number
+     from public.community_new_posts(null, 5, null, true) where id = '$P3'"
+run_eq "a non-adult clip is unaffected"                  "abc2345|101|5" \
+  "select clip_code || '|' || anime_id || '|' || episode_number from $NP_NEW where id = '$P1'"
+run_eq "a removed clip has no code to return"            "1" \
+  "select case when clip_code is null and has_clip then 1 else 0 end from $NP_NEW where id = '$P2'"
+run_eq "still counts every post for the total"           "1" \
+  "select case when count(distinct total) = 1 and min(total) >= 1 then 1 else 0 end from $NP_NEW"
+run_as_eq "a guest (anon) gets the same generic snippet" "Shared a clip" "anon" "-" \
+  "select snippet from $NP_NEW where id = '$P3'"
+run_as_eq "and a guest gets no clip code for it"         "1" "anon" "-" \
+  "select case when clip_code is null then 1 else 0 end from $NP_NEW where id = '$P3'"
+
+echo
+echo "== 24. the clips-arm file is idempotent and its rollback is complete =="
+G1=$(qs "select md5(pg_get_functiondef('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure))
+              || md5(pg_get_functiondef('public.community_new_posts(timestamptz,int,uuid,boolean)'::regprocedure))")
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-clips-arm.sql" >/dev/null 2>&1; then
+  ok "the file can run twice"
+else
+  bad "the file can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-clips-arm.sql" 2>&1 | grep ERROR | head -2)"
+fi
+G2=$(qs "select md5(pg_get_functiondef('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure))
+              || md5(pg_get_functiondef('public.community_new_posts(timestamptz,int,uuid,boolean)'::regprocedure))")
+eq "the second run leaves both functions identical" "$G1" "$G2"
+run_eq "and the clip data is still gated after the second run" "hidden_adult" \
+  "select clip_state from $POSTS_ALL where feed_key = 'post:$P3'"
+
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-clips-arm-rollback.sql" >/dev/null 2>&1; then
+  ok "the rollback runs clean"
+else
+  bad "the rollback runs clean" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-clips-arm-rollback.sql" 2>&1 | grep ERROR | head -2)"
+fi
+run_eq "rollback: the Phase 2 function is back (no clip_state)" "f" \
+  "select pg_get_function_result('public.community_feed_page(int,timestamptz,text,text,boolean,uuid,bigint,boolean)'::regprocedure) like '%clip_state%'"
+run_eq "rollback: the comment arm still works"           "1" \
+  "select count(*) from public.community_feed_page(50, null, null, 'comment', false, null, 101, true) where feed_key = 'comment:$C1'"
+run_eq "rollback: posts and announcements still work"    "t" \
+  "select count(*) > 0 from public.community_feed_page(50, null, null, 'all', false, null, null, true)"
+run_eq "rollback: a post's title is always null again"   "1" \
+  "select case when count(*) = 0 then 1 else 0 end from public.community_feed_page(50, null, null, 'all', false, null, null, true) where title is not null and kind = 'post'"
+run_eq "rollback: there is no clips filter any more"     "0" \
+  "select count(*) from public.community_feed_page(50, null, null, 'clips', false, null, null, true)"
+run_eq "rollback: community_new_posts is back to three arguments" \
+  "p_after timestamp with time zone, p_limit integer, p_exclude_author uuid" \
+  "select pg_get_function_identity_arguments(p.oid) from pg_proc p where p.proname = 'community_new_posts'"
+run_eq "rollback: the clips index is gone"               "0" \
+  "select count(*) from pg_indexes where indexname = 'community_posts_clips_feed_idx'"
+run_eq "rollback: the five earlier indexes are untouched" "5" \
+  "select count(*) from pg_indexes where indexname in
+     ('comments_community_feed_idx','comments_parent_idx','comments_anilist_feed_idx','community_posts_feed_idx','community_posts_clip_idx')"
+if psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-clips-arm-rollback.sql" >/dev/null 2>&1; then
+  ok "the rollback can run twice"
+else
+  bad "the rollback can run twice" "no error" "$(psql -d "$DB" -f "$ROOT/docs/sql/community-clips-arm-rollback.sql")"
+fi
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$ROOT/docs/sql/community-clips-arm.sql" >/dev/null 2>&1
+run_eq "re-applied: the clip arm is back"                "1" \
+  "select case when clip_state = 'hidden_adult' then 1 else 0 end from $POSTS_ALL where feed_key = 'post:$P3'"
+
+echo
+echo "== 25. Phase 3: EXPLAIN (ANALYZE, BUFFERS) on 50k posts / 5k clips =="
+# Seeded here, not in fixtures: only the planner needs this, and it must not
+# leak into the behaviour tests above. The seed runs with the post guard off,
+# the same way the 50k-comment seed did.
+pg_guard_off
+qs "insert into public.clips (code, anilist_id, episode_number, start_seconds, end_seconds, title)
+    select 'seed' || lpad(g::text, 3, '0'), 1001 + (g % 500), (g % 24) + 1, 10, 25, 'Seed clip ' || g
+      from generate_series(1, 5000) g
+    on conflict (code) do nothing;" >/dev/null
+qs "insert into public.community_posts (author_id, body, created_at)
+    select (array['$ALICE','$BOB','$CAROL'])[1 + (g % 3)]::uuid,
+           'seed text post ' || g,
+           now() - (g || ' seconds')::interval
+      from generate_series(1, 45000) g;" >/dev/null
+qs "insert into public.community_posts (author_id, body, clip_id, created_at)
+    select (array['$ALICE','$BOB','$CAROL'])[1 + (g % 3)]::uuid,
+           'seed clip post ' || g,
+           c.id,
+           now() - (g || ' seconds')::interval
+      from generate_series(1, 5000) g
+      join public.clips c on c.code = 'seed' || lpad(g::text, 3, '0');" >/dev/null
+pg_guard_on
+run_eq "the seed put more than 50k published posts in place" "1" \
+  "select case when count(*) >= 50000 then 1 else 0 end from public.community_posts
+     where deleted_at is null and status = 'published'"
+run_eq "and at least 5k of them carry a live clip"       "1" \
+  "select case when count(*) >= 5000 then 1 else 0 end from public.community_posts
+     where deleted_at is null and status = 'published' and clip_id is not null"
+qs "analyze public.community_posts; analyze public.clips; analyze public.community_reactions;" >/dev/null
+
+P3Q='public.community_feed_page(20, null, null, %s, false, null, null, true)'
+q_p3()      { printf "$P3Q" "'$1'"; }
+PLAIN_ALL='select id from public.community_posts
+            where deleted_at is null and status = %s
+            order by created_at desc, id desc limit 20'
+q_plain_all()    { printf "$PLAIN_ALL" "'published'"; }
+PLAIN_CLIPS='select id from public.community_posts
+              where deleted_at is null and status = %s and clip_id is not null
+              order by created_at desc, id desc limit 20'
+q_plain_clips()  { printf "$PLAIN_CLIPS" "'published'"; }
+plan_lines() { # plan_lines <query> -> the scan/index/exec lines of the plan
+  psql -d "$DB" -tAq -c "explain (analyze, buffers) $1" 2>&1 |
+    grep -iE 'Scan|Limit|Execution Time|Planning Time|Buffers|Heap Fetches' | sed 's/^ *//'
+}
+
+echo "   the same predicates as plain queries, so the planner's choice is visible:"
+plan_lines "$(q_plain_all)"   | sed 's/^/     all    /'
+plan_lines "$(q_plain_clips)" | sed 's/^/     clips  /'
+
+eq "the plain clips query chooses community_posts_clips_feed_idx" "1" \
+  "$(plan_lines "$(q_plain_clips)" | grep -c 'community_posts_clips_feed_idx')"
+eq "the plain all query chooses community_posts_feed_idx" "1" \
+  "$(plan_lines "$(q_plain_all)" | grep -c 'community_posts_feed_idx')"
+
+# SECURITY DEFINER + SET search_path means the planner never inlines the
+# function, so EXPLAIN shows only "Function Scan on community_feed_page". The
+# honest evidence that an index was used is the index's own scan counter.
+echo "   index used through the function:"
+eq "the clips arm uses community_posts_clips_feed_idx" "1" \
+  "$(idx_used community_posts_clips_feed_idx "$(q_p3 clips)")"
+eq "the all arm uses community_posts_feed_idx"         "1" \
+  "$(idx_used community_posts_feed_idx "$(q_p3 all)")"
+
+echo "   timings through the function (buffers included above)"
+printf '     All                %s\n' "$(ms_for "$(q_p3 all)")"
+printf '     Clips              %s\n' "$(ms_for "$(q_p3 clips)")"
+qs "drop index if exists public.community_posts_clips_feed_idx;" >/dev/null
+qs "analyze public.community_posts;" >/dev/null
+printf '     Clips, before community_posts_clips_feed_idx   %s\n' "$(ms_for "$(q_p3 clips)")"
+plan_lines "$(q_plain_clips)" | sed 's/^/       without the index: /'
+qs "create index community_posts_clips_feed_idx
+      on public.community_posts (created_at desc, id desc)
+      where clip_id is not null and deleted_at is null and status = 'published';" >/dev/null
+qs "analyze public.community_posts;" >/dev/null
+printf '     Clips, after community_posts_clips_feed_idx    %s\n' "$(ms_for "$(q_p3 clips)")"
+plan_lines "$(q_plain_clips)" | sed 's/^/       with the index:    /'
+
 echo "-------------------------------------------------------------"
 printf "PASS %d   FAIL %d\n" "$pass" "$fail"
 if [ "$fail" -gt 0 ]; then printf 'failed: %s\n' "${failed_names[*]}"; exit 1; fi
