@@ -10,6 +10,8 @@ import LoadingPageContainer from "./components/LoadingContainer";
 import GoogleAnalytics from "./googleAnalytics";
 import { AuthProvider } from "./lib/supabase/AuthProvider";
 import PushProvider from "./lib/push/PushProvider";
+import AdcashTag from "./components/Ads/AdcashTag";
+import { readAdcashConfig } from "./lib/ads/adcash";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -60,14 +62,19 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Adcash (Prompt 39B): read per render, never hard-coded, off unless
+  // ADCASH_ENABLED=1. Bracket access keeps the value a runtime lookup instead of
+  // a build-time inline, so a Railway variable change needs no code change.
+  const adcash = readAdcashConfig((name) => process.env[name]);
+
   return (
     <html lang="en">
       <head>
-        {/* Monetag */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(s){s.dataset.zone='12159142',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
-          }}
+        {/* The site's only ad tag: Adcash Autotag, see docs/ads-adcash.md */}
+        <AdcashTag
+          enabled={adcash.enabled}
+          zoneId={adcash.zoneId}
+          excludePaths={adcash.excludePaths}
         />
       </head>
       <GoogleAnalytics /> {/* Google Analytics */}

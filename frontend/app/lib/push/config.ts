@@ -22,7 +22,8 @@ export function oneSignalInitOptions(appId: string, isDevelopment: boolean) {
   return {
     appId,
     // The worker is served from /push/onesignal/ so it never sits at the site
-    // root (public/sw.js belongs to the ad provider and must stay untouched).
+    // root: public/sw.js is a self-removing stub left over from the retired ad
+    // provider (docs/ads-adcash.md), and the two workers never share a scope.
     serviceWorkerPath: PUSH_WORKER_PATH,
     serviceWorkerParam: { scope: PUSH_WORKER_SCOPE },
     // No floating bell, no automatic prompt, no slide-down prompts: the only

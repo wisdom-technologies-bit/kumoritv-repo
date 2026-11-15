@@ -220,6 +220,12 @@ In this document, has info of all episodes already notified to any user and the 
 
 ![News Article Page 1](https://github.com/ErickLimaS/anime-website/assets/69987890/de58a15a-eed4-4cdc-9249-900a90c21c50)
 
+## Documentation
+
+The operational docs live in [`frontend/docs/`](frontend/docs/README.md) - start
+with the index. Advertising (currently Adcash; the Monetag removal record and the
+`public/sw.js` stub) is [`frontend/docs/ads-adcash.md`](frontend/docs/ads-adcash.md).
+
 ## Inspiration
 
 - <a href='https://preview.themeforest.net/item/vodi-video-wordpress-theme-for-movies-tv-shows/full_screen_preview/23738703' target="_blank" rel="noreferrer">Template</a>
