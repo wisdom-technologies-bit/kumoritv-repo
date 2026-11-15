@@ -40,6 +40,10 @@ export type AniReason =
   | "master_host_not_allowed"
   | "no_playable_variant"
   | "probe_failed"
+  /** The dub answer was byte-identical to the sub answer (AniKoto API defect). */
+  | "dub_same_as_sub"
+  /** AniKoto returned no subtitle track and ANI_ANIKOTO_REQUIRE_SUBTITLE is on. */
+  | "anikoto_no_subtitles"
   | "internal_error";
 
 /** Reason codes that mean "this title has no verified mapping", not "we are down". */

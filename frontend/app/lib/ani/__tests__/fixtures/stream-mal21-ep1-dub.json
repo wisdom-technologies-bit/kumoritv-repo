@@ -15,7 +15,7 @@
   "quality_requested": "best",
   "quality_selected": "1080p",
   "stream_type": "hls",
-  "master_url": "https://hls.dramahot.top/p/2f1c9a/one-piece-1/1/sub/master.m3u8",
+  "master_url": "https://hls.dramahot.top/p/2f1c9a/one-piece-1/1/dub/master.m3u8",
   "proxied_master_url": "/v1/stream/eyJ1IjoiaHR0cHM6Ly9obHMuZHJhbWFob3QudG9wL3AvMmYxYzlhL21hc3Rlci5tM3U4IiwiciI6Imh0dHBzOi8vem9rb2FuaW1lLnZpZGVvLyIsImsiOiJtYXN0ZXIiLCJleHAiOjE3OTQ1MDAwMDB9.c2lnbmF0dXJl/master.m3u8",
   "variants": [
     {

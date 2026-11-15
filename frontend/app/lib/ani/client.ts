@@ -26,9 +26,16 @@ import type { AniStreamResponse } from "./types";
  * in a message, not in a token.
  */
 
-export const ANI_UPSTREAM_HOSTS = ["dramahot.top", "drama1.cfd"];
+export const ANI_UPSTREAM_HOSTS = [
+  "fetch.nexabloom.top",
+  "nexabloom.top",
+  "dramahot.top",
+  "drama1.cfd",
+];
 
 const POSITIVE_TTL_MS = 10 * 60_000;
+/** AniKoto has no `url_lifetime`: 15 minutes, never longer. */
+const ANIKOTO_TTL_MS = 15 * 60_000;
 const NEGATIVE_TTL_LONG_MS = 30 * 60_000;
 const NEGATIVE_TTL_SHORT_MS = 60_000;
 const CACHE_LIMIT = 500;
@@ -63,6 +70,8 @@ export type AniStreamResult = AniStreamSuccess | AniStreamFailure;
 
 export type AniOutcomeRecord = {
   at: string;
+  /** Which upstream source answered: "anikoto", "zokoanime", ... */
+  provider?: string;
   outcome: "ok" | "failed" | "skipped" | "fallback_to_anivexa";
   reason?: AniReason;
   ms: number;
@@ -88,6 +97,10 @@ let active = 0;
 
 const outcomes: AniOutcomeRecord[] = [];
 const counters = new Map<string, number>();
+/** Per-source counters: `${provider}:${outcome}:${reason}`. */
+const providerCounters = new Map<string, number>();
+/** AniKoto's dub answer is not trustworthy: compare it with the sub master_url. */
+const dubGuardStats = { compared: 0, rejected: 0 };
 
 const now = () => Date.now();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,6 +118,13 @@ function readCache(key: string): AniStreamResult | null {
   cache.delete(key);
   cache.set(key, entry);
   return entry.result;
+}
+
+/** AniKoto is cached 15 minutes; every other source keeps the 10 minute TTL. */
+export function positiveTtlMs(stream: { provider?: string } | null | undefined) {
+  return String(stream?.provider || "").trim().toLowerCase() === "anikoto"
+    ? ANIKOTO_TTL_MS
+    : POSITIVE_TTL_MS;
 }
 
 function writeCache(key: string, result: AniStreamResult, ttl: number) {
@@ -183,7 +203,7 @@ export function isAllowedUpstreamUrl(value: string): boolean {
   }
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase().replace(/[\[\]]/g, "");
-  const listed = ANI_UPSTREAM_HOSTS.some(
+  const listed = aniConfig().masterHosts.some(
     (allowed) => host === allowed || host.endsWith(`.${allowed}`),
   );
   if (!listed) return false;
@@ -407,9 +427,12 @@ export async function getAniStream(input: {
         refresh: input.refresh,
         started,
       });
-      const ttl = result.ok ? POSITIVE_TTL_MS : negativeTtlMs(result.reason);
-      if (ttl > 0) writeCache(key, result, ttl);
-      return result;
+      const checked = await applyDubGuard(input, result);
+      const ttl = checked.ok
+        ? positiveTtlMs(checked.stream)
+        : negativeTtlMs(checked.reason);
+      if (ttl > 0) writeCache(key, checked, ttl);
+      return checked;
     } catch (error) {
       // A bug in here must never take a watch request down with it.
       if (error instanceof AniProviderError)
@@ -425,12 +448,58 @@ export async function getAniStream(input: {
   return run;
 }
 
+/**
+ * ANI_DUB_SAME_AS_SUB guard.
+ *
+ * Measured 2026-11-15 (MAL 52299 ep 1): the `audio=dub` answer's `master_url` is
+ * IDENTICAL to the `audio=sub` answer's, i.e. the dub request returns the sub
+ * stream. That is an API-side defect the owner will fix in ani-cli, so this app
+ * refuses the answer instead of shipping sub as dub. The sub answer is fetched
+ * once and cached, so the comparison costs nothing after the first viewer.
+ */
+/**
+ * The guard's whole decision, as a pure function so a fixture can prove it.
+ * Measured 2026-11-15: MAL 52299 ep 1 returned the same master_url for
+ * audio=sub and audio=dub.
+ */
+export function dubMatchesSub(dubMaster: string, subMaster: string): boolean {
+  const a = String(dubMaster || "").trim();
+  const b = String(subMaster || "").trim();
+  if (!a || !b) return false;
+  return a === b;
+}
+
+async function applyDubGuard(
+  input: { malId: number; episode: number; audio: string },
+  result: AniStreamResult,
+): Promise<AniStreamResult> {
+  if (!result.ok || input.audio !== "dub") return result;
+  const master = String(result.stream.master_url || "");
+  if (!master) return result;
+  const sub = await getAniStream({
+    malId: input.malId,
+    episode: input.episode,
+    audio: "sub",
+  });
+  // Without a sub answer there is nothing to compare against: leave the dub
+  // alone rather than inventing a failure.
+  if (!sub.ok) return result;
+  dubGuardStats.compared += 1;
+  if (!dubMatchesSub(master, String(sub.stream.master_url || ""))) return result;
+  dubGuardStats.rejected += 1;
+  return { ok: false, reason: "dub_same_as_sub", ms: result.ms };
+}
+
 export function recordAniOutcome(record: Omit<AniOutcomeRecord, "at">) {
   const entry: AniOutcomeRecord = { ...record, at: new Date().toISOString() };
   outcomes.push(entry);
   while (outcomes.length > OUTCOME_LIMIT) outcomes.shift();
   const key = `${record.outcome}:${record.reason ?? "none"}`;
   counters.set(key, (counters.get(key) || 0) + 1);
+  if (record.provider) {
+    const providerKey = `${record.provider}:${record.outcome}:${record.reason ?? "none"}`;
+    providerCounters.set(providerKey, (providerCounters.get(providerKey) || 0) + 1);
+  }
 }
 
 /** Admin view. Deliberately contains no key, no URL and no upstream body. */
@@ -456,15 +525,29 @@ export function aniStats() {
     },
     paused: pausedUntil > at,
     pausedUntil: pausedUntil > at ? new Date(pausedUntil).toISOString() : null,
+    masterHosts: config.masterHosts,
+    requireAnikotoSubtitle: config.requireAnikotoSubtitle,
     cache: {
       entries: cache.size,
       limit: CACHE_LIMIT,
       positiveTtlMs: POSITIVE_TTL_MS,
+      anikotoTtlMs: ANIKOTO_TTL_MS,
       negativeTtlLongMs: NEGATIVE_TTL_LONG_MS,
       negativeTtlShortMs: NEGATIVE_TTL_SHORT_MS,
     },
     limiter: { tokens: Math.round(tokens * 10) / 10, active },
     counters: Object.fromEntries([...counters.entries()].sort()),
+    /** Per-source counters: `{ "anikoto:ok:none": 12, "zokoanime:failed:timeout": 1 }` */
+    providers: Object.fromEntries([...providerCounters.entries()].sort()),
+    /** The provider that answered (or was last tried) per recorded outcome. */
+    lastOutcomes: [...outcomes].reverse().map((entry) => ({
+      at: entry.at,
+      provider: entry.provider ?? "unknown",
+      outcome: entry.outcome,
+      reason: entry.reason ?? null,
+      ms: entry.ms,
+    })),
+    dubGuard: { ...dubGuardStats },
     outcomes: [...outcomes].reverse(),
   };
 }
@@ -481,4 +564,7 @@ export function __resetAniStateForTests() {
   active = 0;
   outcomes.length = 0;
   counters.clear();
+  providerCounters.clear();
+  dubGuardStats.compared = 0;
+  dubGuardStats.rejected = 0;
 }

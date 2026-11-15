@@ -251,6 +251,19 @@ test("with ANI_DUB_ENABLED=1 ani serves dub too", async () => {
   assert.match(harness.standin.state.aniCalls[0].url, /audio=dub/);
 });
 
+test("a dub identical to sub is rejected (ANI_DUB_SAME_AS_SUB) and falls back", async () => {
+  await harness.reset();
+  process.env.ANI_PROVIDER_ENABLED = "1";
+  process.env.ANI_DUB_ENABLED = "1";
+  harness.standin.state.aniMode = "dub_same_as_sub";
+
+  const { body } = await harness.call({ audio: "dub", sublang: "dub-same" });
+  // ani refused the answer, so the viewer gets the existing Anivexa path, not a
+  // sub stream labelled as dub.
+  assert.notEqual(body.provider, "ani");
+  assert.match(harness.standin.state.aniCalls[0].url, /audio=dub/);
+});
+
 // ------------------------------------------------------------ rollout + off
 
 test("an anime outside the percentage bucket keeps Anivexa", async () => {

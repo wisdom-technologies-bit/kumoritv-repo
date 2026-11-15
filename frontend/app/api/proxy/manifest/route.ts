@@ -4,6 +4,10 @@ import {
   ProxyNotConfiguredError,
 } from "@/app/lib/proxy/signing";
 import { readResponseText, safeFetch } from "@/app/lib/proxy/upstream";
+import {
+  directSegmentHostsFor,
+  directSegmentUrl,
+} from "@/app/lib/proxy/direct-segments";
 
 export const runtime = "edge";
 
@@ -39,19 +43,7 @@ function directSegmentHosts(): string[] {
 
 /** Is this segment URL on a host we are allowed to serve directly? */
 function isDirectSegment(url: string, base: string, hosts: string[]) {
-  if (!hosts.length) return null;
-  let absolute: URL;
-  try {
-    absolute = new URL(url, base);
-  } catch {
-    return null;
-  }
-  if (absolute.protocol !== "https:") return null;
-  const host = absolute.hostname.toLowerCase();
-  const listed = hosts.some(
-    (allowed) => host === allowed || host.endsWith(`.${allowed}`),
-  );
-  return listed ? absolute.toString() : null;
+  return directSegmentUrl(url, base, hosts);
 }
 
 type PlaylistResult = {
@@ -150,7 +142,9 @@ export async function GET(req: Request) {
       );
     }
 
-    const directHosts = directSegmentHosts();
+    // NEVER direct for a stream that needs a Referer (AniKoto/MegaPlay): the
+    // browser cannot send one, so every byte must stay on the signed proxy.
+    const directHosts = directSegmentHostsFor(payload.h, directSegmentHosts());
     const lines = text.split(/\r?\n/);
     const outputLines: string[] = [];
     let variant = false;
