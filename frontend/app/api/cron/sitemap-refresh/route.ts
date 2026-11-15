@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { runCronJob, type CronContext } from "@/app/lib/cron/runner";
-import { buildSitemapReport } from "@/lib/sitemap";
+import { buildSitemapReport, sitemapHealth } from "@/lib/sitemap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,9 +57,11 @@ export async function GET(request: Request) {
         budgetMs: Math.max(5000, ctx.budgetMs - (Date.now() - started) - 15000),
       });
 
+      const health = await sitemapHealth(db);
       const stats = {
         refreshed,
         refreshError,
+        health,
         files: report.length,
         ok: report.filter((row) => row.status === 200).length,
         missing: report.filter((row) => row.status === 404).length,
@@ -67,6 +69,13 @@ export async function GET(request: Request) {
         elapsedMs: Date.now() - started,
       };
       console.log(`[sitemap] refresh ${JSON.stringify(stats)}`);
+
+      // A refresh that did not happen is NOT a successful cron run: throwing
+      // makes finishRun() record ok=false with the reason, which is the only
+      // thing that makes a frozen view visible in /api/cron/status.
+      if (refreshError) {
+        throw new Error(`sitemap refresh failed: ${refreshError} (health=${JSON.stringify(health)})`);
+      }
       return stats;
     },
   });
