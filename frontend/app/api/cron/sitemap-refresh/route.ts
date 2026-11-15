@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { runCronJob, type CronContext } from "@/app/lib/cron/runner";
+import { describeSitemapRefresh } from "@/app/lib/cron/sitemapRefreshResult";
 import { buildSitemapReport, sitemapHealth } from "@/lib/sitemap";
 
 export const runtime = "nodejs";
@@ -31,6 +32,8 @@ export async function GET(request: Request) {
       const db: any = createAdminClient();
 
       let refreshed: string | null = null;
+      let refreshMode: string | null = null;
+      let refreshRows: number | null = null;
       let refreshError: string | null = null;
 
       if (db) {
@@ -44,7 +47,21 @@ export async function GET(request: Request) {
             `[sitemap] refresh failed step=rpc elapsed_ms=${Date.now() - started} error=${refreshError}`,
           );
         } else {
-          refreshed = typeof data === "string" ? data : "ok";
+          // The function returns text before docs/sql/sitemap-refresh-fix.sql and
+          // jsonb after it. Log which, and the row count it landed: `rows=...`
+          // is the number that proves the frozen view actually moved.
+          const outcome = describeSitemapRefresh(data);
+          refreshed = outcome.summary;
+          refreshMode = outcome.mode;
+          refreshRows = outcome.rows;
+          console.log(
+            `[sitemap] refresh mode=${outcome.mode ?? "unknown"} rows=${
+              outcome.rows ?? "unknown"
+            } elapsed_ms=${Date.now() - started}` +
+              (outcome.concurrentError
+                ? ` concurrent_error=${outcome.concurrentError}`
+                : ""),
+          );
         }
       } else {
         refreshError = "supabase admin client unavailable";
@@ -60,6 +77,8 @@ export async function GET(request: Request) {
       const health = await sitemapHealth(db);
       const stats = {
         refreshed,
+        refreshMode,
+        refreshRows,
         refreshError,
         health,
         files: report.length,
