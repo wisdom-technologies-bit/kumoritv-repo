@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MediaPlayer, MediaProvider, Track } from "@vidstack/react";
 import {
@@ -30,6 +30,15 @@ import {
 } from "@/app/lib/watch/errors";
 import { useWatchState } from "../WatchState";
 import ClipEndCard from "../ClipEndCard";
+import PrerollAd from "./PrerollAd";
+import {
+  logPrerollOutcome,
+  prerollEligibility,
+  readPrerollAutoplayAt,
+  readPrerollStore,
+  type PrerollClientConfig,
+} from "@/app/lib/ads/preroll";
+import type { PrerollOutcome } from "@/app/lib/ads/preroll-engine";
 import { useClipBridge } from "../ClipBridge/context";
 
 const HLS_CONFIG = {
@@ -94,6 +103,11 @@ type Props = {
   clip?: { start: number; end: number; mode: "clip" | "watch"; fullEpisodeHref?: string } | null;
   /** A clip page must never overwrite the viewer's episode progress. */
   trackProgress?: boolean;
+  /**
+   * Prompt 40: Adcash in-stream pre-roll. null (the default, and always null while
+   * PREROLL_ENABLED is off) means the player behaves exactly as before.
+   */
+  preroll?: PrerollClientConfig | null;
 };
 
 export default function VideoPlayer({
@@ -110,8 +124,13 @@ export default function VideoPlayer({
   onResolved,
   clip,
   trackProgress = true,
+  preroll = null,
 }: Props) {
   const playerRef = useRef<any>(null);
+  // Prompt 40: the pre-roll is decided once per play and never re-requested.
+  const [prerollRun, setPrerollRun] = useState(false);
+  const prerollShownRef = useRef(false);
+  const prerollPendingRef = useRef(false);
   const progressRef = useRef({ time: initialTime, duration: 0 });
   const resumeRef = useRef(false);
   const appliedSubtitleSelectionRef = useRef<string | null>(null);
@@ -396,6 +415,84 @@ export default function VideoPlayer({
 
   // One early save per episode: without it a short visit only reached the server
   // after the 10s tick (or on pause/hide, which a closed tab may skip).
+  /**
+   * PROMPT 40: arm the pre-roll on the FIRST Play of this episode and only there.
+   *
+   * `media-play-request` is cancelable: the play gesture is refused, the ad runs,
+   * and the same gesture's intent is satisfied when the ad ends. Nothing here
+   * touches pause/seek/resume, a server switch re-resolve (same player instance)
+   * or a second play, and the ad never retries itself.
+   */
+  useEffect(() => {
+    const player: any = playerRef.current;
+
+    if (!player || !preroll?.enabled) return undefined;
+
+    const onPlayRequest = (event: any) => {
+      const trigger = event?.detail?.trigger;
+
+      if (trigger && trigger !== "user") return;
+      if (prerollShownRef.current || prerollPendingRef.current) return;
+      prerollShownRef.current = true;
+
+      const store = readPrerollStore();
+      const decision = prerollEligibility({
+        config: preroll,
+        isEmbed: Boolean(embedSource),
+        resumeAtSec: Math.max(Number(initialTime) || 0, Number(progressRef.current.time) || 0),
+        isStaff: Boolean(preroll.isStaff),
+        adultBlocked: Boolean(preroll.adultBlocked),
+        now: Date.now(),
+        lastAdAt: store.lastAdAt,
+        tabAdAt: store.tabAdAt,
+        breakerOpenUntil: store.breaker.openUntil,
+        lastAutoplayAdAt: readPrerollAutoplayAt(),
+      });
+
+      if (!decision.ok) {
+        logPrerollOutcome({ kind: "not_shown", reason: decision.reason, ms: 0 });
+
+        return;
+      }
+      event.preventDefault?.();
+      prerollPendingRef.current = true;
+      setPrerollRun(true);
+    };
+    // Belt and braces: if the player starts anyway, stop it under the overlay so
+    // the episode is never audible behind an ad.
+    const keepContentQuiet = () => {
+      if (prerollPendingRef.current) void player.pause?.();
+    };
+
+    player.addEventListener("media-play-request", onPlayRequest);
+    player.addEventListener("playing", keepContentQuiet);
+
+    return () => {
+      player.removeEventListener("media-play-request", onPlayRequest);
+      player.removeEventListener("playing", keepContentQuiet);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preroll?.enabled, preroll?.vastUrl, sourceId]);
+
+  /** The ad is over: drop the overlay and start the episode in the same task. */
+  const finishPreroll = useCallback((outcome: PrerollOutcome) => {
+    prerollPendingRef.current = false;
+    setPrerollRun(false);
+    const player: any = playerRef.current;
+
+    try {
+      void player?.play?.();
+    } catch {
+      /* the player is gone: nothing to start */
+    }
+    try {
+      (player?.el as HTMLElement | undefined)?.focus?.({ preventScroll: true });
+    } catch {
+      /* focus is a nicety */
+    }
+    void outcome;
+  }, []);
+
   const firstSaveDoneRef = useRef(false);
   useEffect(() => {
     firstSaveDoneRef.current = false;
@@ -771,6 +868,19 @@ export default function VideoPlayer({
               icons={defaultLayoutIcons}
               thumbnails={data?.thumbnails?.url}
             />
+            {/* PROMPT 40: the pre-roll overlay, inside the player tree so it
+                stacks with the skip pill and survives fullscreen. */}
+            {prerollRun && preroll && (
+              <PrerollAd
+                vastUrl={preroll.vastUrl}
+                skipAfterSec={preroll.skipAfterSec}
+                maxAdSec={preroll.maxAdSec}
+                startTimeoutMs={preroll.startTimeoutMs}
+                vastTimeoutMs={preroll.vastTimeoutMs}
+                onFinished={finishPreroll}
+              />
+            )}
+
             {/* Inside the player tree: visible in fullscreen too. */}
             {visibleSkip && (
               <button
