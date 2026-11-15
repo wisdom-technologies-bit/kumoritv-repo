@@ -719,3 +719,34 @@
         padding-left: 8px;
     }
 }
+
+/* Part G: the test-notification row. */
+.test_row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.test_button {
+  align-self: flex-start;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--white-25, rgba(255, 255, 255, 0.2));
+  background: transparent;
+  color: var(--white-100, #fff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.test_button:hover:not(:disabled),
+.test_button:focus-visible:not(:disabled) {
+  border-color: var(--brand-color, #7c5cff);
+}
+
+.test_button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

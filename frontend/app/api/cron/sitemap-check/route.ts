@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { runCronJob } from "@/app/lib/cron/runner";
-import { buildSitemapReport } from "@/lib/sitemap";
+import { buildSitemapReport, sitemapHealth } from "@/lib/sitemap";
 import { recentSitemapFailures } from "@/lib/sitemap-cache";
 
 export const runtime = "nodejs";
@@ -27,6 +27,7 @@ export async function GET(request: Request) {
       const db: any = createAdminClient();
       const report = await buildSitemapReport(db, { fresh: true, budgetMs: 180000 });
       return {
+        health: await sitemapHealth(db),
         report,
         failures: recentSitemapFailures(),
         checkedAt: new Date().toISOString(),

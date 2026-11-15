@@ -86,6 +86,9 @@ export type AniStreamResponse = {
   headers_required?: AniHeadersRequired;
   audio?: AniAudioInfo;
   url_lifetime?: AniUrlLifetime;
+  /** `[start_seconds, end_seconds]`, or `[0, 0]` when unknown. */
+  intro?: [number, number] | number[] | null;
+  outro?: [number, number] | number[] | null;
   warnings?: string[];
   mal?: AniMalContext | null;
 };

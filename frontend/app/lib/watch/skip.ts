@@ -43,6 +43,15 @@ function valid(range: SkipRange, duration?: number | null): SkipRange {
     range.start >= duration
   )
     return null;
+  // A range that runs past the end of the video is real but cannot be reached
+  // fully: clamp it so the button disappears with the episode, not after it.
+  if (
+    typeof duration === "number" &&
+    Number.isFinite(duration) &&
+    duration > 0 &&
+    range.end > duration
+  )
+    return { start: range.start, end: duration };
   return { start: range.start, end: range.end };
 }
 

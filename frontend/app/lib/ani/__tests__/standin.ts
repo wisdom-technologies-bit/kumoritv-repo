@@ -36,7 +36,9 @@ export type AniMode =
   | "error"
   | "unverified"
   | "mismatch"
-  | "dub_not_ok";
+  | "dub_not_ok"
+  /** The real AniKoto defect: audio=dub returns the sub stream verbatim. */
+  | "dub_same_as_sub";
 
 export type Standin = {
   url: string;
@@ -84,6 +86,7 @@ const ANIVEXA_PAYLOAD = {
 };
 
 function aniResponse(mode: AniMode, audio: string) {
+  if (mode === "dub_same_as_sub") return json(SUB_STREAM, 200);
   const stream = audio === "dub" ? DUB_STREAM : SUB_STREAM;
   switch (mode) {
     case "mal_not_found":

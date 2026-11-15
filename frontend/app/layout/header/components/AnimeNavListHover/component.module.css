@@ -1,4 +1,10 @@
 #anime_header_nav_container {
+
+    /* Part E: whatever the list grows to, the panel is bounded by the screen
+       and scrolls inside itself, so it can never cover the page again. */
+    max-height: calc(100dvh - var(--header-min-height, 64px) - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     /* Fixed, not absolute: the panel is as wide as the viewport, so anchoring it
        to the trigger's own clustering box pushed its right edge past the screen
        on every desktop width. Fixed keeps it 0..100vw, hanging 8px under the

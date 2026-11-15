@@ -78,3 +78,54 @@ curl -sI -A 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.
 * The refresh cron (`app/api/cron/sitemap-refresh`) re-warms the files every 30
   minutes from inside the origin. It does not attempt to purge Cloudflare; with
   a 1 hour edge TTL a purge is unnecessary.
+
+## Part D - why `episodes-14.xml` was frozen at 8,487 URLs
+
+`public.sitemap_episodes_ranked` is a MATERIALIZED view: it only changes when
+`refresh_sitemap_episodes()` runs. 13 x 10,000 + 8,487 = **138,487** rows, i.e.
+`max(rn)` on that view, so the XML files were valid, complete and simply out of
+date. Three things hid it:
+
+1. `/api/cron/sitemap-refresh` logged `refreshError` inside a **successful** run,
+   so `cron_runs.ok` stayed true and no alert ever fired. It now throws, which
+   records the run as failed with the reason.
+2. Nothing compared the view with the live catalogue. `/api/cron/sitemap-check`
+   and `/api/cron/status` now return
+   `{viewRows, liveRows, lastRefreshAt, ageMinutes, stale}` and `stale` is true
+   when the counts differ by more than 1% or the last refresh is older than 90
+   minutes.
+3. `REFRESH MATERIALIZED VIEW CONCURRENTLY` cannot run inside a transaction
+   block, which is what PostgREST gives a function, so every call fell into the
+   plain-REFRESH fallback and could hit the 15 s lock timeout while sitemap
+   readers held the view. The new function raises that to 30 s, records every
+   attempt in `sitemap_refresh_log`, and reports `mode` (`concurrent` / `full`).
+
+### What to run, in order
+
+1. Supabase SQL editor: `docs/sql/sitemap-refresh-fix.sql` sections 0, 1, 2.
+2. Deploy the app (the route change and the health object).
+3. Same file, section 3 (one manual refresh), then section 4 (verify).
+
+### cron-job.org entry
+
+* Title: `KumoriTV sitemap refresh`
+* URL: `https://kumoritv.top/api/cron/sitemap-refresh?wait=1`
+* Schedule: every 30 minutes
+* Request method: GET
+* **Header:** `x-cron-secret: <CRON_SECRET>` (the value from Railway)
+* Enable "Save responses" and treat a non-200 as failure - a failed refresh now
+  returns 500 on purpose.
+
+### Verify from Termux
+
+```
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "https://kumoritv.top/api/cron/sitemap-refresh?wait=1" | jq
+curl -s -H "x-cron-secret: $CRON_SECRET" \
+  "https://kumoritv.top/api/cron/sitemap-check" | jq '.health'
+curl -s https://kumoritv.top/sitemaps/episodes-14.xml | grep -o "<loc>" | wc -l
+```
+
+A new chunk appears automatically: the index asks the database how many rows it
+has and emits `episodes-N.xml` for `ceil(rows / 10000)` files, so a catalogue
+that crosses 140,000 rows adds `episodes-15.xml` with no code change.

@@ -16,7 +16,7 @@ import * as MediaCardClientSide from "../../MediaCards/MediaCard/variantClientSi
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import * as AddToFavourites from "../../Buttons/AddToFavourites";
-import parse from "html-react-parser";
+import ClampedDescription from "@/app/components/ClampedDescription";
 import ScoreRating from "../../DynamicAssets/ScoreRating";
 import MediaFormatIcon from "../../DynamicAssets/MediaFormatIcon";
 import SwiperCarousel from "./swiperCarousel";
@@ -365,14 +365,10 @@ function NavigationThroughMedias({
               ) : (
                 mediaSelect.description && (
                   <motion.div className={styles.description_container}>
-                    <motion.p>
-                      {parse(
-                        mediaSelect.description.replace(
-                          new RegExp(`<br[^>]*>|<\/br>`, "gi"),
-                          " "
-                        )
-                      )}
-                    </motion.p>
+                    {/* Part F: the same clamp as the header drop-downs and the
+                        "Newest Anime Episodes" featured card, instead of a
+                        third copy that printed the whole synopsis. */}
+                    <ClampedDescription text={mediaSelect.description} />
                   </motion.div>
                 )
               )}

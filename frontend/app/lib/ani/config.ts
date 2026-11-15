@@ -23,9 +23,50 @@ export type AniConfig = {
   timeoutMs: number;
   maxConcurrency: number;
   ratePerMin: number;
+  /** Master-playlist hosts accepted from the API. `ANI_MASTER_HOSTS` extends it. */
+  masterHosts: string[];
+  /** ANI_ANIKOTO_REQUIRE_SUBTITLE, default true: a sub with no subtitle is refused. */
+  requireAnikotoSubtitle: boolean;
 };
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+/**
+ * AniKoto has no `url_lifetime` (`expiry_known:false`), so its stream is only
+ * trusted for 15 minutes even though the shared positive TTL is 10.
+ */
+export const ANIKOTO_TTL_MS = 15 * 60_000;
+/**
+ * Master playlist hosts the ani-api produces. `fetch.nexabloom.top` is AniKoto
+ * (MegaPlay); `dramahot.top` / `drama1.cfd` are the older ZokoAnime CDNs.
+ * Segment hosts are deliberately NOT listed anywhere: they rotate per episode
+ * (`*.twilightharbor.space`, `*.shadownest.top`, ...) and the signed proxy only
+ * fetches what we signed, so an allow-list would break without adding safety.
+ */
+export const DEFAULT_MASTER_HOSTS = [
+  "fetch.nexabloom.top",
+  "nexabloom.top",
+  "dramahot.top",
+  "drama1.cfd",
+];
+
+/** Comma list in `ANI_MASTER_HOSTS` ADDS hosts; it never removes a default. */
+function masterHostsValue() {
+  const raw = (process.env.ANI_MASTER_HOSTS || "").trim();
+  const extra = raw
+    ? raw
+        .split(",")
+        .map((entry) => entry.trim().toLowerCase().replace(/^\*?\./, ""))
+        .filter(Boolean)
+    : [];
+  return [...new Set([...DEFAULT_MASTER_HOSTS, ...extra])];
+}
+
+/** Default ON: a title whose AniKoto stream has no subtitle is refused for sub. */
+function requireAnikotoSubtitleValue() {
+  const raw = (process.env.ANI_ANIKOTO_REQUIRE_SUBTITLE || "").trim();
+  if (!raw) return true;
+  return !/^(0|false|off|no)$/i.test(raw);
+}
 const DEFAULT_MAX_CONCURRENCY = 4;
 const DEFAULT_RATE_PER_MIN = 40;
 /** The API allows 60/min per key; never let a mistyped variable exceed that. */
@@ -77,6 +118,8 @@ export function aniConfig(): AniConfig {
       1,
       MAX_RATE_PER_MIN,
     ),
+    masterHosts: masterHostsValue(),
+    requireAnikotoSubtitle: requireAnikotoSubtitleValue(),
   };
 }
 

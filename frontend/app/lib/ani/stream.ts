@@ -32,13 +32,68 @@ export type AniWinner = {
   subtitles: PublicSubtitle[];
 };
 
-const FALLBACK_REFERER = "https://zokoanime.video/";
+/**
+ * Referer fallbacks per source.
+ *
+ * Measured 2026-11-15: AniKoto's master playlist, every variant playlist, every
+ * segment (`*.twilightharbor.space`, `*.shadownest.top`, ...) and every
+ * subtitle (`*.mysubsplay.com`) answer 403 unless the request carries
+ * `Referer: https://megaplay.buzz/`. ZokoAnime wants its own site.
+ *
+ * The API usually states this in `headers_required.master_playlist.Referer`, and
+ * that always wins; these constants only cover a response that omits it.
+ */
+const FALLBACK_REFERERS: Record<string, string> = {
+  anikoto: "https://megaplay.buzz/",
+  zokoanime: "https://zokoanime.video/",
+};
+const DEFAULT_FALLBACK_REFERER = "https://zokoanime.video/";
 
+export function aniProviderName(stream: AniStreamResponse): string {
+  return String(stream?.provider || "").trim().toLowerCase();
+}
+
+function fallbackReferer(stream: AniStreamResponse): string {
+  return FALLBACK_REFERERS[aniProviderName(stream)] || DEFAULT_FALLBACK_REFERER;
+}
+
+/**
+ * The one Referer every child request must carry.
+ *
+ * `headers_required.segments` is `{}` for AniKoto (the API is wrong about that),
+ * so the master-playlist Referer is used for segments and subtitles as well: a
+ * single effective Referer means the signed tokens for the manifest, the
+ * variants, the segments, `#EXT-X-KEY`/`#EXT-X-MAP` and the subtitles all prove
+ * the same thing, which is exactly the test `anikoto.test.ts` asserts.
+ */
 export function aniReferer(stream: AniStreamResponse): string {
-  const required = stream.headers_required?.master_playlist;
-  const referer =
-    (required && (required.Referer || required.referer)) || FALLBACK_REFERER;
-  return String(referer);
+  const required = stream.headers_required || {};
+  const fromMaster = required.master_playlist;
+  const fromSubtitles = required.subtitles;
+  const fromSegments = required.segments;
+  const pick = (bag: Record<string, string> | undefined) => {
+    if (!bag) return "";
+    const value = bag.Referer ?? bag.referer ?? bag.REFERER;
+    return typeof value === "string" ? value.trim() : "";
+  };
+  return (
+    pick(fromMaster) ||
+    pick(fromSubtitles) ||
+    pick(fromSegments) ||
+    fallbackReferer(stream)
+  );
+}
+
+/** `[start, end]` from the API -> `{start, end}`, or null when it is not usable. */
+export function aniSkipRange(value: unknown): { start: number; end: number } | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const start = Number(value[0]);
+  const end = Number(value[1]);
+  // Both finite, end after start. `[0, 0]` (unknown) and `[NaN, 80]` are dropped;
+  // `[0, 80]` is a real intro that starts at the very first frame.
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || end <= start) return null;
+  return { start, end };
 }
 
 export function buildAniWinner(
@@ -48,6 +103,8 @@ export function buildAniWinner(
   const url = typeof stream.master_url === "string" ? stream.master_url : "";
   if (!url) return null;
   const referer = aniReferer(stream);
+  const intro = aniSkipRange(stream.intro);
+  const outro = aniSkipRange(stream.outro);
 
   const json = {
     provider: ANI_PROVIDER,
@@ -60,8 +117,14 @@ export function buildAniWinner(
         headers: { Referer: referer },
         priority: 1,
         isActive: true,
+        // The player reads provider ranges from the normalised stream and they
+        // win over AniSkip, so the API's markers reach the Skip buttons here.
+        intro,
+        outro,
       },
     ],
+    intro,
+    outro,
     subtitles: [],
   };
 
@@ -75,6 +138,6 @@ export function buildAniWinner(
     json,
     headers: streamRequestHeaders(normalized),
     embedOnly: false,
-    subtitles: mapAniSubtitles(stream.subtitles, sublang),
+    subtitles: mapAniSubtitles(stream.subtitles, sublang, aniProviderName(stream)),
   };
 }

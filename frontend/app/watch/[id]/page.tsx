@@ -22,6 +22,7 @@ import Image from "next/image";
 import VideoPlayer from "./components/VideoPlayer";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
+import DownloadEpisode from "./components/DownloadEpisode";
 import CommentsSection from "@/app/components/CommentsSection";
 import WatchLayout from "./components/WatchLayout";
 import PlayerToolbar from "./components/PlayerToolbar";
@@ -236,6 +237,10 @@ export default async function WatchPage({
               audio={audio as "sub" | "dub"}
               episodeCount={airedEpisodes}
             />
+
+            {/* Renders nothing unless DOWNLOADS_ENABLED is on and this episode
+                actually has links, so a deploy changes nothing. */}
+            <DownloadEpisode anilistId={id as number} episode={ep as number} />
 
             {/* THIS EPISODE: title, synopsis (clamped), aired + number chips. */}
             <section id={styles.episode_info}>

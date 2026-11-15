@@ -45,6 +45,30 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // Prompt 39B: /sw.js is now a self-removing stub that replaces the
+        // retired ad provider's worker (see docs/ads-adcash.md). A browser
+        // re-checks a worker on its own schedule, so this file must never be
+        // cached: no-cache makes every update check re-read it and every
+        // returning visitor drops the old worker. Scope stays at "/".
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
+        // OneSignal's worker lives under its own scope, so the root-scope worker
+        // at /sw.js is never involved. `Service-Worker-Allowed` is what lets a
+        // worker served from /push/onesignal/ claim that scope, and the
+        // revalidate header stops Cloudflare/Railway serving a stale copy.
+        source: '/push/onesignal/:path*',
+        headers: [
+          { key: 'Service-Worker-Allowed', value: '/push/onesignal/' },
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+        ],
+      },
     ]
   },
   images: {

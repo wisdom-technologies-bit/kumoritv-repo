@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/app/lib/supabase/database.types";
 import { probeStream } from "@/app/lib/watch/probe";
 import { aniConfig, aniRolloutAllows, type AniConfig } from "./config";
-import { getAniStream, recordAniOutcome } from "./client";
+import { getAniStream, positiveTtlMs, recordAniOutcome } from "./client";
 import { ANI_PROVIDER } from "./constants";
 import type { AniReason } from "./errors";
 import { buildAniWinner, type AniWinner } from "./stream";
@@ -51,7 +51,6 @@ export async function lookupMalId(
   anilistId: number | string,
 ): Promise<number | null> {
   if (!db) return null;
-  if (!db) return null;
   try {
     const { data } = await db
       .from("anime")
@@ -69,6 +68,8 @@ export type AniResolveOutcome = {
   winner: AniWinner | null;
   reason: AniReason | null;
   ms: number;
+  /** Which upstream source answered, when one did. */
+  provider: string | null;
 };
 
 /**
@@ -84,23 +85,26 @@ export async function resolveAni(input: {
   sublang: string;
 }): Promise<AniResolveOutcome> {
   const started = Date.now();
+  const config = aniConfig();
 
   const finish = (
     winner: AniWinner | null,
     reason: AniReason | null,
     ms: number,
+    provider?: string | null,
   ): AniResolveOutcome => {
     recordAniOutcome({
       outcome: winner ? "ok" : "failed",
+      provider: String(provider || "").trim().toLowerCase() || undefined,
       ...(reason ? { reason } : {}),
       ms,
     });
-    // Only a reason code, the anilist id, the episode and a duration. Never the
-    // key, never a URL, never an upstream body.
+    // Only a reason code, the source name, the anilist id, the episode and a
+    // duration. Never the key, never a URL, never an upstream body.
     console.info(
-      `[ani] outcome=${winner ? "ok" : "failed"} reason=${reason ?? "none"} anilist=${input.anilistId} episode=${input.episode} ms=${ms}`,
+      `[ani] outcome=${winner ? "ok" : "failed"} provider=${provider ?? "none"} reason=${reason ?? "none"} anilist=${input.anilistId} episode=${input.episode} ms=${ms}`,
     );
-    return { winner, reason, ms };
+    return { winner, reason, ms, provider: provider ?? null };
   };
 
   if (!input.malId)
@@ -114,15 +118,38 @@ export async function resolveAni(input: {
   });
   if (!result.ok) return finish(null, result.reason, result.ms);
 
+  const provider = String(result.stream.provider || "").trim().toLowerCase();
+
+  // Per-provider rule: some AniKoto episodes return ZERO subtitle tracks. That
+  // may mean hard-subbed, or "no English subtitles at all" - the API cannot tell.
+  // ANI_ANIKOTO_REQUIRE_SUBTITLE (default 1) refuses them for SUB so nothing
+  // risky goes live; the owner flips it to 0 after checking by eye.
+  const trackCount = Array.isArray(result.stream.subtitles)
+    ? result.stream.subtitles.length
+    : 0;
+  if (
+    provider === "anikoto" &&
+    config.requireAnikotoSubtitle &&
+    input.audio === "sub" &&
+    trackCount === 0
+  )
+    return finish(null, "anikoto_no_subtitles", Date.now() - started, provider);
+
   const winner = buildAniWinner(result.stream, input.sublang);
-  if (!winner) return finish(null, "invalid_body", Date.now() - started);
+  if (!winner)
+    return finish(null, "invalid_body", Date.now() - started, provider);
 
   // Our own probe of the first segment, exactly like an Anivexa candidate: a
   // stream we cannot fetch is not a stream.
   const probe = await probeStream(winner.stream, winner.headers, {
     timeoutMs: 8_000,
   });
-  if (!probe.ok) return finish(null, "probe_failed", Date.now() - started);
+  if (!probe.ok)
+    return finish(null, "probe_failed", Date.now() - started, provider);
 
-  return finish(winner, null, Date.now() - started);
+  // The cache TTL is decided in the client; expose it so the watch route can cap
+  // its own response cache the same way (AniKoto: 15 minutes, never longer).
+  void positiveTtlMs(result.stream);
+
+  return finish(winner, null, Date.now() - started, provider);
 }

@@ -767,3 +767,119 @@ export async function buildSitemapReport(
 
   return report;
 }
+
+/**
+ * Part D: is the materialized view behind `episodes-N.xml` still telling the
+ * truth?
+ *
+ * `sitemap_episodes_ranked` only changes when `refresh_sitemap_episodes()` runs,
+ * so a frozen `max(rn)` is invisible in the XML: the files are valid, complete
+ * and simply too few. This compares the view with the live source view and the
+ * last recorded refresh, so the answer is one object instead of a guess.
+ */
+export type SitemapHealth = {
+  viewRows: number;
+  liveRows: number;
+  difference: number;
+  lastRefreshAt: string | null;
+  ageMinutes: number | null;
+  stale: boolean;
+  reasons: string[];
+  source: "ranked" | "view";
+};
+
+export const SITEMAP_STALE_AFTER_MINUTES = 90;
+export const SITEMAP_STALE_DRIFT_RATIO = 0.01;
+
+/** The decision, without a database, so it can be tested. */
+export function evaluateSitemapStaleness(input: {
+  viewRows: number;
+  liveRows: number;
+  lastRefreshAt: string | null;
+  now?: number;
+}): { stale: boolean; ageMinutes: number | null; difference: number; reasons: string[] } {
+  const now = input.now ?? Date.now();
+  const viewRows = Math.max(0, Number(input.viewRows) || 0);
+  const liveRows = Math.max(0, Number(input.liveRows) || 0);
+  const difference = liveRows - viewRows;
+  const reasons: string[] = [];
+
+  let ageMinutes: number | null = null;
+  if (input.lastRefreshAt) {
+    const at = Date.parse(input.lastRefreshAt);
+    if (Number.isFinite(at)) ageMinutes = Math.max(0, Math.round((now - at) / 60_000));
+  }
+
+  // More than 1% apart in either direction: rows were added or removed and the
+  // view has not caught up.
+  const tolerance = Math.max(1, Math.floor(liveRows * SITEMAP_STALE_DRIFT_RATIO));
+  if (Math.abs(difference) > tolerance) reasons.push("rows_differ");
+
+  if (ageMinutes === null) reasons.push("never_refreshed");
+  else if (ageMinutes > SITEMAP_STALE_AFTER_MINUTES) reasons.push("refresh_too_old");
+
+  return { stale: reasons.length > 0, ageMinutes, difference, reasons };
+}
+
+export async function sitemapHealth(db: SitemapDb | null): Promise<SitemapHealth> {
+  const ranked = await rankedViewAvailable(db);
+  let viewRows = 0;
+  let liveRows = 0;
+
+  try {
+    viewRows = await episodeRowCount(db);
+  } catch {
+    viewRows = 0;
+  }
+  try {
+    liveRows = await countRows(db, SITEMAP_EPISODES_VIEW);
+  } catch {
+    liveRows = 0;
+  }
+
+  let lastRefreshAt: string | null = null;
+  if (db) {
+    // Preferred: the log the refresh function writes itself.
+    try {
+      const { data } = await db
+        .from("sitemap_refresh_log")
+        .select("refreshed_at")
+        .order("refreshed_at", { ascending: false })
+        .limit(1);
+      const value = (data as any[] | null)?.[0]?.refreshed_at;
+      if (typeof value === "string") lastRefreshAt = value;
+    } catch {
+      /* the log table arrives with docs/sql/sitemap-refresh-fix.sql */
+    }
+    // Fallback: the last cron run that reported success, which is what the app
+    // has today. A failed refresh is recorded as a failure (see the route).
+    if (!lastRefreshAt) {
+      try {
+        const { data } = await db
+          .from("cron_runs")
+          .select("finished_at")
+          .eq("job", "sitemap-refresh")
+          .eq("ok", true)
+          .not("finished_at", "is", null)
+          .order("finished_at", { ascending: false })
+          .limit(1);
+        const value = (data as any[] | null)?.[0]?.finished_at;
+        if (typeof value === "string") lastRefreshAt = value;
+      } catch {
+        /* no history */
+      }
+    }
+  }
+
+  const decision = evaluateSitemapStaleness({ viewRows, liveRows, lastRefreshAt });
+  return {
+    viewRows,
+    liveRows,
+    difference: decision.difference,
+    lastRefreshAt,
+    ageMinutes: decision.ageMinutes,
+    stale: decision.stale,
+    reasons: decision.reasons,
+    source: ranked ? "ranked" : "view",
+  };
+}

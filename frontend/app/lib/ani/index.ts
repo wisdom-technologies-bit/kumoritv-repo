@@ -10,7 +10,7 @@ export { aniConfig, aniReady, aniBucket, aniRolloutAllows } from "./config";
 export type { AniConfig } from "./config";
 export { aniGate, lookupMalId, resolveAni } from "./resolve";
 export type { AniGate, AniGateInput, AniResolveOutcome } from "./resolve";
-export { buildAniWinner } from "./stream";
+export { buildAniWinner, aniReferer, aniSkipRange, aniProviderName } from "./stream";
 export type { AniWinner } from "./stream";
 export { mapAniSubtitles } from "./subtitles";
 export type { PublicSubtitle } from "./subtitles";
@@ -20,6 +20,7 @@ export {
   aniStats,
   isAllowedUpstreamUrl,
   negativeTtlMs,
+  positiveTtlMs,
   validateAniStream,
   ANI_UPSTREAM_HOSTS,
   __resetAniStateForTests,

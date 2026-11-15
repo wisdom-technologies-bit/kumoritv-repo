@@ -1,0 +1,36 @@
+/* 4 lines on a phone, 5 on wider screens.
+   `-webkit-line-clamp` is the real clamp; the `max-height` in em is the fallback
+   for engines without line-clamp, so a long synopsis can never push the buttons
+   below the fold either way. */
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  max-height: calc(4 * 1.55em);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size--small-2, 13px);
+  color: var(--white-100, #fff);
+}
+
+.four {
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  max-height: calc(4 * 1.55em);
+}
+
+@media (min-width: 768px) {
+  .clamp {
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    max-height: calc(5 * 1.55em);
+  }
+
+  .four {
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    max-height: calc(4 * 1.55em);
+  }
+}

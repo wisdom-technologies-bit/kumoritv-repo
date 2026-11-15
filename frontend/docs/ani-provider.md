@@ -235,3 +235,127 @@ node --test … app/lib/ani/__tests__/*.test.ts   # the provider's own tests
   response body or a signed token; no `NEXT_PUBLIC_ANI`; only `config.ts` reads
   the key.
 * `scripts/ani-live-check.mjs` - the live smoke script (needs a key).
+
+## AniKoto (MegaPlay) - the new first source (2026-11-15)
+
+Everything in this section comes from real `curl` output on 2026-11-15 and
+overrides the older ZokoAnime-only notes above.
+
+### Sources and order
+
+`GET /v1/streams/mal/{mal}/episode/{n}?audio=sub|dub&quality=best` now answers
+with `provider:"anikoto"`, `mal.verification:"anikoto_data_mal"`,
+`mal.stream_verified:true`, and falls back to `zokoanime`. `/api/admin/ani-status`
+reports the source of each outcome (`providers`, `lastOutcomes`) beside the
+existing counters.
+
+### Hosts
+
+| Purpose | Host |
+| --- | --- |
+| Master + variant playlists | `fetch.nexabloom.top` (any `*.nexabloom.top`) |
+| Segments | `*.twilightharbor.space`, `*.shadownest.top`, `*.mistyhorizon.space`, `*.silverorbit.top`, `*.eclipseharbor.space`, `*.oakhorizon.space`, and more over time |
+| Subtitles | `*.mysubsplay.com` |
+| Legacy ZokoAnime | `dramahot.top`, `drama1.cfd` |
+
+The master allow-list is a constant (`DEFAULT_MASTER_HOSTS`) **plus**
+`ANI_MASTER_HOSTS` (comma list, additive). There is deliberately **no segment
+host allow-list**: segment hosts rotate per episode and the signed proxy already
+only fetches what it signed.
+
+### Every child request needs a Referer
+
+`Referer: https://megaplay.buzz/` is required for the master playlist, every
+variant playlist, **every segment** and every subtitle. `headers_required.segments`
+arrives as `{}` and that is wrong; the code therefore uses one effective Referer
+(`aniReferer`) for segments and subtitles too.
+
+Consequences, both enforced in code and covered by tests:
+
+1. `DIRECT_SEGMENT_HOSTS` **never** applies to an AniKoto stream. The manifest
+   rewrite calls `directSegmentHostsFor(payload.h, listed)` and gets `[]` as soon
+   as the signed payload carries any Referer. A browser cannot send a Referer to
+   a third-party CDN, so a direct segment would 403 in the player.
+2. Segments are `seg-N-v1-a1.jpg` served as `content-type: image/jpeg` whose
+   first byte is `0x47` (a real MPEG-TS packet). The segment proxy sniffs the
+   body, not the content type or the extension, so these play; an HTML 403 body
+   labelling itself as a segment is still rejected.
+
+### Bandwidth
+
+With AniKoto **every byte** (playlist, segment, subtitle) goes through the
+Railway proxy, because the Referer cannot be delegated to the browser. Current
+limits on the proxy (`app/lib/proxy/segment-handler.ts`):
+
+* one upstream fetch per segment request, 2 attempts, 1.8 s header timeout for
+  HLS (`MP4_UPSTREAM_HEADER_TIMEOUT_MS = 10 s` for mp4), no response buffering:
+  the body is streamed to the client as it arrives;
+* `PROBE_BYTES = 192` with a 100 ms probe budget per request, so the sniff costs
+  almost nothing;
+* no concurrency limit of its own: the ceiling is the Railway instance (CPU,
+  egress) and Cloudflare in front of it. A 1080p HLS stream is roughly
+  3-6 Mbit/s while watching, i.e. **~1.5-2.7 GB per hour per viewer** through
+  the proxy. Ten simultaneous 1080p viewers is ~30-60 Mbit/s of sustained
+  egress, which is the first thing to exhaust on a small Railway plan.
+* There is **no** server-side segment cache: every viewer re-fetches.
+
+Caching headers for segments are safe to add later *only* behind the signed URL
+(the token already expires, so a cached 200/206 cannot be replayed against a
+different resource):
+
+```
+Cache-Control: public, max-age=3600
+```
+
+The signed URL is per-resource and time-limited, so a browser or Cloudflare
+cache hit can never serve the wrong segment. This work does **not** change the
+segment cache headers yet (`private, max-age=0, must-revalidate` stays), because
+flipping it needs a decision on Cloudflare cache rules for `/api/proxy/segment*`.
+
+### Dub is not trustworthy yet
+
+Measured: for MAL 52299 episode 1 the `master_url` returned for `audio=sub` and
+`audio=dub` is **identical**, so the dub request returns the sub stream. This is
+an **API-side defect** and will be fixed owner-side in ani-cli.
+
+`ANI_DUB_ENABLED` stays off by default. When it is on, `applyDubGuard()` fetches
+the sub answer once (cached) and rejects a dub whose `master_url` equals it with
+reason `ANI_DUB_SAME_AS_SUB` (`dub_same_as_sub` in the reason vocabulary).
+
+### Intro / outro
+
+`intro` and `outro` are `[start_seconds, end_seconds]`, or `[0, 0]` when unknown.
+Valid means both finite and `end > start`; `[0, 80]` is a real intro at the first
+frame. `aniSkipRange()` maps them, `buildAniWinner()` puts them on the normalised
+stream, and the player's existing `mergeSkipRanges()` lets provider ranges win
+over AniSkip for that stream. Invalid markers are dropped and AniSkip is used.
+
+### Subtitles
+
+AniKoto reports `language:"en"` on **every** track (Naruto: 9 tracks, all `en`;
+AoT: English/Indonesian/Thai, all `en`), so the field is ignored for AniKoto and
+the language is derived from the label (`languageFromLabel`): leading word first,
+variant kept (`Portuguese (Brazil)` -> `pt-BR`, `Spanish (Latin America)` ->
+`es-419`). All playable tracks are kept, default first, then English.
+
+Some episodes return **zero** subtitle tracks (MAL 38000, 30, 2904, 40748). That
+may mean hard-subbed or "no English subtitles at all" and the API cannot tell.
+`ANI_ANIKOTO_REQUIRE_SUBTITLE` (default `1`) keeps refusing those for sub; set it
+to `0` after checking them by eye.
+
+### Latency and caching
+
+2-10 s on a cold resolve, ~1.3 s for downloads. `ANI_API_TIMEOUT_MS` stays 12 s
+so the Anivexa fallback still has time. AniKoto has no `url_lifetime`
+(`expiry_known:false`), so its stream is cached **15 minutes and never longer**
+(`positiveTtlMs`), and a playback error still forces one re-resolve.
+
+### Download route
+
+`GET /v1/downloads/mal/{mal}/episode/{n}` -> `{mal_id, episode_number, available,
+provider:"nekostream"|null, reason, sources:[{provider:"Kiwi", audio, quality,
+url}], note}`. The `url` is an HTML landing page on `pahe.nekostream.site`, not a
+file, so it must open in a new tab. `available:false` arrives as HTTP 200 with
+`reason:"UPSTREAM_HAS_NO_LINKS"`; an unmapped MAL id is HTTP 404
+`{code:"ANIKOTO_NOT_MAPPED"}`. The stream response embeds the same links in
+`.download`.
