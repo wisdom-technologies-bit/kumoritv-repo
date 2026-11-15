@@ -4,8 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
-import parse from "html-react-parser";
 import { displayTitle } from "@/app/lib/titles";
+import ClampedDescription from "@/app/components/ClampedDescription";
 
 const AddToPlaylistButton = dynamic(
   () => import("../../Buttons/AddToFavourites").then((module) => module.Button),
@@ -58,9 +58,7 @@ export function Description({ description }: { description: string }) {
       {/* A <p> here nested the <p> tags parse() emits, which is invalid HTML:
           the browser closes the outer one and hydration then fails (React
           418/422), killing every handler on the page. */}
-      <div className={styles.description_text}>
-        {parse(description) || "Description Not Available"}
-      </div>
+      <ClampedDescription className={styles.description_text} text={description} />
       {/* </span> */}
     </React.Fragment>
   );
