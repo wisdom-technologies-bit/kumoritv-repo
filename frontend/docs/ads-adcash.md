@@ -239,3 +239,214 @@ asserts that), and the OneSignal worker keeps its own scope at
   untouched in code. Whether the *Adcash* formats (popunder/onclick) open over
   them is decided in the Adcash dashboard and can only be judged on the live
   site.
+
+---
+
+# In-stream video (pre-roll)
+
+An Adcash **In-stream Video** zone played inside our own player on the watch page,
+with our own overlay chrome and a Skip button. Everything here is behind flags and
+**off by default**: with the defaults below the site is byte-for-byte what it is
+today - no script is loaded, no request is made, no DOM is added.
+
+## 1. Owner's dashboard steps (Adcash panel)
+
+1. Adcash panel -> **Create zone** -> **In-stream Video**.
+2. Add the site `kumoritv.top` to the zone if it is not there yet.
+3. Copy the zone's **VAST Tag URL**. It looks like
+   `https://youradexchange.com/video/select.php?r=<REQUEST_ID>`
+   (host `youradexchange.com`, zone request id in `r`). The literal value belongs
+   to the Adcash panel and to Railway's environment - it is deliberately **not**
+   written into this repository.
+4. Paste it as `ADCASH_VAST_URL` on Railway (see section 3), and set
+   `PREROLL_ENABLED=1` when you are ready to test. Nothing plays before that.
+5. Adcash's own instructions plug that tag into a VAST-compatible player and show
+   Video.js + `videojs-ima`. That is the same SDK this integration uses by default,
+   so the pre-roll runs where Adcash expects it to.
+
+## 2. VAST URL handling
+
+- The tag is **configuration, not a secret**, but it is never hard-coded: it comes
+  from `ADCASH_VAST_URL` at request time (`app/lib/ads/preroll.ts`,
+  `readPrerollConfig`).
+- It is read **on the server** (watch page) and passed to the client as a prop. No
+  `NEXT_PUBLIC_` copy exists.
+- The tag is requested **by the viewer's browser**, never by our server: the ad
+  server must see the viewer's own IP and user agent or fill collapses. There is
+  no proxy route for it, deliberately.
+- The tag may carry query tokens; nothing about it is logged. The outcome log line
+  contains only `kind`, `reason` and `ms`.
+
+## 3. Environment variables (all read at request time)
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PREROLL_ENABLED` | `0` | Master flag. `1`/`true`/`on` turns it on. |
+| `ADCASH_VAST_URL` | empty | The zone's VAST Tag URL. Empty = off, whatever the flag says. Must be `https://`. |
+| `PREROLL_INTERVAL_MIN` | `20` | At most one pre-roll per viewer per N minutes (`0` = every eligible play). |
+| `PREROLL_SKIP_AFTER_SEC` | `5` | Skip appears after this many ad seconds **only when the VAST has no `skipoffset`**. Clamped to 10. |
+| `PREROLL_MAX_AD_SEC` | `30` | An ad longer than this is treated as "no ad". |
+| `PREROLL_START_TIMEOUT_MS` | `6000` | Budget for the creative to start (also the IMA SDK load budget). |
+| `PREROLL_VAST_TIMEOUT_MS` | `4000` | Budget for one VAST document fetch (fallback engine). |
+
+`enabled = PREROLL_ENABLED && https VAST url`. Both are required, so either one
+turns the feature off without a deploy.
+
+## 4. How it is wired
+
+Files:
+
+| File | Role |
+| --- | --- |
+| `app/lib/ads/preroll.ts` | Config, eligibility, localStorage/sessionStorage, circuit breaker, counters. Pure. |
+| `app/lib/ads/preroll-server.ts` | Server side: reads the flags, resolves `staff_roles` and the adult setting. Returns `null` while off. |
+| `app/watch/[id]/page.tsx` | Calls `readPrerollProps(...)`, passes `preroll` to the player. |
+| `app/watch/[id]/components/VideoPlayer/index.tsx` | Arms the pre-roll on the first Play and starts the content when it ends. |
+| `app/watch/[id]/components/VideoPlayer/PrerollAd.tsx` | The overlay + the engine chain (IMA -> our VAST client). |
+| `app/watch/[id]/components/VideoPlayer/preroll.module.css` | Overlay chrome ("Ad" badge, countdown, Skip, Mute, Visit advertiser). |
+| `app/lib/ads/preroll-engine.ts` | Shared engine types + `prerollSkipUi`. |
+| `app/lib/ads/preroll-ima.ts` | Google IMA SDK engine (default). |
+| `app/lib/ads/preroll-vast.ts` | First-party VAST client (fallback). |
+| `app/lib/ads/vast.ts` | VAST 2/3/4 parser, media selection, macros, error codes. |
+
+Flow (text diagram):
+
+```
+viewer presses Play
+        |
+        v
+media-play-request (cancelable)  -------------> prerollEligibility()
+        |                                        |  not eligible
+        | preventDefault()                       v
+        |                                  content plays (log: not_shown/<reason>)
+        v
+PrerollAd overlay inside <MediaPlayer>
+        |
+        +--> startImaPreroll()  --(ima3.js cannot load)--> startVastPreroll()
+        |
+        |  outcome: completed | skipped | no_fill | error | timeout
+        v
+finishPreroll() -> overlay removed -> player.play()   (same task, <300ms)
+```
+
+The content stream is resolved by the existing route in parallel: the ad hides
+the latency instead of adding to it. The content element is paused under the
+overlay, so nothing plays audibly behind the ad.
+
+### Mechanism decision (a) vs (b)
+
+**(a) Google IMA SDK is the default.** Adcash's published instructions for this
+zone type are "plug the tag into a VAST-compatible player", and their example is
+Video.js + `videojs-ima`, i.e. exactly this SDK. It also settles the two unknowns
+the sandbox could not check: IMA fetches the tag itself, so CORS cannot block it,
+and it plays VPAID/JS creatives and nested wrappers, which a first-party client
+would have to reject. IMA renders its own ad badge, countdown, native skip and
+click-through in the ad container, which is what the tag's policy expects; our
+overlay adds the "Ad" label, the countdown and a mute toggle, and does not draw a
+second skip button while IMA's is on screen.
+
+**(b) our VAST client is the fallback**, used only when `ima3.js` itself cannot
+load (blocked by an extension, CSP, offline). It fetches the VAST directly from the
+browser, follows wrappers to depth 3, picks the best MP4 for viewport/bandwidth,
+plays it in our own `<video>` inside the overlay, and fires
+Impression/creativeView/start/firstQuartile/midpoint/thirdQuartile/complete/skip/
+mute/unmute/error once each with `[CACHEBUSTING]`, `[TIMESTAMP]`, `[ERRORCODE]`,
+`[CONTENTPLAYHEAD]`, `[ASSETURI]` replaced. It rejects VPAID and HLS creatives.
+
+Why the ad plays in its own `<video>` element (both engines): the content element
+is never touched, so ad seconds cannot reach `onTimeUpdate`, progress saving,
+watch marks or the skip-intro/outro logic.
+
+## 5. Eligibility (all must hold)
+
+- `PREROLL_ENABLED=1` and a usable `ADCASH_VAST_URL`;
+- the player is the hls/mp4 path, **not** the embed iframe path;
+- the viewer did not resume mid-episode (saved progress <= 30s);
+- the interval cap allows it (`PREROLL_INTERVAL_MIN`, last ad time in
+  `localStorage`, plus a `sessionStorage` marker so two tabs cannot double it);
+- it is not a server-switch re-resolve (same player instance, one decision per play);
+- an auto-next within 5 minutes of the previous ad does not get one;
+- the viewer is not staff (`public.staff_roles`), checked on the server;
+- an adult-flagged title for a viewer who has not enabled the adult setting.
+
+It runs on the **first Play of an episode only**: never on pause, seek, resume or
+during playback, and never twice for one play.
+
+## 6. Failure rules (content is never blocked)
+
+Fetch timeout, HTTP error, empty `<VAST/>` (no fill), unsupported creative (VPAID
+in the fallback engine), media load error, start timeout, an ad longer than
+`PREROLL_MAX_AD_SEC`, any exception: the overlay is removed, the content starts,
+the VAST `Error` URL is fired with the matching code where applicable
+(100 parse, 301 timeout/fetch, 302 wrapper limit, 303 no fill, 403 no usable
+MediaFile, 405 media error / ad too long, 900 unknown), and exactly one line is
+logged:
+
+```
+preroll_outcome kind=no_fill reason=no_fill ms=412
+```
+
+No URL, no query tokens. There is no retry for the same play and never two ads.
+
+**Circuit breaker**: three consecutive failures inside ten minutes stop ad requests
+for thirty minutes (state in `localStorage` and in memory). A no-fill is a normal
+outcome and does not count as a failure.
+
+**Ad blockers / privacy**: a blocked script or request is a silent "no ad" - no
+error banner, no console noise beyond the one outcome line. No viewer personal
+data is sent beyond what the ad server receives by default.
+
+**Consent**: the site's cookie store (`/api/cookie` -> `/api/adult-content`,
+`/api/media-title-language`, `/api/subtitle`) gates content preferences only. The
+Adcash Autotag already loads without a consent gate, and the pre-roll keeps parity
+with it: no gate, same treatment. If a consent gate is added later, the pre-roll
+must read the same flag before requesting the tag.
+
+## 7. Turning it off in 30 seconds
+
+Set `PREROLL_ENABLED=0` (or clear `ADCASH_VAST_URL`) on Railway and redeploy. The
+watch page then returns `preroll: null`, the overlay never mounts and the IMA
+script is never requested. Nothing else in the player changes.
+
+## 8. Testing
+
+**With the mock (no ad server involved):** `frontend/test-harness/preroll-e2e`
+serves an inline VAST with a generated MP4, a no-fill VAST and a slow VAST, and
+runs the watch page with the flags on. It asserts the ad plays first, Skip appears
+at the offset, the content starts afterwards, tracking pixels fire once each, and
+that no-fill/slow still start the content inside the timeouts.
+
+**With the real tag** (owner, on a phone or desktop):
+
+```bash
+curl -s -A 'Mozilla/5.0 (Linux; Android 13)' -e 'https://kumoritv.top/' "$VAST" | head -c 3000
+```
+
+An empty body or `<VAST/>` with no `<Ad>` means "no fill from this network" -
+that is a normal state and the site shows the episode without an ad. In the
+browser, open the watch page on an episode with no saved progress (<30s), press
+Play once and watch for: the black overlay with the "Ad" badge, the countdown,
+the Skip button, then the episode starting. In DevTools -> Network, filter
+`select.php` and `imasdk` to confirm the tag was fetched by the browser (not the
+server) and that `ima3.js` was loaded once.
+
+**Manual checks worth doing once:** 360px and desktop, fullscreen, PiP, keyboard
+(space/arrows must move the ad overlay, not the episode), mute, "Visit
+advertiser" (new tab, `rel="noopener noreferrer"`), and that the episode's
+"watched" mark and progress bar ignore the ad seconds.
+
+## 9. What could not be verified here
+
+- **Real tag behaviour**: `youradexchange.com` answers 403 to the sandbox proxy, so
+  the real VAST (version, Inline vs Wrapper, MediaFile types MP4 vs VPAID,
+  `skipoffset`, tracking, fill from Nigeria/mobile networks) is unverified. The
+  code handles all of those cases; the tests use a mock document shaped like a
+  standard inline VAST 4 response.
+- **Adcash dashboard counting**: impression/payout numbers can only be confirmed
+  in the Adcash panel after real views.
+- **Popunder interplay**: the Autotag zone's popunder behaviour alongside an
+  in-stream pre-roll is a policy question for Adcash, not something the code can
+  see.
+- **Mobile autoplay policies**: the pre-roll starts on the viewer's own Play
+  gesture, which is the safest case; a browser that still refuses to play will fall
+  straight through to the episode.

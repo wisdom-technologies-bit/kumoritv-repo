@@ -20,6 +20,7 @@ import { loadCommentSummary } from "@/app/lib/seo/comments-jsonld";
 import Link from "next/link";
 import Image from "next/image";
 import VideoPlayer from "./components/VideoPlayer";
+import { readPrerollProps } from "@/app/lib/ads/preroll-server";
 import WatchControls from "./components/WatchControls";
 import EpisodesListContainer from "./components/EpisodesListContainer";
 import DownloadEpisode from "./components/DownloadEpisode";
@@ -122,6 +123,9 @@ export default async function WatchPage({
   const id = Number(params.id);
   const media = await getMediaInfo({ id });
   if (!media) notFound();
+  // Prompt 40: null while the flags are off, so nothing is fetched, queried or
+  // rendered. The tag itself never enters the repo: it comes from the env.
+  const preroll = await readPrerollProps({ isAdult: (media as any).isAdult === true });
   const ep = parseEpisodeNumber(searchParams.ep ?? searchParams.episode, media.format);
   // Prompt 35: `?t=&end=` plays that range only. Bad values are ignored, so a
   // mangled link still opens the episode at the start.
@@ -220,6 +224,7 @@ export default async function WatchPage({
                   episodeImage={episodeSeo?.thumbnailUrl || undefined}
                   cover={cover || undefined}
                   nextEpisode={nextEpisode}
+                  preroll={preroll}
                 />
               </div>
             </section>
