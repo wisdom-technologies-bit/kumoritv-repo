@@ -45,6 +45,18 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // OneSignal's worker lives under its own scope so public/sw.js (the ad
+        // provider's) is never touched. `Service-Worker-Allowed` is what lets a
+        // worker served from /push/onesignal/ claim that scope, and the
+        // revalidate header stops Cloudflare/Railway serving a stale copy.
+        source: '/push/onesignal/:path*',
+        headers: [
+          { key: 'Service-Worker-Allowed', value: '/push/onesignal/' },
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+        ],
+      },
     ]
   },
   images: {

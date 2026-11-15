@@ -111,6 +111,8 @@ export default function NotificationsSection({ isSignedIn }: { isSignedIn: boole
   const [environment, setEnvironment] = useState<PushEnvironment>(() => readEnvironment());
   const [message, setMessage] = useState<string>("");
   const [isBusy, setIsBusy] = useState<boolean>(false);
+  const [testMessage, setTestMessage] = useState<string>("");
+  const [isTesting, setIsTesting] = useState<boolean>(false);
   const mounted = useRef(true);
 
   const refreshEnvironment = useCallback(() => {
@@ -261,6 +263,23 @@ export default function NotificationsSection({ isSignedIn }: { isSignedIn: boole
     setIsBusy(false);
   }
 
+  async function handleTestNotification() {
+    if (isTesting) return;
+    setIsTesting(true);
+    setTestMessage("");
+
+    try {
+      const response = await fetch("/api/push/test", { method: "POST" });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (mounted.current)
+        setTestMessage(body?.message || "Could not send a test right now.");
+    } catch {
+      if (mounted.current) setTestMessage("Could not send a test right now.");
+    } finally {
+      if (mounted.current) setIsTesting(false);
+    }
+  }
+
   async function handleCategoryToggle(key: CategoryKey, value: boolean) {
     if (!preferences || isBusy) return;
 
@@ -336,6 +355,29 @@ export default function NotificationsSection({ isSignedIn }: { isSignedIn: boole
                 other off.
               </span>
             </div>
+          )}
+
+          {masterChecked && (
+            <div className={styles.test_row}>
+              <button
+                type="button"
+                className={styles.test_button}
+                onClick={() => void handleTestNotification()}
+                disabled={isTesting}
+                data-push-test="true"
+              >
+                {isTesting ? "Sending..." : "Send me a test notification"}
+              </button>
+              <span className={styles.helper}>
+                Proves the whole path in one click: browser, subscription, server.
+              </span>
+            </div>
+          )}
+
+          {testMessage && (
+            <span className={styles.helper} role="status" data-push-test-message="true">
+              {testMessage}
+            </span>
           )}
 
           {message && (
