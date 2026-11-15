@@ -195,6 +195,23 @@ export default function VideoPlayer({
       })
     : "";
 
+  // Part B: the error screen is one group; put the keyboard on "Try again" so
+  // the alert is actionable without a Tab hunt. The ref keeps it to real
+  // transitions (a re-render of a live error does not steal focus again).
+  const retryButtonRef = useRef<HTMLButtonElement | null>(null);
+  const focusedErrorRef = useRef("");
+  useEffect(() => {
+    if (!error) {
+      focusedErrorRef.current = "";
+
+      return;
+    }
+    const key = watchErrorCode(error);
+    if (focusedErrorRef.current === key) return;
+    focusedErrorRef.current = key;
+    retryButtonRef.current?.focus({ preventScroll: true });
+  }, [error]);
+
   useEffect(() => {
     if (!error) return;
     console.warn(
@@ -808,72 +825,75 @@ export default function VideoPlayer({
             className={styles.error_overlay}
             data-error-code={watchErrorCode(error)}
           >
-            <svg
-              className={styles.error_icon}
-              aria-hidden="true"
-              focusable="false"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M6.5 17.5A4.5 4.5 0 0 1 6 8.6a5.5 5.5 0 0 1 10.6-1.4A4 4 0 0 1 17.5 17.5" />
-              <path d="M3 3l18 18" />
-            </svg>
-
-            <p className={styles.error_message}>{friendlyError}</p>
-
-            <div className={styles.error_actions}>
-              <button
-                type="button"
-                className={styles.error_pill}
-                aria-label="Retry"
-                onClick={() => {
-                  setPlaybackError("");
-                  watch.retry();
-                }}
+            <div className={styles.error_group}>
+              <svg
+                className={styles.error_icon}
+                aria-hidden="true"
+                focusable="false"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                Try again
-              </button>
+                <path d="M6.5 17.5A4.5 4.5 0 0 1 6 8.6a5.5 5.5 0 0 1 10.6-1.4A4 4 0 0 1 17.5 17.5" />
+                <path d="M3 3l18 18" />
+              </svg>
 
-              {nextServer && (
+              <p className={styles.error_message}>{friendlyError}</p>
+
+              <div className={styles.error_actions}>
                 <button
+                  ref={retryButtonRef}
                   type="button"
                   className={styles.error_pill}
+                  aria-label="Retry"
                   onClick={() => {
                     setPlaybackError("");
-                    watch.selectServer(nextServer.id);
+                    watch.retry();
                   }}
                 >
-                  Try another server
+                  Try again
                 </button>
-              )}
 
-              {watch.hasBackup && (
-                <button
-                  type="button"
-                  className={styles.error_pill}
-                  onClick={() => {
-                    setPlaybackError("");
-                    watch.backupServer();
-                  }}
-                >
-                  Backup server
-                </button>
-              )}
+                {nextServer && (
+                  <button
+                    type="button"
+                    className={styles.error_pill}
+                    onClick={() => {
+                      setPlaybackError("");
+                      watch.selectServer(nextServer.id);
+                    }}
+                  >
+                    Try another server
+                  </button>
+                )}
 
-              {showSwitchToSub && (
-                <button
-                  type="button"
-                  className={styles.error_pill}
-                  data-primary="true"
-                  onClick={() => switchToSub(false)}
-                >
-                  Switch to Sub
-                </button>
-              )}
+                {watch.hasBackup && (
+                  <button
+                    type="button"
+                    className={styles.error_pill}
+                    onClick={() => {
+                      setPlaybackError("");
+                      watch.backupServer();
+                    }}
+                  >
+                    Backup server
+                  </button>
+                )}
+
+                {showSwitchToSub && (
+                  <button
+                    type="button"
+                    className={styles.error_pill}
+                    data-primary="true"
+                    onClick={() => switchToSub(false)}
+                  >
+                    Switch to Sub
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
