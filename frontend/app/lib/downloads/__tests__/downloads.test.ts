@@ -156,17 +156,17 @@ test("ad: empty DOWNLOAD_AD_URL means no ad at all", () => {
   delete process.env.DOWNLOAD_AD_URL;
   assert.equal(downloadAd(), null);
   assert.equal(shouldOpenAd(null, Date.now(), 0), false);
-  process.env.DOWNLOAD_AD_URL = "https://uplcm.com/4/12159130";
+  process.env.DOWNLOAD_AD_URL = "https://ads.example.com/click";
   try {
     const ad = downloadAd();
-    assert.deepEqual(ad, { url: "https://uplcm.com/4/12159130", intervalMin: 30 });
+    assert.deepEqual(ad, { url: "https://ads.example.com/click", intervalMin: 30 });
   } finally {
     delete process.env.DOWNLOAD_AD_URL;
   }
 });
 
 test("ad frequency cap uses localStorage, is per click and never throws", () => {
-  const ad = { url: "https://uplcm.com/4/12159130", intervalMin: 30 };
+  const ad = { url: "https://ads.example.com/click", intervalMin: 30 };
   let now = 1_700_000_000_000;
   let stored: string | null = null;
   const storage = {

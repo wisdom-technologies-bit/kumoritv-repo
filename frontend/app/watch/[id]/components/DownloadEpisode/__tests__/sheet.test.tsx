@@ -55,7 +55,7 @@ test("the honest note is always there; the sponsor note only when an ad is set",
   assert.match(render(), /That site may show ads\./);
   assert.doesNotMatch(render(), /a sponsor page may open/);
   assert.match(
-    render({ payload: { ...payload, ad: { url: "https://uplcm.com/4/12159130", intervalMin: 30 } } }),
+    render({ payload: { ...payload, ad: { url: "https://ads.example.com/click", intervalMin: 30 } } }),
     /Support KumoriTV: a sponsor page may open/,
   );
 });

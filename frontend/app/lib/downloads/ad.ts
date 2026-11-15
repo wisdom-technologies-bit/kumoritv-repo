@@ -1,5 +1,11 @@
 // The owner's monetisation: a sponsor page may open alongside a download.
 //
+// The URL is the owner's own, set in DOWNLOAD_AD_URL and never hard-coded here.
+// It stays EMPTY until there is an Adcash direct-link or popunder URL: the link
+// this feature was planned around belonged to the provider retired on
+// 2026-11-15, and a dead or foreign ad link must not ship. Empty means the sheet
+// simply has no sponsor note and no popup (see docs/ads-adcash.md).
+//
 // Rules, all enforced here so they can be tested without a browser:
 //  - only from a CLICK that also opens a download (never on page load, never
 //    inside the player);
