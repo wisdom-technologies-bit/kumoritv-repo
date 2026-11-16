@@ -195,13 +195,16 @@ export default function DownloadEpisode({
         type="button"
         ref={pillRef}
         className={toolbarStyles.tool}
+        aria-label="Download"
+        title="Download this episode"
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Download this episode"
         onClick={toggle}
         data-download-button="true"
       >
-        <DownloadIcon aria-hidden="true" />
+        <span className={styles.icon}>
+          <DownloadIcon aria-hidden="true" focusable="false" />
+        </span>
         <span className={styles.label}>Download</span>
       </button>
 
