@@ -6,12 +6,27 @@
   white-space: nowrap;
 }
 
-/* Below 380px the row runs out of room for five labels, so Download keeps its
-   icon only (the aria-label and title still name it). */
-@media (max-width: 379px) {
-  .label {
-    display: none;
-  }
+/* The glyph must carry its own box: public/assets/download.svg is a viewBox-only
+   file, so without this it renders 0x0 and the pill looks empty on a phone (the
+   label used to be hidden below 380px, which left nothing at all). */
+.icon {
+  display: inline-flex;
+
+  flex: 0 0 auto;
+
+  width: 16px;
+  height: 16px;
+}
+
+.icon svg,
+.icon img {
+  display: block;
+
+  width: 16px;
+  height: 16px;
+
+  max-width: none;
+  max-height: none;
 }
 
 .menu_layer {
