@@ -539,3 +539,26 @@ curl -s -A 'Mozilla/5.0 (Linux; Android 13)' -e 'https://kumoritv.top/' \
 
 A filled response contains `<Ad>` with `<InLine>` or `<Wrapper>`. While it is
 empty, leave the code alone: the player already behaves correctly without ads.
+
+
+## Prompt 41 (D): is that floating blue circle ours?
+
+**It is not ours.** The evidence: the only `position: fixed` elements in the
+watch page tree are the bottom-sheet overlay that Prompt 41 (B) deleted, the
+header, the toast host and the community mobile filter bar. Nothing in this
+repository draws a fixed round download button - not the PWA (there is no
+install prompt and no `beforeinstallprompt` handler), not OneSignal (its
+slidedown is not enabled), not `DownloadEpisode` (a toolbar pill now).
+
+So the circle is injected by the **Adcash Autotag** (the format - popunder,
+push, interstitial, "download"-style widget - is chosen in the Adcash zone
+settings, not in this repo) or by the browser itself. Never hide it with CSS:
+that fights a third party and breaks whenever the vendor renames a class.
+
+**How to tell, in one tap.** Open any page with `?ads=off` appended (for example
+`https://kumoritv.top/watch/21?ep=7&ads=off`). That skips the Autotag for that
+page view only - it is not stored, it sets no cookie, and it does nothing while
+`ADCASH_ENABLED` is off. If the circle disappears, it is Adcash: change or
+disable the format in the Adcash dashboard. If it survives, it is the browser's
+own UI (Chrome's translated-page or download bubble). The repo's own audit
+(`grep -rn "position: *fixed" app`) has no fixed download element.
