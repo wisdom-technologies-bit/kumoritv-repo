@@ -10,12 +10,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PREROLL_BREAKER_FAILURES,
   logPrerollOutcome,
+  prerollDebug,
+  prerollHardStopMs,
+  prerollNoFillUntil,
   readPrerollStore,
   recordPrerollCount,
   registerPrerollFailure,
   registerPrerollSuccess,
   writePrerollAdShown,
   writePrerollBreaker,
+  writePrerollNoFill,
 } from "@/app/lib/ads/preroll";
 import {
   BASE_AD_STATE,
@@ -34,6 +38,8 @@ type Props = {
   maxAdSec: number;
   startTimeoutMs: number;
   vastTimeoutMs: number;
+  /** Minutes to stay quiet after a no-fill (0 = never stay quiet). */
+  noFillCooldownMin?: number;
   /** The previous pre-roll belongs to an auto-next play: remembered separately. */
   autoplay?: boolean;
   onFinished: (outcome: PrerollOutcome) => void;
@@ -61,6 +67,7 @@ export default function PrerollAd({
   maxAdSec,
   startTimeoutMs,
   vastTimeoutMs,
+  noFillCooldownMin = 10,
   autoplay = false,
   onFinished,
   startEngine = defaultEngineStart,
@@ -71,6 +78,7 @@ export default function PrerollAd({
   const skipButtonRef = useRef<HTMLButtonElement | null>(null);
   const [ad, setAd] = useState<PrerollAdState>({ ...BASE_AD_STATE, engine: "ima", skipAfterSec });
   const [elapsed, setElapsed] = useState(0);
+  const cooldown = noFillCooldownMin;
 
   /** ONE exit path for every outcome: counters, breaker, one log line, then content. */
   const finish = useCallback(
@@ -89,15 +97,20 @@ export default function PrerollAd({
         writePrerollBreaker(registerPrerollSuccess());
       } else if (outcome.kind === "no_fill") {
         recordPrerollCount("noFill", outcome.reason);
+        // Prompt 41: Adcash has no inventory right now. Remember it so the next
+        // episodes do not each pay the same wait.
+        writePrerollNoFill(prerollNoFillUntil({ noFillCooldownMin: cooldown } as any, Date.now()));
+        prerollDebug("no_fill", `${outcome.reason || "-"} cooldown=${cooldown}min`);
       } else {
         recordPrerollCount("errored", outcome.reason);
         writePrerollBreaker(registerPrerollFailure(store.breaker, Date.now()));
       }
       logPrerollOutcome({ kind: outcome.kind, reason: outcome.reason, ms: outcome.ms });
+      prerollDebug(`outcome:${outcome.kind}`, `${outcome.reason || "-"} ${outcome.ms}ms`);
       void PREROLL_BREAKER_FAILURES;
       onFinished(outcome);
     },
-    [autoplay, onFinished],
+    [autoplay, cooldown, onFinished],
   );
 
   // ---------------------------------------------------------------- engine
@@ -108,6 +121,7 @@ export default function PrerollAd({
 
     let cancelled = false;
     recordPrerollCount("requests");
+    prerollDebug("request", "engine=ima-first");
 
     const options = {
       container,
@@ -117,7 +131,10 @@ export default function PrerollAd({
       startTimeoutMs,
       vastTimeoutMs,
       onState: (state: PrerollAdState) => {
-        if (!cancelled) setAd(state);
+        if (cancelled) return;
+        if (state.playing && !ad.playing) prerollDebug("ad_started");
+        if (state.skippable && !ad.skippable) prerollDebug("skippable");
+        setAd(state);
       },
       onDone: (outcome: PrerollOutcome) => {
         if (!cancelled) finish(outcome);
@@ -141,9 +158,12 @@ export default function PrerollAd({
 
     // Hard stop: engine start + tag load + creative start, plus slack. An ad that
     // has not finished by then is "no ad".
+    // Prompt 41: start + tag, capped at 8s. Was start + tag + 2s (12s with the
+    // old defaults), which is why a known-empty tag looked like a stuck overlay.
+    const budget = prerollHardStopMs({ startTimeoutMs, vastTimeoutMs });
     const hardStop = window.setTimeout(
-      () => finish({ kind: "timeout", reason: "hard_timeout", ms: startTimeoutMs + vastTimeoutMs + 2000 }),
-      startTimeoutMs + vastTimeoutMs + 2000,
+      () => finish({ kind: "timeout", reason: "hard_timeout", ms: budget }),
+      budget,
     );
 
     return () => {
@@ -202,48 +222,65 @@ export default function PrerollAd({
   const remaining = ad.remainingSec == null ? null : Math.max(0, Math.ceil(ad.remainingSec));
 
   return (
-    <div className={styles.layer} data-preroll-engine={ad.engine} role="group" aria-label="Advertisement">
+    <div
+      className={styles.layer}
+      data-preroll-engine={ad.engine}
+      data-preroll-phase={ad.playing ? "playing" : "loading"}
+      role="group"
+      aria-label="Advertisement"
+    >
       <div className={styles.ad_container} ref={containerRef} />
-      <div className={styles.chrome}>
-        <span className={styles.badge}>Ad</span>
-        {remaining != null && (
-          <span className={styles.count} aria-live="off">
-            {canSkip ? `${remaining}s` : `Ad ends in ${remaining}s`}
-          </span>
-        )}
-      </div>
-      <div className={styles.actions}>
-        {ad.clickThrough && (
-          <button type="button" className={styles.action} onClick={visit}>
-            Visit advertiser
-          </button>
-        )}
-        <button
-          type="button"
-          className={styles.action}
-          aria-pressed={ad.muted}
-          aria-label={ad.muted ? "Unmute ad" : "Mute ad"}
-          onClick={() => handleRef.current?.toggleMute()}
-        >
-          {ad.muted ? "Unmute" : "Mute"}
-        </button>
-        {ad.customControls && (
-          <button
-            ref={skipButtonRef}
-            type="button"
-            className={styles.skip}
-            aria-label="Skip ad"
-            disabled={!canSkip}
-            onClick={() => handleRef.current?.skip()}
-          >
-            {skipLabel}
-          </button>
-        )}
-      </div>
+
       {!ad.playing && (
-        <p className={styles.loading} role="status">
-          Loading ad…
-        </p>
+        // Prompt 41: a known-empty tag must not show "Loading ad…" for 12s. A black
+        // cover and a neutral spinner, plus one polite line for screen readers.
+        <div className={styles.cover} data-preroll-cover>
+          <span className={styles.spinner} aria-hidden="true" />
+          <p className={styles.sr_only} role="status" aria-live="polite">
+            Loading
+          </p>
+        </div>
+      )}
+
+      {ad.playing && (
+        <>
+          <div className={styles.chrome}>
+            <span className={styles.badge}>Ad</span>
+            {remaining != null && (
+              <span className={styles.count} aria-live="off">
+                {canSkip ? `${remaining}s` : `Ad ends in ${remaining}s`}
+              </span>
+            )}
+          </div>
+          <div className={styles.actions}>
+            {ad.clickThrough && (
+              <button type="button" className={styles.action} onClick={visit}>
+                Visit advertiser
+              </button>
+            )}
+            <button
+              type="button"
+              className={styles.action}
+              aria-pressed={ad.muted}
+              aria-label={ad.muted ? "Unmute ad" : "Mute ad"}
+              onClick={() => handleRef.current?.toggleMute()}
+            >
+              {ad.muted ? "Unmute" : "Mute"}
+            </button>
+            {ad.customControls && (
+              <button
+                ref={skipButtonRef}
+                type="button"
+                className={styles.skip}
+                aria-label="Skip ad"
+                disabled={!canSkip}
+                onClick={() => handleRef.current?.skip()}
+              >
+                {skipLabel}
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

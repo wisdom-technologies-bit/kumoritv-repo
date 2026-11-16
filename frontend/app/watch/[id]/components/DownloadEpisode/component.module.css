@@ -1,169 +1,117 @@
-/* Download button + sheet. Follows the watch page's existing controls: the
-   accent-tinted pill for the trigger, a card surface for the sheet. */
+/* Prompt 41 (B): the Download pill lives in the toolbar row, so its shape comes
+   from that row (PlayerToolbar's .tool). This file only owns the label and the
+   dropdown, which is portalled to <body> and never clipped by the row. */
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--white-25, rgba(255, 255, 255, 0.25));
-  background-color: var(--white-05, rgba(255, 255, 255, 0.05));
-  color: var(--white-100, #fff);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 140ms ease, background-color 140ms ease;
+.label {
+  white-space: nowrap;
 }
 
-.button:hover,
-.button:focus-visible {
-  border-color: var(--brand-color, #7c5cff);
-  background-color: var(--white-25, rgba(255, 255, 255, 0.12));
+/* Below 380px the row runs out of room for five labels, so Download keeps its
+   icon only (the aria-label and title still name it). */
+@media (max-width: 379px) {
+  .label {
+    display: none;
+  }
 }
 
-.button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.overlay {
+.menu_layer {
   position: fixed;
-  inset: 0;
-  z-index: var(--z-modal, 900);
-  background: rgba(4, 6, 12, 0.72);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0;
-}
+  z-index: var(--z-modal, 500);
 
-.sheet {
-  width: 100%;
-  max-width: 460px;
-  max-height: 80dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--black-100, #082130);
+
+  padding: 8px;
+
+  border: 1px solid var(--white-15, rgb(255 255 255 / 15%));
+  border-radius: 10px;
+
+  background: var(--black-800, #14161a);
   color: var(--white-100, #fff);
-  border: 1px solid var(--white-25, rgba(255, 255, 255, 0.16));
-  border-radius: 16px 16px 0 0;
-  padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px));
-  outline: none;
+
+  box-shadow: 0 12px 32px rgb(0 0 0 / 55%);
 }
 
-@media (min-width: 640px) {
-  .overlay {
-    align-items: center;
-    padding: 24px;
-  }
-
-  .sheet {
-    border-radius: 16px;
-    max-height: calc(100dvh - 48px);
-  }
-}
-
-.head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.head h2 {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.3;
-}
-
-.close {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px solid var(--white-25, rgba(255, 255, 255, 0.2));
-  background: transparent;
-  color: inherit;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.provider {
-  margin: 10px 0 0;
-  font-size: 13px;
-  color: var(--white-75, rgba(255, 255, 255, 0.75));
-}
-
-.tabs {
-  display: flex;
-  gap: 6px;
-  margin-top: 14px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--white-05, rgba(255, 255, 255, 0.06));
-}
-
-.tab {
-  flex: 1;
-  min-height: 34px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--white-75, rgba(255, 255, 255, 0.75));
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tab[data-active="true"] {
-  background: var(--brand-color, #7c5cff);
-  color: #fff;
-}
-
-.qualities {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.quality {
+.menu {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 2px;
-  padding: 12px 10px;
-  min-height: 48px;
-  border-radius: 10px;
-  border: 1px solid var(--white-25, rgba(255, 255, 255, 0.2));
-  color: var(--white-100, #fff);
+}
+
+.menu_title {
+  padding: 2px 6px 4px;
+
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--white-70, rgb(255 255 255 / 70%));
+}
+
+.menu_provider {
+  padding: 0 6px 6px;
+
+  font-size: 12px;
+  color: var(--white-50, rgb(255 255 255 / 55%));
+}
+
+.menu_group + .menu_group {
+  margin-top: 6px;
+}
+
+.menu_audio {
+  padding: 6px 6px 2px;
+
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--white-50, rgb(255 255 255 / 50%));
+}
+
+.menu_item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  min-height: 44px;
+  padding: 0 8px;
+
+  border-radius: 8px;
+
+  color: inherit;
+  font-size: 14px;
   text-decoration: none;
 }
 
-.quality:hover,
-.quality:focus-visible {
-  border-color: var(--brand-color, #7c5cff);
+.menu_item:hover,
+.menu_item:focus-visible {
+  background: var(--white-10, rgb(255 255 255 / 10%));
+  outline: none;
 }
 
-.quality_hint {
+.menu_note {
+  padding: 8px 6px 2px;
+
   font-size: 11px;
-  font-weight: 500;
-  color: var(--white-50, rgba(255, 255, 255, 0.6));
+  line-height: 1.35;
+  color: var(--white-40, rgb(255 255 255 / 45%));
 }
 
-.note,
-.sponsor {
-  margin: 12px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--white-50, rgba(255, 255, 255, 0.6));
+.menu_status {
+  padding: 10px 8px;
+
+  font-size: 13px;
+  color: var(--white-70, rgb(255 255 255 / 75%));
 }
 
-.sponsor {
-  margin-top: 6px;
-  color: var(--white-75, rgba(255, 255, 255, 0.75));
+.retry {
+  margin-left: 6px;
+  padding: 0;
+
+  border: 0;
+  background: none;
+  color: var(--brand-color, #2f8fff);
+
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
 }

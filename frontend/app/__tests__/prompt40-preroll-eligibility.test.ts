@@ -1,7 +1,11 @@
 // Prompt 40: flags, eligibility, the interval cap, the circuit breaker, counters.
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
+const ROOT_TESTS = join(import.meta.dirname, "..", "..");
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+  import {
   PREROLL_BREAKER_OPEN_MS,
   PREROLL_DEFAULTS,
   PREROLL_MAX_SKIP_SEC,
@@ -14,6 +18,13 @@ import {
   registerPrerollSuccess,
   resetPrerollCounters,
   type PrerollConfig,
+  prerollHardStopMs,
+  prerollNoFillUntil,
+  writePrerollNoFill,
+  readPrerollStore,
+  setPrerollDebug,
+  prerollDebug,
+  lastPrerollDebugLine,
 } from "../lib/ads/preroll";
 
 const ON: PrerollConfig = readPrerollConfig({
@@ -45,6 +56,7 @@ test("everything is off by default: no flag, no tag, no pre-roll", () => {
       maxAdSec: off.maxAdSec,
       startTimeoutMs: off.startTimeoutMs,
       vastTimeoutMs: off.vastTimeoutMs,
+      noFillCooldownMin: off.noFillCooldownMin,
     },
     { ...PREROLL_DEFAULTS },
     "documented defaults",
@@ -136,4 +148,124 @@ test("counters count outcomes and reasons", () => {
   assert.equal(counters.byReason.no_fill, 1);
   resetPrerollCounters();
   assert.equal(getPrerollCounters().requests, 0);
+});
+
+// ---------------------------------------------------------------- Prompt 41
+
+test("a no-fill parks ad requests for the cooldown window, then lets them back", () => {
+  const on = readPrerollConfig({
+    PREROLL_ENABLED: "1",
+    ADCASH_VAST_URL: "https://tag.example/vast",
+  });
+
+  assert.equal(on.noFillCooldownMin, 10, "default cooldown is ten minutes");
+
+  const noFillUntil = prerollNoFillUntil(on, 1_000_000);
+
+  assert.equal(noFillUntil, 1_000_000 + 10 * 60 * 1000);
+  assert.equal(
+    prerollEligibility({ ...base, config: on, noFillUntil }).ok,
+    false,
+    "inside the window nothing is requested",
+  );
+  assert.equal(
+    (prerollEligibility({ ...base, config: on, noFillUntil }) as any).reason,
+    "no_fill_cooldown",
+  );
+  assert.equal(
+    prerollEligibility({ ...base, config: on, noFillUntil, now: noFillUntil + 1 }).ok,
+    true,
+    "the window expires on its own",
+  );
+  assert.equal(
+    prerollEligibility({
+      ...base,
+      config: readPrerollConfig({
+        PREROLL_ENABLED: "1",
+        ADCASH_VAST_URL: "https://tag.example/vast",
+        PREROLL_NOFILL_COOLDOWN_MIN: "0",
+      }),
+      noFillUntil,
+    }).ok,
+    true,
+    "PREROLL_NOFILL_COOLDOWN_MIN=0 disables the cooldown",
+  );
+  assert.equal(prerollNoFillUntil({ noFillCooldownMin: 0 }, 5), null);
+});
+
+test("the no-fill instant survives a reload (localStorage) and can be cleared", () => {
+  writePrerollNoFill(4242);
+  assert.equal(readPrerollStore().noFillUntil, 4242);
+  writePrerollNoFill(null);
+  assert.equal(readPrerollStore().noFillUntil, null);
+});
+
+test("the whole ad budget is start + tag, capped at eight seconds", () => {
+  assert.equal(prerollHardStopMs({ startTimeoutMs: 5000, vastTimeoutMs: 3000 }), 8000);
+  assert.equal(
+    prerollHardStopMs({ startTimeoutMs: 30000, vastTimeoutMs: 20000 }),
+    8000,
+    "no env value may hold a viewer longer than eight seconds",
+  );
+  const config = readPrerollConfig({});
+
+  assert.equal(config.startTimeoutMs, 5000, "PREROLL_START_TIMEOUT_MS default");
+  assert.equal(config.vastTimeoutMs, 3000, "PREROLL_VAST_TIMEOUT_MS default");
+});
+
+test("a no-fill is counted once, with its reason", () => {
+  resetPrerollCounters();
+  recordPrerollCount("noFill", "ima_no_fill_1009");
+  const counters = getPrerollCounters();
+
+  assert.equal(counters.noFill, 1);
+  assert.equal(counters.byReason.ima_no_fill_1009, 1);
+});
+
+test("?prerolldebug=1 is the only thing that prints pre-roll steps", () => {
+  setPrerollDebug(false);
+  prerollDebug("silent");
+  assert.equal(lastPrerollDebugLine(), "silent", "the line is still recorded for the UI");
+
+  setPrerollDebug(true);
+  let seen = "";
+  const off = (() => {
+    const { onPrerollDebug } = require("../lib/ads/preroll");
+
+    return onPrerollDebug((line: string) => (seen = line));
+  })();
+
+  prerollDebug("loud", "detail");
+  off();
+  setPrerollDebug(false);
+  assert.equal(seen, "loud detail");
+});
+
+// -------------------------------------------------- Prompt 41: the hard block
+
+test("the content cannot start while an ad is pending", () => {
+  const player = readFileSync(join(ROOT_TESTS, "app/watch/[id]/components/VideoPlayer/index.tsx"), "utf8");
+
+  assert.match(
+    player,
+    /if \(prerollPendingRef\.current\) \{\s*event\.preventDefault\?\.\(\);\s*return;/,
+    "a pending ad refuses the play gesture before deciding anything",
+  );
+  for (const name of ["media-play-request", "media-seek-request", "media-pause-request"]) {
+    assert.ok(
+      player.includes(`addEventListener("${name}", blockWhilePending, true)`),
+      `${name} is refused in the capture phase while pending`,
+    );
+  }
+  assert.ok(player.includes('setAttribute("data-preroll", "pending")'));
+  assert.ok(player.includes('removeAttribute("data-preroll")'));
+  assert.ok(player.includes("preroll_content_leak"));
+
+  const playerCss = readFileSync(join(ROOT_TESTS, "app/watch/[id]/components/VideoPlayer/component.module.css"), "utf8");
+
+  assert.ok(playerCss.includes('[data-preroll="pending"]'), "the controls are hidden while pending");
+
+  const overlayCss = readFileSync(join(ROOT_TESTS, "app/watch/[id]/components/VideoPlayer/preroll.module.css"), "utf8");
+
+  assert.match(overlayCss, /\.layer \{[^}]*inset: 0;[^}]*z-index: 30/s, "the ad owns the whole box");
 });

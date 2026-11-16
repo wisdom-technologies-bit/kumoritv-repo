@@ -1,22 +1,29 @@
 "use client";
-// The Download button on the watch page.
+// Prompt 41 (B): Download as a pill in the toolbar row, with a dropdown.
 //
-// Nothing renders when the feature flag is off, when the episode has no links or
-// when the request failed: the page is exactly as it was before this feature.
-// The links are external HTML landing pages, so every quality is a real <a>
-// with target=_blank (a window.open from a click handler is what popup blockers
-// eat); the sponsor page opens from the same click, at most once per interval.
+// Nothing renders when downloads are off, when the episode has no links or when
+// the request failed: the page is exactly as it was before this feature. The
+// pill never navigates by itself - it only toggles the menu. Every quality is a
+// real <a target="_blank" rel="noopener noreferrer nofollow">, so popup blockers
+// do not interfere; the sponsor page still opens from that same click through
+// openSponsoredPage(), exactly as Prompt 39 left it.
+//
+// The links are prefetched 2s after the toolbar mounts (idle delay): the pill is
+// only rendered once we know the episode really has downloads, and opening the
+// menu is instant when the viewer taps it. Fetching on first open instead would
+// mean a pill that may lead nowhere plus a spinner on every tap.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
+import toolbarStyles from "../PlayerToolbar/component.module.css";
 import styles from "./component.module.css";
 import { openSponsoredPage } from "@/app/lib/downloads/ad";
 import DownloadIcon from "@/public/assets/download.svg";
-import { DownloadSheet } from "./sheet";
+import { DownloadMenu, type DownloadPayload } from "./menu";
+import { placeMenu, type MenuPlacement } from "./position";
 
-type Payload = import("./sheet").DownloadPayload;
-
-const AUDIO_LABEL: Record<"sub" | "dub", string> = { sub: "Sub", dub: "Dub" };
+type FetchState = "idle" | "loading" | "ready" | "error";
 
 export default function DownloadEpisode({
   anilistId,
@@ -25,103 +32,209 @@ export default function DownloadEpisode({
   anilistId: number;
   episode: number;
 }) {
-  const [payload, setPayload] = useState<Payload | null>(null);
+  const [payload, setPayload] = useState<DownloadPayload | null>(null);
+  const [state, setState] = useState<FetchState>("idle");
   const [open, setOpen] = useState(false);
-  const [audio, setAudio] = useState<"sub" | "dub">("sub");
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  const pillRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const aliveRef = useRef(true);
+  const pathname = usePathname();
+
+  const load = useCallback(async () => {
+    setState((current) => (current === "ready" ? current : "loading"));
+    try {
+      const response = await fetch(`/api/downloads?anilistId=${anilistId}&episode=${episode}`);
+      const body = (response.ok ? await response.json() : null) as DownloadPayload | null;
+      if (!aliveRef.current) return;
+      if (!body) {
+        setState("error");
+        return;
+      }
+      setPayload(body);
+      setState("ready");
+    } catch {
+      if (aliveRef.current) setState("error");
+    }
+  }, [anilistId, episode]);
 
   useEffect(() => {
-    let alive = true;
-    fetch(`/api/downloads?anilistId=${anilistId}&episode=${episode}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((body: Payload | null) => {
-        if (alive && body) setPayload(body);
-      })
-      .catch(() => undefined);
+    aliveRef.current = true;
+    setMounted(true);
     return () => {
-      alive = false;
+      aliveRef.current = false;
     };
-  }, [anilistId, episode]);
+  }, []);
+
+  // Two seconds of idle after the toolbar appears, then one request.
+  useEffect(() => {
+    if (state !== "idle") return undefined;
+    const id = window.setTimeout(() => void load(), 2000);
+    return () => window.clearTimeout(id);
+  }, [state, load]);
 
   const close = useCallback(() => {
     setOpen(false);
-    // Focus goes back to the button that opened the sheet.
-    window.setTimeout(() => triggerRef.current?.focus(), 0);
+    window.setTimeout(() => pillRef.current?.focus(), 0);
   }, []);
 
+  // Route change (next episode) and fullscreen both end the menu.
   useEffect(() => {
     if (!open) return;
-    const panel = panelRef.current;
-    panel?.focus();
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onFullscreen = () => setOpen(false);
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => document.removeEventListener("fullscreenchange", onFullscreen);
+  }, [open]);
+
+  const position = useCallback(() => {
+    const pill = pillRef.current;
+    if (!pill) return;
+    const rect = pill.getBoundingClientRect();
+    const menu = menuRef.current;
+    setPlacement(
+      placeMenu(
+        { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+        { width: menu?.offsetWidth || 300, height: menu?.offsetHeight || 260 },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlacement(null);
+      return;
+    }
+    position();
+  }, [open, position, state]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (menuRef.current?.contains(target) || pillRef.current?.contains(target)) return;
+      close();
+    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         close();
         return;
       }
-      if (event.key !== "Tab" || !panel) return;
-      const focusable = panel.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      const items = Array.from(
+        menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
       );
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!items.length) return;
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      if (event.key === "ArrowDown") {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+        items[(index + 1) % items.length]?.focus();
+      } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        first.focus();
+        items[index <= 0 ? items.length - 1 : index - 1]?.focus();
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        items[0]?.focus();
+      } else if (event.key === "End") {
+        event.preventDefault();
+        items[items.length - 1]?.focus();
       }
     };
+    document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    window.addEventListener("scroll", position, true);
+    window.addEventListener("resize", position);
     return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
+      window.removeEventListener("scroll", position, true);
+      window.removeEventListener("resize", position);
     };
-  }, [open, close]);
+  }, [open, close, position]);
 
-  if (!payload || payload.disabled || !payload.available || !payload.groups.length) return null;
+  // Focus the first quality once the menu is on screen.
+  useEffect(() => {
+    if (!open || state !== "ready") return;
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open, state]);
 
-  const hasDubbing = payload.groups.some((group) => group.audio === "dub");
-  const initialAudio: "sub" | "dub" = hasDubbing && !payload.groups.some((g) => g.audio === "sub") ? "dub" : audio;
+  const toggle = () => {
+    if (open) {
+      close();
+      return;
+    }
+    if (state === "idle" || state === "error") void load();
+    setOpen(true);
+  };
 
   const handleSelect = () => {
-    openSponsoredPage(payload.ad ?? null, {
+    openSponsoredPage(payload?.ad ?? null, {
       now: Date.now(),
       storage: typeof window !== "undefined" ? window.localStorage : null,
       open: typeof window !== "undefined" ? window.open.bind(window) : null,
     });
+    close();
   };
+
+  // The pill exists only when there is something to download... or when the
+  // request failed, so the menu can say so and offer a retry.
+  const showPill = state === "error" || (state === "ready" && Boolean(payload?.available) && Boolean(payload?.groups?.length));
+
+  if (!mounted || !showPill) return null;
 
   return (
     <>
       <button
         type="button"
-        ref={triggerRef}
-        className={styles.button}
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
+        ref={pillRef}
+        className={toolbarStyles.tool}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Download this episode"
+        onClick={toggle}
         data-download-button="true"
       >
         <DownloadIcon aria-hidden="true" />
-        Download
+        <span className={styles.label}>Download</span>
       </button>
 
-      {open && typeof document !== "undefined"
+      {open && placement
         ? createPortal(
-            <DownloadSheet
-              title={`Download Episode ${episode}`}
-              payload={payload}
-              audio={initialAudio}
-              onAudio={setAudio}
-              onSelect={handleSelect}
-              onClose={close}
-              panelRef={panelRef}
-            />,
+            <div
+              className={styles.menu_layer}
+              data-download-menu="true"
+              style={{
+                left: `${placement.left}px`,
+                top: `${placement.top}px`,
+                width: `${placement.width}px`,
+                maxHeight: `${placement.maxHeight}px`,
+              }}
+            >
+              {state === "error" ? (
+                <p className={styles.menu_status}>
+                  Downloads aren&apos;t available right now.
+                  <button type="button" className={styles.retry} onClick={() => void load()}>
+                    Try again
+                  </button>
+                </p>
+              ) : !payload ? (
+                <p className={styles.menu_status}>Loading downloads…</p>
+              ) : (
+                <DownloadMenu
+                  episode={episode}
+                  payload={payload}
+                  onSelect={handleSelect}
+                  menuRef={menuRef}
+                />
+              )}
+            </div>,
             document.body,
           )
         : null}

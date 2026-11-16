@@ -19,6 +19,7 @@
  * site ships no ad markup.
  */
 
+import { useEffect, useState } from "react";
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import {
@@ -37,8 +38,22 @@ export type AdcashTagProps = {
 
 export default function AdcashTag({ enabled, zoneId, excludePaths }: AdcashTagProps) {
   const pathname = usePathname();
+  /**
+   * Prompt 41 (D): `?ads=off` skips the Autotag for THIS page view only, so the
+   * owner can tap once and compare the page with and without it (that is how the
+   * floating blue "download" circle is proved to be third-party or ours). It is
+   * never stored, never a cookie, and does nothing while ADCASH_ENABLED is off.
+   */
+  const [adsOff, setAdsOff] = useState(false);
+  useEffect(() => {
+    try {
+      setAdsOff(new URLSearchParams(window.location.search).get("ads") === "off");
+    } catch {
+      setAdsOff(false);
+    }
+  }, [pathname]);
 
-  if (!enabled || !zoneId) return null;
+  if (!enabled || !zoneId || adsOff) return null;
   if (isAdcashExcludedPath(pathname, excludePaths)) return null;
 
   const run = () => {

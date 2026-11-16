@@ -17,6 +17,7 @@ import { usePrefs } from "@/app/lib/user-data/prefs";
 import { useWatchUI } from "../WatchLayout";
 import { useClipBridge } from "../ClipBridge/context";
 import { useWatchStateOptional } from "../WatchState";
+import DownloadEpisode from "../DownloadEpisode";
 
 /** One size for every toolbar glyph (16px), filled or stroked. */
 function Icon({
@@ -179,6 +180,9 @@ export default function PlayerToolbar({
         <ClipIcon />
         <span className={styles.clip_label}>Clip</span>
       </button>
+
+      {/* Prompt 41 (B): downloads are a pill in THIS row, not a block below it. */}
+      <DownloadEpisode anilistId={anilistId} episode={episode} />
 
       <div className={styles.nav}>
         {episode > 1 ? (

@@ -3,7 +3,9 @@
 .layer {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  /* Above every vidstack control (z 3-5), the skip pill (6), the end card and the
+     playback-error overlay (6): the ad owns the whole box while it runs. */
+  z-index: 30;
 
   display: flex;
   flex-direction: column;
@@ -101,18 +103,59 @@
   font-weight: 600;
 }
 
-.loading {
+/* Shown until the creative actually starts playing: nothing readable, nothing
+   clickable, just proof that something is happening. */
+.cover {
   position: absolute;
-  bottom: 16px;
-  left: 50%;
+  inset: 0;
 
-  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-  margin: 0;
+  background: #000;
 
-  color: var(--white-100, #fff);
+  cursor: wait;
+}
 
-  font-size: 12px;
+.spinner {
+  width: 28px;
+  height: 28px;
+
+  border: 2px solid rgb(255 255 255 / 25%);
+  border-top-color: rgb(255 255 255 / 85%);
+  border-radius: 50%;
+
+  animation: preroll_spin 900ms linear infinite;
+}
+
+@keyframes preroll_spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sr_only {
+  position: absolute;
+
+  width: 1px;
+  height: 1px;
+
+  margin: -1px;
+  padding: 0;
+
+  overflow: hidden;
+  clip-path: inset(50%);
+
+  border: 0;
+
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
 }
 
 @media (max-width: 420px) {

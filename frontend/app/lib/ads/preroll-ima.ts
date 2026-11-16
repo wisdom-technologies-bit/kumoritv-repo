@@ -225,8 +225,17 @@ export async function startImaPreroll(options: PrerollStartOptions): Promise<Pre
           adsManager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () => {});
           adsManager.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, (event: ImaWindow) => {
             const code = Number(event?.getError?.()?.getErrorCode?.() ?? 900);
+            const safe = Number.isFinite(code) ? code : 900;
 
-            finish({ kind: "error", reason: "ad_error", errorCode: Number.isFinite(code) ? code : 900 });
+            // Nothing has played yet: this is not a broken ad for the viewer, it is
+            // "no ad" (empty VAST, no bid, unsupported creative). The content goes
+            // straight on and the no-fill cooldown starts.
+            if (!state.playing) {
+              finish({ kind: "no_fill", reason: `ima_no_fill_${safe}`, errorCode: safe });
+
+              return;
+            }
+            finish({ kind: "error", reason: "ad_error", errorCode: safe });
           });
         } catch (error) {
           finish({ kind: "error", reason: "ima_manager_error" });
@@ -236,7 +245,7 @@ export async function startImaPreroll(options: PrerollStartOptions): Promise<Pre
     adsLoader.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, (event: ImaWindow) => {
       // No fill is not an error for the viewer: the content simply plays.
       const message = String(event?.getError?.()?.getMessage?.() || "");
-      const noFill = /no ad|no ads|empty|VAST response/i.test(message);
+      const noFill = /no ad|no ads|empty|VAST response/i.test(message) || !state.playing;
 
       finish({ kind: noFill ? "no_fill" : "error", reason: noFill ? "ima_no_fill" : "ima_error" });
     });
@@ -249,6 +258,9 @@ export async function startImaPreroll(options: PrerollStartOptions): Promise<Pre
     request.linearAdSlotHeight = Math.max(1, Math.round(rect.height));
     request.nonLinearAdSlotWidth = Math.max(1, Math.round(rect.width));
     request.nonLinearAdSlotHeight = Math.max(1, Math.round(Math.min(rect.height, 120)));
+    // Prompt 41: without this IMA waits its own 5s on a tag that answers with an
+    // empty <VAST/>. The owner's provider does exactly that today.
+    request.vastLoadTimeout = Math.max(500, Math.round(options.vastTimeoutMs));
     adDisplayContainer.initialize();
     adsLoader.requestAds(request);
 
@@ -281,6 +293,15 @@ export async function startImaPreroll(options: PrerollStartOptions): Promise<Pre
 
       return muted;
     },
-    destroy: () => finish({ kind: "no_fill", reason: "destroyed" }),
+    destroy: () => {
+      // The content never runs through IMA here (the ad has its own <video>), so
+      // contentComplete() is not required; destroying the loader is.
+      try {
+        adsLoader?.destroy?.();
+      } catch {
+        /* already gone */
+      }
+      finish({ kind: "no_fill", reason: "destroyed" });
+    },
   };
 }
