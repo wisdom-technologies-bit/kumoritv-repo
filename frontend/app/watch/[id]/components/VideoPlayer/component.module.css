@@ -308,18 +308,18 @@
    starting the episode under the ad layer. `data-preroll="pending"` is set on the
    <media-player> element while an ad is requested or playing, and removed by
    finishPreroll() - so after an ad the normal controls come straight back. */
-:global([data-media-player][data-preroll="pending"]) :global(.vds-play-button),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-poster),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-controls),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-gesture),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-time-group),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-time-slider),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-captions-button),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-settings-menu),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-audio-tracks-menu),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-menu-button),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-buffering-indicator),
-:global([data-media-player][data-preroll="pending"]) :global(.vds-loading-indicator) {
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-play-button),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-poster),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-controls),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-gesture),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-time-group),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-time-slider),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-captions-button),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-settings-menu),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-audio-tracks-menu),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-menu-button),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-buffering-indicator),
+.container :global([data-media-player][data-preroll="pending"]) :global(.vds-loading-indicator) {
   visibility: hidden;
 
   pointer-events: none;
