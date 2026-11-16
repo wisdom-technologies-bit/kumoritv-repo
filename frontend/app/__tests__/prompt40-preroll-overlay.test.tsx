@@ -96,13 +96,22 @@ function baseState(): PrerollAdState {
 const button = (container: HTMLElement, name: string) =>
   Array.from(container.querySelectorAll("button")).find((node) => (node.getAttribute("aria-label") || node.textContent || "").trim() === name) ?? null;
 
-test("the overlay is an ad surface that never blocks a small phone or desktop layout", () => {
+test("the overlay is an ad surface that never blocks a small phone or desktop layout", async () => {
   for (const width of [360, 1280]) {
     resetPrerollCounters();
-    const { harness } = renderOverlay({ width });
+    const { harness, emit } = renderOverlay({ width });
 
     assert.ok(harness.container.querySelector("[data-preroll-engine]"), "one overlay root");
-    assert.match(harness.container.textContent || "", /Ad/);
+    // Prompt 41: while the tag is loading there is a cover and a spinner, and no
+    // "Loading ad…" sentence (the owner's phone showed that for 12s).
+    assert.ok(harness.container.querySelector("[data-preroll-cover]"), "a cover while loading");
+    assert.equal(/Loading ad/.test(harness.container.textContent || ""), false);
+    assert.equal(harness.container.querySelector("[role='status']")?.textContent, "Loading");
+
+    emit({ playing: true, remainingSec: 20 });
+    await settle();
+    assert.match(harness.container.textContent || "", /Ad/, "the badge appears once the ad plays");
+    assert.equal(harness.container.querySelector("[data-preroll-cover]"), null, "the cover is gone");
     harness.unmount();
   }
 });

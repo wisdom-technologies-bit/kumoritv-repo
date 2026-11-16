@@ -450,3 +450,92 @@ advertiser" (new tab, `rel="noopener noreferrer"`), and that the episode's
 - **Mobile autoplay policies**: the pre-roll starts on the viewer's own Play
   gesture, which is the safest case; a browser that still refuses to play will fall
   straight through to the episode.
+
+---
+
+# In-stream video: the tag is empty (2026-11-16)
+
+**Finding.** On 2026-11-16 the owner ran this from Termux (Android UA, `Referer:
+https://kumoritv.top/`) against zone `12451816`:
+
+```
+<?xml version="1.0" encoding="UTF-8"?><VAST version="4.0"></VAST>
+```
+
+That is a **valid VAST document with zero `<Ad>` elements**: no creative, no
+impression, nothing to play. In ad terms it is **no fill** - the zone had no
+inventory to offer this viewer at that moment. It is not a broken tag, not a
+zone misconfiguration on our side and not something a code change can fix: the
+server answered exactly what it meant to answer.
+
+### What "no fill" means here
+
+| Signal | Meaning | What KumoriTV does |
+|---|---|---|
+| `<VAST version="4.0"></VAST>` | no ad for this request | no fill: content plays, no overlay left behind |
+| `<VAST>` with `<Error>` only | no ad, plus a reporting URL | same, and the error URL is used when we have one |
+| IMA `AD_ERROR` before the creative started (codes 1009/1010/303 etc.) | IMA could not get an ad | treated as **no fill**, not as a failure |
+| HTTP error / timeout / blocked script | the request never resolved | treated as **no fill** for the viewer, logged with its reason |
+| Ad starts then breaks | a real failure | `error`, counted, circuit breaker |
+
+No fill is not an error: it does not count toward the three-strikes breaker, and
+it never leaves a spinner on screen.
+
+### What changed in Prompt 41 (this branch)
+
+1. **Fast no-fill.** `PREROLL_VAST_TIMEOUT_MS` is now `3000` and
+   `PREROLL_START_TIMEOUT_MS` is `5000`. The hard stop is
+   `start + tag`, capped at **8 s** whatever the env says (it used to be
+   `start + tag + 2 s` = 12 s with the old defaults). `ima3` gets
+   `adsRequest.vastLoadTimeout = PREROLL_VAST_TIMEOUT_MS`, so IMA stops waiting
+   on its own 5 s default.
+2. **No-fill cooldown.** After a no-fill the browser remembers
+   `noFillUntil = now + PREROLL_NOFILL_COOLDOWN_MIN` (localStorage + memory, in
+   `try/catch`). Until then the player behaves exactly as if `PREROLL_ENABLED=0`:
+   no request, no overlay, no delay. Counted as `skippedCooldown`.
+   `PREROLL_NOFILL_COOLDOWN_MIN=0` disables the cooldown.
+3. **The content can no longer start under the ad.** While an ad is pending,
+   every `media-play-request`, `media-seek-request` and `media-pause-request` is
+   cancelled (capture phase, any trigger), `playing` is stopped again and logged
+   as `preroll_content_leak`, and `data-preroll="pending"` on the `<media-player>`
+   element hides the play button, poster, control bar, time, sliders, caption and
+   settings buttons and the gesture layer. Only `finishPreroll()` starts content.
+4. **No stuck "Loading ad…".** The overlay shows a black cover and a spinner with
+   one polite "Loading" line for screen readers; the badge, countdown, Mute,
+   "Visit advertiser" and Skip appear only once the creative actually plays.
+5. **`?prerolldebug=1`** (only with the flag on) prints each step with a
+   timestamp in the console and keeps one short line at the bottom of the player,
+   which is readable on a phone.
+
+### Environment (full set, with defaults)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PREROLL_ENABLED` | `0` | master switch |
+| `ADCASH_VAST_URL` | empty | off while empty; the zone tag, never committed |
+| `PREROLL_INTERVAL_MIN` | `20` | one pre-roll per viewer per 20 min; `0` = every eligible play |
+| `PREROLL_SKIP_AFTER_SEC` | `5` | only when the VAST has no `skipoffset`; clamped to 10 |
+| `PREROLL_MAX_AD_SEC` | `30` | longer creative counts as no ad |
+| `PREROLL_START_TIMEOUT_MS` | `5000` | engine start (also the IMA SDK load budget) |
+| `PREROLL_VAST_TIMEOUT_MS` | `3000` | the tag request itself |
+| `PREROLL_NOFILL_COOLDOWN_MIN` | `10` | stay quiet this long after a no-fill; `0` disables |
+
+### Owner's next actions (dashboard, not code)
+
+1. Adcash panel: confirm `kumoritv.top` is **approved for In-stream Video** and
+   that zone `12451816` is **active** (not paused, not pending review).
+2. Check the zone's **bid/floor**: an empty VAST usually means no bid met the
+   floor for this geo (Nigeria), device (Android) or time of day. Lower the floor
+   or let it run for a day and retest.
+3. Contact Adcash support and quote the finding above verbatim: *"zone 12451816
+   returns `<VAST version='4.0'></VAST>` (empty, no Ad) for Nigerian Android
+   traffic referred by kumoritv.top"*.
+4. Retest with the same curl:
+
+```bash
+curl -s -A 'Mozilla/5.0 (Linux; Android 13)' -e 'https://kumoritv.top/' \
+  "https://youradexchange.com/video/select.php?r=12451816" | head -c 3000
+```
+
+A filled response contains `<Ad>` with `<InLine>` or `<Wrapper>`. While it is
+empty, leave the code alone: the player already behaves correctly without ads.

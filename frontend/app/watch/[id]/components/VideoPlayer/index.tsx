@@ -33,7 +33,11 @@ import ClipEndCard from "../ClipEndCard";
 import PrerollAd from "./PrerollAd";
 import {
   logPrerollOutcome,
+  onPrerollDebug,
+  prerollDebug,
   prerollEligibility,
+  recordPrerollCount,
+  setPrerollDebug,
   readPrerollAutoplayAt,
   readPrerollStore,
   type PrerollClientConfig,
@@ -129,6 +133,7 @@ export default function VideoPlayer({
   const playerRef = useRef<any>(null);
   // Prompt 40: the pre-roll is decided once per play and never re-requested.
   const [prerollRun, setPrerollRun] = useState(false);
+  const [prerollDebugLine, setPrerollDebugLine] = useState("");
   const prerollShownRef = useRef(false);
   const prerollPendingRef = useRef(false);
   const progressRef = useRef({ time: initialTime, duration: 0 });
@@ -429,6 +434,15 @@ export default function VideoPlayer({
     if (!player || !preroll?.enabled) return undefined;
 
     const onPlayRequest = (event: any) => {
+      // Prompt 41: while an ad is pending, NOTHING starts or moves the content -
+      // not the visible play button, not space, not a double-tap, not the media
+      // session. This early return used to let the play button straight through.
+      if (prerollPendingRef.current) {
+        event.preventDefault?.();
+
+        return;
+      }
+
       const trigger = event?.detail?.trigger;
 
       if (trigger && trigger !== "user") return;
@@ -446,6 +460,7 @@ export default function VideoPlayer({
         lastAdAt: store.lastAdAt,
         tabAdAt: store.tabAdAt,
         breakerOpenUntil: store.breaker.openUntil,
+        noFillUntil: store.noFillUntil,
         lastAutoplayAdAt: readPrerollAutoplayAt(),
       });
 
@@ -459,25 +474,86 @@ export default function VideoPlayer({
       setPrerollRun(true);
     };
     // Belt and braces: if the player starts anyway, stop it under the overlay so
-    // the episode is never audible behind an ad.
+    // the episode is never audible behind an ad, and say so once.
     const keepContentQuiet = () => {
-      if (prerollPendingRef.current) void player.pause?.();
+      if (!prerollPendingRef.current) return;
+      void player.pause?.();
+      prerollDebug("preroll_content_leak");
+      recordPrerollCount("skipped", "content_leak");
+    };
+    const blockWhilePending = (event: any) => {
+      if (!prerollPendingRef.current) return;
+      event.preventDefault?.();
+      prerollDebug("blocked", String(event?.type || "request"));
     };
 
     player.addEventListener("media-play-request", onPlayRequest);
+    // Capture phase: these are refused before vidstack's own handlers see them.
+    player.addEventListener("media-play-request", blockWhilePending, true);
+    player.addEventListener("media-seek-request", blockWhilePending, true);
+    player.addEventListener("media-pause-request", blockWhilePending, true);
+    player.addEventListener("play", keepContentQuiet);
     player.addEventListener("playing", keepContentQuiet);
 
     return () => {
       player.removeEventListener("media-play-request", onPlayRequest);
+      player.removeEventListener("media-play-request", blockWhilePending, true);
+      player.removeEventListener("media-seek-request", blockWhilePending, true);
+      player.removeEventListener("media-pause-request", blockWhilePending, true);
+      player.removeEventListener("play", keepContentQuiet);
       player.removeEventListener("playing", keepContentQuiet);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preroll?.enabled, preroll?.vastUrl, sourceId]);
 
+  /**
+   * Prompt 41: `data-preroll="pending"` on the player root is what hides the
+   * content's own controls while an ad is in the way (see component.module.css),
+   * and `?prerolldebug=1` feeds the line under the player.
+   */
+  useEffect(() => {
+    const el = playerRef.current?.el as HTMLElement | undefined;
+
+    try {
+      if (prerollRun) el?.setAttribute("data-preroll", "pending");
+      else el?.removeAttribute("data-preroll");
+    } catch {
+      /* the player element is not ready yet */
+    }
+
+    return () => {
+      try {
+        el?.removeAttribute("data-preroll");
+      } catch {
+        /* nothing to clean */
+      }
+    };
+  }, [prerollRun, sourceId]);
+
+  useEffect(() => {
+    if (!preroll?.enabled) return undefined;
+    let on = false;
+
+    try {
+      on = new URLSearchParams(window.location.search).get("prerolldebug") === "1";
+    } catch {
+      on = false;
+    }
+    setPrerollDebug(on);
+    if (!on) return undefined;
+
+    return onPrerollDebug((line) => setPrerollDebugLine(line));
+  }, [preroll?.enabled]);
+
   /** The ad is over: drop the overlay and start the episode in the same task. */
   const finishPreroll = useCallback((outcome: PrerollOutcome) => {
     prerollPendingRef.current = false;
     setPrerollRun(false);
+    try {
+      (playerRef.current?.el as HTMLElement | undefined)?.removeAttribute("data-preroll");
+    } catch {
+      /* nothing to clean */
+    }
     const player: any = playerRef.current;
 
     try {
@@ -877,6 +953,7 @@ export default function VideoPlayer({
                 maxAdSec={preroll.maxAdSec}
                 startTimeoutMs={preroll.startTimeoutMs}
                 vastTimeoutMs={preroll.vastTimeoutMs}
+                noFillCooldownMin={preroll.noFillCooldownMin}
                 onFinished={finishPreroll}
               />
             )}
@@ -1006,6 +1083,12 @@ export default function VideoPlayer({
               </div>
             </div>
           </div>
+        )}
+
+        {prerollDebugLine && (
+          <p className={styles.preroll_debug} data-preroll-debug>
+            {prerollDebugLine}
+          </p>
         )}
 
         {switchingToSub && (

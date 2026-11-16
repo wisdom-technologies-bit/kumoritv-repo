@@ -18,14 +18,19 @@ export type PrerollConfig = {
   maxAdSec: number;
   startTimeoutMs: number;
   vastTimeoutMs: number;
+  /** After a no-fill, stop asking for this many minutes. 0 disables it. */
+  noFillCooldownMin: number;
 };
 
 export const PREROLL_DEFAULTS = {
   intervalMin: 20,
   skipAfterSec: 5,
   maxAdSec: 30,
-  startTimeoutMs: 6000,
-  vastTimeoutMs: 4000,
+  // Prompt 41: a known-empty tag must never cost the viewer 12s. Start + tag is
+  // the whole ad budget, and it is capped (see prerollHardStopMs).
+  startTimeoutMs: 5000,
+  vastTimeoutMs: 3000,
+  noFillCooldownMin: 10,
 } as const;
 
 /** The skip button may never wait longer than this, whatever the config says. */
@@ -42,6 +47,7 @@ export const PREROLL_STORAGE_KEYS = {
   lastAdAt: "kumori:preroll:last",
   tabAdAt: "kumori:preroll:tab",
   breaker: "kumori:preroll:breaker",
+  noFillUntil: "kumori:preroll:nofill",
 } as const;
 
 function intFrom(raw: string | undefined, fallback: number, min: number, max: number) {
@@ -76,6 +82,12 @@ export function readPrerollConfig(
     maxAdSec: intFrom(env.PREROLL_MAX_AD_SEC, PREROLL_DEFAULTS.maxAdSec, 5, 120),
     startTimeoutMs: intFrom(env.PREROLL_START_TIMEOUT_MS, PREROLL_DEFAULTS.startTimeoutMs, 500, 30000),
     vastTimeoutMs: intFrom(env.PREROLL_VAST_TIMEOUT_MS, PREROLL_DEFAULTS.vastTimeoutMs, 500, 20000),
+    noFillCooldownMin: intFrom(
+      env.PREROLL_NOFILL_COOLDOWN_MIN,
+      PREROLL_DEFAULTS.noFillCooldownMin,
+      0,
+      24 * 60,
+    ),
   };
 }
 
@@ -99,6 +111,8 @@ export type PrerollEligibilityInput = {
   /** This tab already showed its one ad (a second tab must not double it). */
   tabAdAt: number | null;
   breakerOpenUntil: number | null;
+  /** A recent no-fill parks ad requests until this instant (Prompt 41). */
+  noFillUntil?: number | null;
   /** When the previous pre-roll ran before an auto-next. */
   lastAutoplayAdAt?: number | null;
 };
@@ -117,7 +131,8 @@ export type PrerollSkipReason =
   | "interval"
   | "tab"
   | "autoplay"
-  | "breaker";
+  | "breaker"
+  | "no_fill_cooldown";
 
 /**
  * Every condition must hold. Order matters only for the log line: the first
@@ -127,6 +142,12 @@ export function prerollEligibility(input: PrerollEligibilityInput): PrerollEligi
   const { config, now } = input;
 
   if (!config.enabled) return { ok: false, reason: config.vastUrl ? "flag_off" : "no_tag" };
+  // Prompt 41: Adcash answers the tag with an empty <VAST/> right now. After one
+  // no-fill, stop asking for the cooldown window instead of making every episode
+  // wait for the same nothing.
+  if (config.noFillCooldownMin > 0 && input.noFillUntil && input.noFillUntil > now) {
+    return { ok: false, reason: "no_fill_cooldown" };
+  }
   if (input.isEmbed) return { ok: false, reason: "embed" };
   if (input.isStaff) return { ok: false, reason: "staff" };
   if (input.adultBlocked) return { ok: false, reason: "adult" };
@@ -161,6 +182,8 @@ export type PrerollStore = {
   lastAdAt: number | null;
   tabAdAt: number | null;
   breaker: BreakerState;
+  /** No-fill cooldown (Prompt 41): do not ask for an ad before this instant. */
+  noFillUntil: number | null;
 };
 
 const EMPTY_BREAKER: BreakerState = { failures: [], openUntil: null };
@@ -175,6 +198,14 @@ function readJson(key: string, storage: "local" | "session"): unknown {
   } catch {
     // Private mode, disabled storage, a corrupted value: "no memory", never a crash.
     return null;
+  }
+}
+
+function clearJson(key: string, storage: "local" | "session") {
+  try {
+    (storage === "local" ? globalThis.localStorage : globalThis.sessionStorage)?.removeItem(key);
+  } catch {
+    /* private mode, or no storage at all */
   }
 }
 
@@ -203,6 +234,7 @@ export function readPrerollStore(): PrerollStore {
   return {
     lastAdAt,
     tabAdAt,
+    noFillUntil: asTime(readJson(PREROLL_STORAGE_KEYS.noFillUntil, "local")),
     breaker:
       breaker && Array.isArray(breaker.failures)
         ? { failures: breaker.failures.filter((n) => Number.isFinite(n)), openUntil: asTime(breaker.openUntil) }
@@ -224,6 +256,34 @@ export function readPrerollAutoplayAt(): number | null {
 
 export function writePrerollBreaker(state: BreakerState) {
   writeJson(PREROLL_STORAGE_KEYS.breaker, state, "local");
+}
+
+/**
+ * Remembers a no-fill for the cooldown window. `null` clears it (tests, or a
+ * deliberate reset through `?prerolldebug=1`).
+ */
+export function writePrerollNoFill(until: number | null) {
+  if (until == null) {
+    clearJson(PREROLL_STORAGE_KEYS.noFillUntil, "local");
+
+    return;
+  }
+  writeJson(PREROLL_STORAGE_KEYS.noFillUntil, until, "local");
+}
+
+/** `now + PREROLL_NOFILL_COOLDOWN_MIN`, or null when the cooldown is off. */
+export function prerollNoFillUntil(config: Pick<PrerollConfig, "noFillCooldownMin">, now: number) {
+  if (!(config.noFillCooldownMin > 0)) return null;
+
+  return now + config.noFillCooldownMin * 60 * 1000;
+}
+
+/**
+ * The whole ad budget: engine start AND tag load, capped at 8s whatever the env
+ * says. An ad that has not finished by then is "no ad".
+ */
+export function prerollHardStopMs(config: Pick<PrerollConfig, "startTimeoutMs" | "vastTimeoutMs">) {
+  return Math.min(config.startTimeoutMs + config.vastTimeoutMs, 8000);
 }
 
 export function isPrerollBreakerOpen(state: BreakerState, now: number) {
@@ -256,6 +316,8 @@ export type PrerollCounters = {
   started: number;
   completed: number;
   skipped: number;
+  /** Not requested at all: a recent no-fill parked the ad (Prompt 41). */
+  skippedCooldown: number;
   errored: number;
   byReason: Record<string, number>;
 };
@@ -266,6 +328,7 @@ const freshCounters = (): PrerollCounters => ({
   started: 0,
   completed: 0,
   skipped: 0,
+  skippedCooldown: 0,
   errored: 0,
   byReason: {},
 });
@@ -305,4 +368,45 @@ export function logPrerollOutcome(outcome: { kind: string; reason?: string; ms: 
   console.info(
     `preroll_outcome kind=${outcome.kind} reason=${outcome.reason || "none"} ms=${Math.max(0, Math.round(outcome.ms))}`,
   );
+}
+
+// ------------------------------------------------------------------- debug
+
+/**
+ * `?prerolldebug=1` (only when the pre-roll flag is on) prints every step with a
+ * timestamp in the console and feeds one short line under the player, which is
+ * what the owner can actually read on a phone.
+ */
+let debugEnabled = false;
+const debugListeners = new Set<(line: string) => void>();
+let lastDebugLine = "";
+
+export function setPrerollDebug(enabled: boolean) {
+  debugEnabled = Boolean(enabled);
+}
+
+export function isPrerollDebugEnabled() {
+  return debugEnabled;
+}
+
+export function prerollDebug(step: string, detail?: string) {
+  const line = detail ? `${step} ${detail}` : step;
+
+  lastDebugLine = line;
+  if (!debugEnabled) return;
+  // eslint-disable-next-line no-console
+  console.info("[preroll]", new Date().toISOString().slice(11, 23), line);
+  debugListeners.forEach((listener) => listener(line));
+}
+
+export function onPrerollDebug(listener: (line: string) => void) {
+  debugListeners.add(listener);
+
+  return () => {
+    debugListeners.delete(listener);
+  };
+}
+
+export function lastPrerollDebugLine() {
+  return lastDebugLine;
 }
