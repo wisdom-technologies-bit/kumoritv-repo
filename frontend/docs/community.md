@@ -25,6 +25,8 @@ each has its own rollback.
 4. `docs/sql/comments-deleted-users.sql`
 5. `docs/sql/community-comments-arm.sql` (Phase 2: comments in the feed)
 6. `docs/sql/community-clips-arm.sql` (Phase 3: shared clips in the feed)
+7. `docs/sql/community-phase-4.sql` (Phase 4: `profiles.community_toasts`, the
+   announcement columns and the admin write policies)
 
 File 5 may be run before or after the Phase 2 app deploy: it keeps the function
 signature and adds one column (`is_adult`) at the end, which the older client
@@ -140,6 +142,7 @@ select proname, proacl from pg_proc
 
 Exact reverse of the run order, because each file depends on the one before it:
 
+0a. `docs/sql/community-phase-4.rollback.sql` (Phase 4)
 0. `docs/sql/community-clips-arm-rollback.sql` (restores the Phase 2 feed
    function and the three-argument `community_new_posts`, and drops the clips
    index)
@@ -250,3 +253,195 @@ clip, a masked adult clip (asserting it carries no `<img>`, no `<a>`, no title
 and no `/clip/` path anywhere in the HTML), and the five-chip phone bar. The
 config also starts a second server with `COMMUNITY_ENABLED` unset, which must
 404.
+
+## 10. Phase 4: the new-post bar
+
+A small bar appears at the top of the page when someone posts in Community.
+Nothing else changed: it polls, it never opens a websocket, and with
+`COMMUNITY_ENABLED` off it does not exist.
+
+### How it works, in one paragraph
+
+`GET /api/community/latest?after=<cursor>&limit=5` returns the newest public
+items created after the cursor: posts with status `visible`, and announcements
+that are published and not expired. The toast polls it every 30 s with
+`If-None-Match`, so an unchanged feed costs a `304` with no body. The response
+carries `Cache-Control: public, s-maxage=10, stale-while-revalidate=20` and the
+endpoint keeps a 10 s in-memory cache per instance, because the payload is
+identical for every viewer. A per-IP limit of 60 requests a minute answers a
+scraper with `429` and `Retry-After`.
+
+### The API contract
+
+```
+GET /api/community/latest?after=2026-11-17T09:00:00.000Z&limit=5
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "…",
+      "kind": "post",
+      "authorId": "…",
+      "authorName": "Ada",
+      "authorAvatar": "https://…",
+      "text": "first 140 characters, Markdown stripped",
+      "hasClip": true,
+      "clipThumb": "https://… or null",
+      "adult": false,
+      "href": "/community/post/…",
+      "createdAt": "2026-11-17T09:04:11.000Z"
+    }
+  ],
+  "cursor": "2026-11-17T09:04:11.000Z"
+}
+```
+
+* `cursor` is the newest `created_at` in the response; pass it back as `after`.
+* Responses carry `ETag`; send it back as `If-None-Match` and an unchanged feed is
+  `304` with no body.
+* With the flag off: `404`, and the route never touches the database.
+* Hidden, removed and adult-gated rows never appear. A post marked `[deleted]`
+  keeps the `[deleted]` author name; a spoiler post's text is the word
+  "Spoiler"; adult clip posts are reduced to `{id, kind, adult: true, href,
+  createdAt}` with the text "New 18+ clip" and no thumbnail, so the cached
+  payload is byte-identical for everyone and nothing adult is ever leaked to a
+  reader who did not ask for it.
+
+### Turning the bar off
+
+* For one reader: Settings → Notifications → "New post notifications". Stored in
+  `profiles.community_toasts` (default on) and mirrored to `localStorage` so
+  guests keep their choice too. The bar reads the setting at poll time, so the
+  switch takes effect without a reload.
+* For everyone: set `COMMUNITY_TOASTS=off` (or `0`/`false`/`no`) and redeploy.
+  The community itself keeps working.
+* Tuning, all optional: `COMMUNITY_POLL_SECONDS` (30), `COMMUNITY_TOAST_SECONDS`
+  (5), `COMMUNITY_TOAST_MIN_GAP_SECONDS` (10). Unset means the default.
+
+### When the bar stays quiet
+
+No toast for your own posts, on `/community` (there you get the "N new posts"
+pill instead), in fullscreen, while a pre-roll ad is pending on the watch page,
+while you are typing in a field, or when you asked for it to be off. At most one
+toast every 10 s; anything newer is collapsed into the next one ("Ada and 2
+others posted"). It is a `role="status"` live region, it never takes focus, and
+hovering or focusing it pauses its 5 s timer.
+
+### Why polling and not Realtime
+
+Polling with an ETag costs one conditional request per reader per 30 s, and a
+`304` is a few hundred bytes. Supabase Realtime would be instant, but every open
+tab holds a connection: the Free plan allows 200 concurrent connections and Pro
+allows 500. On a release night with a few thousand readers, Realtime would be
+the larger bill and the larger failure mode, and this feature does not need
+instant. If the numbers ever justify it, the swap point is one function: the
+polling loop in `app/components/CommunityToast/` - replace its `setInterval` and
+`fetch` with a channel subscription that calls the same `nextToast` state
+machine. Nothing else in the app would change.
+
+## 11. Phase 4: writing announcements (Markdown)
+
+Announcements are written from the site now, not in the Supabase Table Editor.
+The table keeps its shape apart from three columns (`updated_at`,
+`created_by`, `idempotency_key`), and `docs/sql/community-phase-4.sql` adds them
+before the code needs them.
+
+### Step by step, for the owner
+
+1. Sign in with the admin account (the id in `public.staff_roles`).
+2. Open `/community/announcements` and press **Write announcement**. That button
+   only exists in an admin's HTML, and the page itself is a 404 for everyone else.
+3. **Title**: what the card and the bell show. Maximum 120 characters.
+4. **Body**: Markdown, maximum 5,000 characters. The toolbar inserts Heading,
+   Bold, Italic, Link, List and Quote at the cursor, and the Preview pane is the
+   real renderer, so what you see is what publishes.
+5. **Image URL** and **"Read more" link**: optional, `https://` only.
+6. **Expiry**: optional. Empty means it never expires. You pick it in your own
+   timezone; it is stored in UTC.
+7. **Send push notification**: on by default. Turn it off to publish quietly: the
+   row is stamped so the cron skips it, and nothing is sent later either.
+8. Press **Publish**, check the confirm step (it shows the exact preview and says
+   whether a push goes out), then **Publish now**.
+
+A double click cannot create two announcements: the browser sends one
+idempotency key per compose attempt and a unique index rejects the second insert.
+Editing an already pushed announcement never re-sends its push. Below the form
+every announcement is listed with its status and three actions: Edit, Expire
+now, Delete.
+
+### The Markdown you can use
+
+Headings `#` to `###`, paragraphs and line breaks, **bold**, *italic*, ordered
+and unordered lists, blockquotes, horizontal rules, inline code, links and bare
+autolinks. That is the whole subset, on purpose:
+
+* raw HTML is never rendered (`<script>`, `<img onerror>` and friends are
+  dropped: there is no `rehype-raw` in the tree),
+* links are only `https:`, `http:` and `mailto:`; `javascript:` and `data:` are
+  removed, and external links open in a new tab with
+  `rel="noopener noreferrer nofollow ugc"`,
+* images in the body are not rendered. Use the Image URL field,
+* a body `#` becomes an `h2` on the page, because the title is the only `h1`.
+
+The sample that has to keep working, exactly as typed:
+
+```markdown
+# Service Update: KumoriTV Is Back Online!
+
+We are pleased to announce that **KumoriTV is fully accessible again!**
+
+The temporary service disruption has been resolved, and our website is back up and running.
+
+We sincerely apologise for the inconvenience ... Thank you for staying with us.
+
+**We're back. Happy watching!**
+
+*The KumoriTV Team*
+https://kumoritv.top
+```
+
+The plain-text projection (Markdown stripped, 140 characters cut at a word
+boundary) is what the bell preview, the `<meta>` description, Open Graph and the
+push body carry. Old plain-text announcements still render: plain text is valid
+Markdown.
+
+### The admin API
+
+All three routes need a real session and `is_admin()`, allow 10 writes a minute
+per admin, validate every field server-side and reject unknown fields. They write
+with the caller's own session, so RLS applies underneath.
+
+| Method | Route | Body |
+| --- | --- | --- |
+| POST | `/api/community/admin/announcements` | `{title, body, image, url, expiresAt, sendPush, idempotencyKey}` |
+| PATCH | `/api/community/admin/announcements/[id]` | the same fields; `sendPush` is ignored |
+| DELETE | `/api/community/admin/announcements/[id]` | - |
+
+Answers are `{ok: true, id}` or `{error, message}`, with status `400` validation
+(with `field`), `401` no session, `404` not an admin or not found (deliberately
+indistinguishable), `429` rate limited with `Retry-After`, `500` write failed and
+never a database message. No service role is used in this phase: RLS expresses
+every rule, including "an edit never re-sends".
+
+The audit line goes to the server log as
+`[community][audit] <action> announcement=<id> admin=<uid>`, not into
+`community_moderation_log`: that table only accepts
+`hide/unhide/remove/restore/role_change` and has no insert grant for browser
+roles. Widening its check constraint for four new verbs was not worth touching a
+table Phase 2 already relies on.
+
+### Known limits
+
+* `/community/announcements` is indexable and in the sitemap only while
+  `COMMUNITY_ENABLED` is on.
+* "Load more" is keyset pagination on `created_at`; two announcements published in
+  the same millisecond could order either way.
+* "Expire now" sets the expiry two seconds ahead, because the validator only
+  accepts a future instant; the row leaves the lists immediately after.
+* The composer keeps one draft per browser, not per announcement: editing an
+  existing announcement does not overwrite a draft.
+* Real push delivery still depends on OneSignal and each reader's preference. The
+  tests use a stand-in transport, so they prove the call, not the delivery.
+

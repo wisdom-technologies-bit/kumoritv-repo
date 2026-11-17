@@ -21,6 +21,7 @@ import ClipPostCard, { isClipPost } from "./ClipPostCard";
 import AnnouncementCard from "./AnnouncementCard";
 import CommentCard from "./CommentCard";
 import ReportDialog from "./ReportDialog";
+import CommunityNewPostPill from "./CommunityNewPostPill";
 
 export type FeedShellProps = {
   /** From ?filter=..., so a filtered feed is linkable and server-rendered. */
@@ -392,6 +393,11 @@ export default function FeedShell({
               <p className={styles.sr_only} role="status" aria-live="polite">
                 {liveMessage}
               </p>
+
+              {/* Phase 4: where the toast is suppressed, the same poll reports a
+                  count instead. The click refreshes page one; nothing is inserted
+                  under the reader's place. */}
+              <CommunityNewPostPill onRefresh={() => void loadPage("reset", filter, null)} />
 
               {isLoading && (
                 <div aria-hidden="true" style={{ display: "grid", gap: 12 }}>

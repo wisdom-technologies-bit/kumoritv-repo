@@ -12,6 +12,9 @@ import { AuthProvider } from "./lib/supabase/AuthProvider";
 import PushProvider from "./lib/push/PushProvider";
 import AdcashTag from "./components/Ads/AdcashTag";
 import { readAdcashConfig } from "./lib/ads/adcash";
+import CommunityLatestProvider from "./components/CommunityToast";
+import { isCommunityToastEnabled } from "./lib/community/flag";
+import { readLatestConfig } from "./lib/community/latest";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -67,6 +70,14 @@ export default function RootLayout({
   // a build-time inline, so a Railway variable change needs no code change.
   const adcash = readAdcashConfig((name) => process.env[name]);
 
+  // Community Phase 4: the flag and the toast tuning are read per render, not
+  // inlined at build time. With the flag off the provider renders its children
+  // and nothing else: no timer, no poll, no markup.
+  // Read per request: off means the bar never mounts, and with it off no timer,
+  // listener or request for /api/community/latest exists at all.
+  const communityToastsEnabled = isCommunityToastEnabled();
+  const latestConfig = readLatestConfig((name) => process.env[name]);
+
   return (
     <html lang="en">
       <head>
@@ -82,15 +93,20 @@ export default function RootLayout({
         <Analytics /> {/* Vercel Analytics - Has use limit */}
         <StoreProvider>
           <AuthProvider>
-            {/* Only signed-in users ever load OneSignal; the bell does not need it. */}
-            <PushProvider />
-            <Header />
+            {/* Phase 4: ONE poll and ONE toast host for the whole site. Inside
+                AuthProvider so the toast knows the viewer; the flag is a prop,
+                so nothing of this phase mounts when it is off. */}
+            <CommunityLatestProvider enabled={communityToastsEnabled} config={latestConfig}>
+              {/* Only signed-in users ever load OneSignal; the bell does not need it. */}
+              <PushProvider />
+              <Header />
 
-            <NextTopLoader color="var(--brand-color)" showSpinner={false} />
+              <NextTopLoader color="var(--brand-color)" showSpinner={false} />
 
-            {children || <LoadingPageContainer />}
+              {children || <LoadingPageContainer />}
 
-            <Footer />
+              <Footer />
+            </CommunityLatestProvider>
           </AuthProvider>
         </StoreProvider>
       </body>

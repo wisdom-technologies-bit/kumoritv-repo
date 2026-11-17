@@ -13,6 +13,8 @@ import styles from "@/app/community/page.module.css";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { createClient } from "@/app/lib/supabase/server";
 import { MegaphoneIcon } from "@/app/community/components/icons";
+import AnnouncementMarkdown from "@/app/lib/community/markdown";
+import { plainSnippet } from "@/app/lib/community/latest";
 
 export const dynamic = "force-dynamic";
 
@@ -47,9 +49,11 @@ const loadAnnouncement = cache(async function loadAnnouncement(id: string): Prom
   }
 });
 
+// Phase 4: the body is Markdown now, so every plain-text surface (meta
+// description, Open Graph, Twitter card) uses the same stripped projection. The
+// bell preview and the push body use it too, at 140 characters.
 function descriptionFor(row: Announcement | null): string {
-  const text = (row?.body ?? "").replace(/\s+/g, " ").trim();
-  return text.length > 160 ? `${text.slice(0, 157)}…` : text || "An announcement from the KumoriTV team.";
+  return plainSnippet(row?.body, 160) || "An announcement from the KumoriTV team.";
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
@@ -110,7 +114,7 @@ export default async function AnnouncementPage({ params }: { params: { id: strin
             </span>
           </div>
 
-          {row.body && <p className={styles.thread_body}>{row.body}</p>}
+          {row.body ? <AnnouncementMarkdown body={row.body} /> : null}
 
           {row.image && (
             <div className={styles.announcement_media}>

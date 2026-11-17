@@ -1,0 +1,223 @@
+/* Community Phase 4: the new-post bar.
+   Fixed, under the header, one element. Desktop is a two-line card; on a phone
+   it is exactly one line with the clip icon AFTER the truncating span. */
+
+.host {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+  /* Never shifts layout: the host is empty and out of flow until a toast. */
+}
+
+.toast {
+  position: relative;
+  pointer-events: auto;
+  border: 1px solid var(--white-25);
+  border-radius: 14px;
+  background: rgba(18, 18, 30, 0.97);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+  animation: toast_in 200ms ease-out both;
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+  will-change: transform, opacity;
+}
+
+.toast_leaving {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@keyframes toast_in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 44px 10px 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 14px;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: 2px;
+}
+
+.desktop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--white-05);
+  color: var(--brand-color);
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar_fallback {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white-75);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--white-100);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--white-75);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.thumb {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--white-05);
+}
+
+.desktop_clip_icon {
+  flex: 0 0 auto;
+  color: var(--white-50);
+}
+
+.mobile {
+  display: none;
+}
+
+.dismiss {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--white-75);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 0 14px 14px 0;
+}
+
+.dismiss:hover {
+  color: var(--white-100);
+}
+
+.dismiss:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: -4px;
+}
+
+/* ------------------------------- phone ----------------------------------- */
+
+@media (max-width: 767.98px) {
+  .host {
+    top: 64px;
+    width: calc(100vw - 24px);
+  }
+
+  .desktop {
+    display: none;
+  }
+
+  .link {
+    padding: 12px 44px 12px 12px;
+  }
+
+  /* Exactly one line. The text span truncates; the icon sits beside it and is
+     never clipped, because it is a sibling, not a child of the ellipsis. */
+  .mobile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .mobile_text {
+    min-width: 0;
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--white-100);
+    text-align: left;
+  }
+
+  .mobile_icon {
+    flex: 0 0 auto;
+    color: var(--white-50);
+  }
+}
+
+/* Motion: the slide goes, the fade stays (one frame). */
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+    transition: opacity 0.01ms linear;
+  }
+
+  .toast_leaving {
+    transform: none;
+  }
+}

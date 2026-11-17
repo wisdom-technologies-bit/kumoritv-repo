@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import type { SitemapPayload } from "@/lib/sitemap-cache";
 import { fetchAiringWindow } from "@/app/lib/discovery/anilist";
+import { isCommunityEnabled } from "@/app/lib/community/flag";
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top").replace(/\/$/, "");
 export const CHUNK_SIZE = 10000;
@@ -524,6 +525,24 @@ export const STATIC_SITEMAP_PAGES: Array<{ path: string; changefreq: string; pri
   { path: "/search?type=manga", changefreq: "daily", priority: "0.7" },
 ];
 
+/**
+ * Phase 4: /community and its announcements index are public pages, but only
+ * while the flag is on. Same rule as every other community surface: read at
+ * request time, so a deploy with COMMUNITY_ENABLED off advertises neither.
+ */
+export const COMMUNITY_SITEMAP_PAGES: Array<{ path: string; changefreq: string; priority: string }> = [
+  { path: "/community", changefreq: "hourly", priority: "0.7" },
+  { path: "/community/announcements", changefreq: "daily", priority: "0.6" },
+];
+
+export function staticSitemapPages(enabled = isCommunityEnabled()): Array<{
+  path: string;
+  changefreq: string;
+  priority: string;
+}> {
+  return enabled ? [...STATIC_SITEMAP_PAGES, ...COMMUNITY_SITEMAP_PAGES] : [...STATIC_SITEMAP_PAGES];
+}
+
 export function buildStaticSitemap(pages = STATIC_SITEMAP_PAGES): string {
   return sitemapDoc(pages.map((page) => sitemapUrl(`${SITE_URL}${page.path}`, null, page.changefreq, page.priority)));
 }
@@ -661,10 +680,13 @@ export async function buildRecentSitemapPayload(
 
 /** /sitemaps/static.xml */
 export function buildStaticSitemapPayload(): SitemapPayload {
-  const body = buildStaticSitemap(STATIC_SITEMAP_PAGES);
+  // Flag read per request: with COMMUNITY_ENABLED off the two community URLs are
+  // not in the sitemap at all.
+  const pages = staticSitemapPages();
+  const body = buildStaticSitemap(pages);
   return assertSitemapWithinLimits("static", {
     body,
-    urls: STATIC_SITEMAP_PAGES.length,
+    urls: pages.length,
     lastModified: null,
     empty: false,
   });

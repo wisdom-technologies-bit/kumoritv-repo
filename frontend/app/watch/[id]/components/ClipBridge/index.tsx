@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ClipPanel from "../ClipPanel";
 import { ClipBridgeContext, type PlayerApi } from "./context";
+import { claimToast, releaseToast } from "@/app/lib/toast/coordinator";
 
 const TOAST_MS = 3200;
 
@@ -53,13 +54,20 @@ export default function ClipBridge({
 
   const showToast = useCallback((message: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
+    // Phase 4: this toast owns the shared layer while it is on screen, so the
+    // community bar waits instead of stacking on top of it.
+    claimToast("clip");
     setToast({ id: Date.now(), message });
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
+    toastTimer.current = setTimeout(() => {
+      setToast(null);
+      releaseToast("clip");
+    }, TOAST_MS);
   }, []);
 
   useEffect(
     () => () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      releaseToast("clip");
     },
     [],
   );
