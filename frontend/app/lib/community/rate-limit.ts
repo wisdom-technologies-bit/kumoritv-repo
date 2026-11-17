@@ -15,3 +15,12 @@ export const reportLimiter = createRateLimiter({ windowMs: 60 * 60_000 });
 
 export const POST_CREATE_PER_MINUTE = 5;
 export const REPORT_PER_HOUR = 5;
+
+/**
+ * Phase 4: the public `latest` endpoint. 60 requests a minute per IP is two a
+ * second - ten times the toast's own 30 s cadence, so a real reader never hits
+ * it, while a scraper hammering the route is answered with a 429 and a
+ * Retry-After instead of a database query.
+ */
+export const latestLimiter = createRateLimiter({ windowMs: 60_000 });
+export const LATEST_PER_MINUTE = 60;

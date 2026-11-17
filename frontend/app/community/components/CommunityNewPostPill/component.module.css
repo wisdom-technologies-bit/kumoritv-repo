@@ -1,0 +1,54 @@
+/* The "N new posts" pill: centered, sticky at the top of the feed, above the
+   cards and below the header's own layers. */
+
+.wrap {
+  position: sticky;
+  top: 88px;
+  z-index: var(--z-sticky-subnav);
+  display: flex;
+  justify-content: center;
+  padding: 0 0 10px;
+  pointer-events: none;
+}
+
+.pill {
+  pointer-events: auto;
+  border: 1px solid var(--white-25);
+  border-radius: 999px;
+  background: rgba(20, 20, 34, 0.96);
+  color: var(--white-100);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 10px 16px;
+  min-height: 40px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 120ms ease-out, background 120ms ease-out;
+}
+
+.pill:hover {
+  background: rgba(32, 32, 52, 0.98);
+}
+
+.pill:active {
+  transform: scale(0.98);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767.98px) {
+  .wrap {
+    top: 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill {
+    transition: none;
+  }
+}

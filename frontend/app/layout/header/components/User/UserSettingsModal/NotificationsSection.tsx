@@ -26,6 +26,8 @@ import {
   watchPushSubscription,
 } from "@/app/lib/push/runtime";
 import { loadPushPreferences, savePushPreferences } from "@/app/lib/user-data/push";
+import { useCommunityLatest } from "@/app/components/CommunityToast";
+import { useCommunityToastSetting } from "@/app/lib/community/use-toast-setting";
 
 export const NOTIFICATIONS_SECTION_ID = "settings-notifications";
 
@@ -114,6 +116,11 @@ export default function NotificationsSection({ isSignedIn }: { isSignedIn: boole
   const [testMessage, setTestMessage] = useState<string>("");
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const mounted = useRef(true);
+  // Phase 4: the Community row is separate from push - it is an in-page bar, not
+  // a browser permission - and it exists for guests too (localStorage).
+  const community = useCommunityLatest();
+  const toastSetting = useCommunityToastSetting();
+  const [toastMessage, setToastMessage] = useState<string>("");
 
   const refreshEnvironment = useCallback(() => {
     if (!mounted.current) return;
@@ -313,6 +320,29 @@ export default function NotificationsSection({ isSignedIn }: { isSignedIn: boole
         description="Pushes are off by default. Everything also shows in the bell."
         headingId="settings-notifications-heading"
       />
+
+      {community.enabled && (
+        <>
+          <SwitchRow
+            id="settings-community-toasts"
+            name="communityToasts"
+            label="New post notifications"
+            description="Show a small bar when someone posts in Community."
+            checked={toastSetting.value}
+            onChange={(value) => {
+              setToastMessage("");
+              void toastSetting.update(value).then((ok) => {
+                if (!ok) setToastMessage("That change could not be saved to your account. It still applies on this device.");
+              });
+            }}
+          />
+          {toastMessage && (
+            <span className={styles.helper} role="status" data-community-toast-message="true">
+              {toastMessage}
+            </span>
+          )}
+        </>
+      )}
 
       {!isSignedIn ? (
         <span className={styles.helper}>
