@@ -25,7 +25,7 @@ const baseEnv = {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "community.spec.ts",
+  testMatch: ["community.spec.ts", "phase4.spec.ts"],
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -54,7 +54,9 @@ export default defineConfig({
       url: `http://127.0.0.1:${PORT}/community`,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { ...baseEnv, PORT: String(PORT), COMMUNITY_ENABLED: "1" },
+      // COMMUNITY_POLL_SECONDS=2 keeps the bar testable: the real default is 30,
+      // too long for a spec that measures a 5 s toast.
+      env: { ...baseEnv, PORT: String(PORT), COMMUNITY_ENABLED: "1", COMMUNITY_POLL_SECONDS: "2" },
     },
     {
       command: `node_modules/.bin/next start -p ${OFF_PORT}`,

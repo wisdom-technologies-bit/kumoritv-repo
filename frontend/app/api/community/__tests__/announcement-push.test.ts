@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sendAnnouncements } from "@/app/api/cron/push/route";
+import { sendAnnouncements } from "@/app/lib/cron/announcements";
 import type { CronContext } from "@/app/lib/cron/runner";
 
 type Sent = {

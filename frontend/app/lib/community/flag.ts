@@ -9,3 +9,19 @@ export function isCommunityEnabled(): boolean {
   const value = (process.env.COMMUNITY_ENABLED ?? "").trim().toLowerCase();
   return TRUTHY.has(value);
 }
+
+/**
+ * Phase 4: the global kill switch for the new-post bar alone.
+ *
+ * Unset (or anything truthy) means the bar behaves as configured. `0`, `false`,
+ * `off` or `no` turns it off for EVERY reader while leaving the community itself
+ * on - the one thing an owner needs when a release day goes sideways and the
+ * per-user switch is not enough.
+ */
+const FALSY = new Set(["0", "false", "off", "no"]);
+
+export function isCommunityToastEnabled(): boolean {
+  if (!isCommunityEnabled()) return false;
+  const value = (process.env.COMMUNITY_TOASTS ?? "").trim().toLowerCase();
+  return !FALSY.has(value);
+}

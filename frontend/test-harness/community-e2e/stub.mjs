@@ -418,6 +418,67 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(payload);
 }
 
+
+/* ------------------------------------------------------------------------- */
+/* Phase 4: the new-post bar and the admin composer                          */
+/* ------------------------------------------------------------------------- */
+
+/** The rows `public.community_latest(...)` would return, one per public item. */
+const LATEST = [
+  ...POSTS.map((post) => ({
+    id: post.id,
+    kind: "post",
+    created_at: post.created_at,
+    author_id: post.author_id,
+    author_name: post.author_display_name ?? "Ada",
+    author_avatar: null,
+    text: post.body,
+    has_clip: false,
+    clip_thumb: null,
+    adult: false,
+    href: `/community/post/${post.id}`,
+  })),
+  ...CLIP_POSTS.map((post) => ({
+    id: post.id,
+    kind: "post",
+    created_at: post.created_at,
+    author_id: post.author_id,
+    author_name: "Ada",
+    author_avatar: null,
+    text: post.body,
+    has_clip: true,
+    // The adult clip carries no thumbnail, exactly like the SQL function.
+    clip_thumb: post.animeId === 23 ? null : "https://cdn.test/cover.jpg",
+    adult: post.animeId === 23,
+    href: `/community/post/${post.id}`,
+  })),
+  ...ANNOUNCEMENTS.map((row) => ({
+    id: row.id,
+    kind: "announcement",
+    created_at: row.created_at,
+    author_id: null,
+    author_name: "KumoriTV",
+    author_avatar: null,
+    text: row.body,
+    has_clip: false,
+    clip_thumb: null,
+    adult: false,
+    href: `/community/announcements/${row.id}`,
+  })),
+];
+
+/** Everything the stub has written during the run (announcements are mutable). */
+const SENT_ANNOUNCEMENTS = new Set();
+
+/** The composer needs a session; the cookie the specs set is enough. */
+function isSignedIn(req) {
+  return (
+    req.headers["x-standin-user"] === "1" ||
+    (req.headers.cookie ?? "").includes("standin-user=1") ||
+    String(req.headers.authorization ?? "").startsWith("Bearer ")
+  );
+}
+
 /** Fixture state: the feed can be told there are no announcements at all. */
 let fixtureAnnouncements = true;
 let fixtureEmpty = false;
@@ -485,7 +546,100 @@ const server = createServer(async (req, res) => {
     if (flag === "0" || flag === "1") fixtureAnnouncements = flag === "1";
     const empty = url.searchParams.get("empty");
     if (empty === "0" || empty === "1") fixtureEmpty = empty === "1";
+    // Phase 4: "someone just posted", for the bar. `clip=1` gives it a thumbnail,
+    // `adult=1` makes it an adult clip.
+    const newPost = url.searchParams.get("new_post");
+    if (newPost) {
+      const id = `30000000-0000-4000-8000-${String(900 + LATEST.length).padStart(12, "0")}`;
+      LATEST.push({
+        id,
+        kind: "post",
+        created_at: new Date().toISOString(),
+        author_id: `${uid(101)}`,
+        author_name: url.searchParams.get("author") || "Ada",
+        author_avatar: null,
+        text: newPost,
+        has_clip: url.searchParams.get("clip") === "1",
+        clip_thumb: url.searchParams.get("adult") === "1" ? null : url.searchParams.get("clip") === "1" ? "https://cdn.test/cover.jpg" : null,
+        adult: url.searchParams.get("adult") === "1",
+        href: `/community/post/${id}`,
+      });
+      return json(res, 200, { id });
+    }
     return json(res, 200, { announcements: fixtureAnnouncements, empty: fixtureEmpty });
+  }
+
+
+  /* ---- Phase 4: the latest feed ---------------------------------------- */
+  if (pathname === "/rest/v1/rpc/community_latest" && method === "POST") {
+    let payload = {};
+    try {
+      payload = JSON.parse(await readBody(req)) || {};
+    } catch {
+      payload = {};
+    }
+    const after = payload.p_after ? Date.parse(payload.p_after) : 0;
+    const limit = Math.min(Math.max(Number(payload.p_limit) || 5, 1), 10);
+    if (process.env.STUB_DEBUG) console.log("[stub] community_latest", JSON.stringify(payload), "after=", after);
+    const rows = LATEST.filter((row) => Date.parse(row.created_at) > (after || 0))
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(0, limit);
+    return json(res, 200, rows);
+  }
+
+  if (pathname === "/rest/v1/rpc/is_admin" && method === "POST") {
+    return json(res, 200, isSignedIn(req));
+  }
+
+  /* ---- Phase 4: the admin composer writes ------------------------------ */
+  if (pathname === "/rest/v1/announcements" && (method === "POST" || method === "PATCH")) {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const row = Array.isArray(body) ? body[0] : body;
+    const wantsObject = (req.headers.accept ?? "").includes("pgrst.object");
+
+    if (method === "POST") {
+      const id = `30000000-0000-4000-8000-${String(ANNOUNCEMENTS.length + 1).padStart(12, "0")}`;
+      const created = {
+        id,
+        title: row.title,
+        body: row.body,
+        image: row.image ?? null,
+        url: row.url ?? null,
+        created_at: new Date().toISOString(),
+        expires_at: row.expires_at ?? null,
+        push_sent_at: row.push_sent_at ?? null,
+      };
+      ANNOUNCEMENTS.unshift(created);
+      LATEST.push({
+        id,
+        kind: "announcement",
+        created_at: created.created_at,
+        author_id: null,
+        author_name: "KumoriTV",
+        author_avatar: null,
+        text: created.body,
+        has_clip: false,
+        clip_thumb: null,
+        adult: false,
+        href: `/community/announcements/${id}`,
+      });
+      return json(res, 200, wantsObject ? { id } : [{ id }]);
+    }
+
+    const id = (url.searchParams.get("id") ?? "").replace(/^eq\./, "");
+    const existing = ANNOUNCEMENTS.find((item) => item.id === id);
+    if (!existing) return json(res, 200, wantsObject ? null : []);
+    Object.assign(existing, row);
+    return json(res, 200, wantsObject ? { id } : [{ id }]);
+  }
+
+  if (pathname === "/rest/v1/announcements" && method === "DELETE") {
+    const id = (url.searchParams.get("id") ?? "").replace(/^eq\./, "");
+    const index = ANNOUNCEMENTS.findIndex((item) => item.id === id);
+    const found = index >= 0;
+    if (found) ANNOUNCEMENTS.splice(index, 1);
+    const wantsObject = (req.headers.accept ?? "").includes("pgrst.object");
+    return json(res, 200, wantsObject ? (found ? { id } : null) : found ? [{ id }] : []);
   }
 
   if (pathname.startsWith("/rest/v1/")) {

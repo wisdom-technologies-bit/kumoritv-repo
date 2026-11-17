@@ -383,3 +383,32 @@ export function readLatestConfig(env: (key: string) => string | undefined): {
     minGapMs: Math.round(positive("COMMUNITY_TOAST_MIN_GAP_SECONDS", TOAST_MIN_GAP_SECONDS_DEFAULT) * 1000),
   };
 }
+
+/**
+ * The route's 10 s per-instance cache, kept out of the route file: Next allows a
+ * route module to export only its own symbols, and the test hook below is not
+ * one of them.
+ *
+ * It lives on `globalThis` so a dev-server module reload does not hand every
+ * request a cold cache, and so a unit test can clear the exact map the route
+ * uses.
+ */
+export const LATEST_CACHE_TTL_MS = 10_000;
+export const LATEST_CACHE_MAX_ENTRIES = 100;
+
+export type LatestCacheEntry = { at: number; etag: string; body: string };
+
+const CACHE_KEY = Symbol.for("community.latest.cache");
+
+type CacheHolder = { [CACHE_KEY]?: Map<string, LatestCacheEntry> };
+
+export function latestCache(): Map<string, LatestCacheEntry> {
+  const holder = globalThis as unknown as CacheHolder;
+  holder[CACHE_KEY] ??= new Map<string, LatestCacheEntry>();
+  return holder[CACHE_KEY]!;
+}
+
+/** Test hook: the cache must not leak between cases. */
+export function clearLatestCache(): void {
+  latestCache().clear();
+}

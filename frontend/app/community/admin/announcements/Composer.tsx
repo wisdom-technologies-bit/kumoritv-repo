@@ -116,7 +116,12 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
   const [stage, setStage] = useState<"form" | "confirm">("form");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  // No `notice` state here on purpose: `router.refresh()` remounts this
+  // component, so a confirmation kept in state vanishes before it is read. The
+  // page renders it from `?ok=` instead - see /community/admin/announcements.
+  const done = useCallback((status: "published" | "saved" | "expired" | "deleted") => {
+    router.replace(`/community/admin/announcements?ok=${status}`);
+  }, [router]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const keyRef = useRef<string | null>(null);
 
@@ -149,7 +154,6 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
       return next;
     });
     setError("");
-    setNotice("");
   }, [editingId]);
 
   function applyCommand(command: MarkdownCommand) {
@@ -173,7 +177,6 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
     setEditingId(row.id);
     setStage("form");
     setError("");
-    setNotice("");
     setDraft({
       title: row.title,
       body: row.body,
@@ -216,9 +219,8 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
         setError(result.message || "That could not be saved. Please try again.");
         return;
       }
-      setNotice(editingId ? "Saved. The push was not re-sent." : "Published.");
       resetForm();
-      router.refresh();
+      done(editingId ? "saved" : "published");
     } catch {
       setError("That could not be saved. Check your connection and try again.");
     } finally {
@@ -250,8 +252,7 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
         setError(result.message || "That announcement could not be expired.");
         return;
       }
-      setNotice("Expired.");
-      router.refresh();
+      done("expired");
     } catch {
       setError("That announcement could not be expired.");
     } finally {
@@ -270,9 +271,8 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
         setError(result.message || "That announcement could not be deleted.");
         return;
       }
-      setNotice("Deleted.");
       if (editingId === row.id) resetForm();
-      router.refresh();
+      done("deleted");
     } catch {
       setError("That announcement could not be deleted.");
     } finally {
@@ -286,11 +286,6 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
 
   return (
     <div className={styles.wrap}>
-      {notice ? (
-        <p className={styles.notice} role="status" data-testid="composer-notice">
-          {notice}
-        </p>
-      ) : null}
       {error ? (
         <p className={styles.error} role="alert" data-testid="composer-error">
           {error}
@@ -497,6 +492,7 @@ export default function Composer({ initialRows }: { initialRows: AdminAnnounceme
             <section
               className={`${styles.pane} ${styles.preview_pane} ${tab === "write" ? styles.pane_hidden_mobile : ""}`}
               aria-label="Preview"
+              data-testid="composer-preview"
             >
               <p className={styles.preview_label}>Preview</p>
               <h2 className={styles.preview_title}>{draft.title || "Untitled announcement"}</h2>

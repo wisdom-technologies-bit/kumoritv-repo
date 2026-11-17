@@ -69,12 +69,26 @@ async function loadRecent(): Promise<AdminAnnouncement[]> {
   }
 }
 
-export default async function AdminAnnouncementsPage() {
+/** The confirmation a write left behind, carried in the URL so it survives the
+ *  remount `router.refresh()` causes on the form. */
+const FLASH: Record<string, string> = {
+  published: "Published. It is live on /community/announcements and in the bell; the push goes out with the next run.",
+  saved: "Saved. The push was not re-sent.",
+  expired: "Expired. It is off the site and out of the bell.",
+  deleted: "Deleted.",
+};
+
+type PageProps = { searchParams?: { ok?: string | string[] } };
+
+export default async function AdminAnnouncementsPage({ searchParams }: PageProps) {
   if (!isCommunityEnabled()) notFound();
   const admin = await readCommunityAdmin();
   if (!admin) notFound();
 
   const recent = await loadRecent();
+  const okParam = searchParams?.ok;
+  const ok = typeof okParam === "string" ? okParam : null;
+  const flash = ok ? FLASH[ok] : undefined;
 
   return (
     <div className={styles.page}>
@@ -86,6 +100,12 @@ export default async function AdminAnnouncementsPage() {
             Markdown, published to /community/announcements and the bell. Publish is confirmed first.
           </p>
         </header>
+
+        {flash ? (
+          <p className={styles.flash} role="status" data-testid="composer-notice">
+            {flash}
+          </p>
+        ) : null}
 
         <Composer initialRows={recent} />
       </div>

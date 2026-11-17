@@ -24,9 +24,11 @@ export default function CommunityNewPostPill({ onRefresh }: { onRefresh: () => v
         data-testid="community-new-post-pill"
         onClick={() => {
           resetNewCount();
+          // Jump, then load: a smooth scroll and a feed refresh fight over the
+          // same frames, and the reader ends up watching rows slide past.
           if (typeof window !== "undefined") {
             try {
-              window.scrollTo({ top: 0, behavior: "smooth" });
+              window.scrollTo({ top: 0, behavior: "auto" });
             } catch {
               window.scrollTo(0, 0);
             }

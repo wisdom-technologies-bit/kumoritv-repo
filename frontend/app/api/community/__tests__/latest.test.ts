@@ -7,7 +7,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { __clearLatestCache, handleLatest } from "@/app/api/community/latest/route";
+import { handleLatest } from "@/app/lib/community/latest-handler";
+import { clearLatestCache } from "@/app/lib/community/latest";
 import type { LatestRow } from "@/app/lib/community/latest";
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 17, 12, 0, seconds)).toISOString();
@@ -43,7 +44,7 @@ function enableFlag(value: string) {
 
 test.beforeEach(() => {
   enableFlag("1");
-  __clearLatestCache();
+  clearLatestCache();
 });
 
 test.after(() => {

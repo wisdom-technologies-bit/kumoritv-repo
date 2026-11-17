@@ -13,7 +13,7 @@ import PushProvider from "./lib/push/PushProvider";
 import AdcashTag from "./components/Ads/AdcashTag";
 import { readAdcashConfig } from "./lib/ads/adcash";
 import CommunityLatestProvider from "./components/CommunityToast";
-import { isCommunityEnabled } from "./lib/community/flag";
+import { isCommunityToastEnabled } from "./lib/community/flag";
 import { readLatestConfig } from "./lib/community/latest";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -73,7 +73,9 @@ export default function RootLayout({
   // Community Phase 4: the flag and the toast tuning are read per render, not
   // inlined at build time. With the flag off the provider renders its children
   // and nothing else: no timer, no poll, no markup.
-  const communityEnabled = isCommunityEnabled();
+  // Read per request: off means the bar never mounts, and with it off no timer,
+  // listener or request for /api/community/latest exists at all.
+  const communityToastsEnabled = isCommunityToastEnabled();
   const latestConfig = readLatestConfig((name) => process.env[name]);
 
   return (
@@ -94,7 +96,7 @@ export default function RootLayout({
             {/* Phase 4: ONE poll and ONE toast host for the whole site. Inside
                 AuthProvider so the toast knows the viewer; the flag is a prop,
                 so nothing of this phase mounts when it is off. */}
-            <CommunityLatestProvider enabled={communityEnabled} config={latestConfig}>
+            <CommunityLatestProvider enabled={communityToastsEnabled} config={latestConfig}>
               {/* Only signed-in users ever load OneSignal; the bell does not need it. */}
               <PushProvider />
               <Header />

@@ -37,3 +37,16 @@
   color: var(--white-75);
   font-size: var(--font-size--small-1);
 }
+
+/* The confirmation a write leaves behind, read from `?ok=`. It sits above the
+   form because `router.refresh()` remounts the form and would drop any state
+   kept inside it. */
+.flash {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--white-25);
+  border-radius: 10px;
+  background: var(--white-05);
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+}

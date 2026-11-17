@@ -1,0 +1,9 @@
+{
+  "name": "composer-mobile-360-write",
+  "at": "2026-11-17T17:39:23.416Z",
+  "url": "http://127.0.0.1:3100/community/admin/announcements",
+  "viewport": {
+    "width": 360,
+    "height": 800
+  }
+}
