@@ -45,6 +45,16 @@ export const ANIKOTO_TTL_MS = 15 * 60_000;
 export const DEFAULT_MASTER_HOSTS = [
   "fetch.nexabloom.top",
   "nexabloom.top",
+  "hianime.at",
+  // MegaPlay shards: the subdomain carries the actual file. These answer 403
+  // without MegaPlay's Referer, so their segments are always played through the
+  // proxy rather than fetched by the browser.
+  "twilightharbor.space",
+  "emeralddrift.world",
+  "eclipseharbor.space",
+  "crystaldrift.world",
+  "mysubsplay.com",
+  "megaplay.buzz",
   "dramahot.top",
   "drama1.cfd",
 ];
