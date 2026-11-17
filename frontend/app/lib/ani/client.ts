@@ -1,6 +1,6 @@
 import "server-only";
 import { assertSafeUpstream } from "@/app/lib/proxy/upstream";
-import { aniConfig, type AniConfig } from "./config";
+import { DEFAULT_MASTER_HOSTS, aniConfig, type AniConfig } from "./config";
 import {
   AniProviderError,
   PERMANENT_MAL_REASONS,
@@ -26,13 +26,12 @@ import type { AniStreamResponse } from "./types";
  * in a message, not in a token.
  */
 
-export const ANI_UPSTREAM_HOSTS = [
-  "fetch.nexabloom.top",
-  "nexabloom.top",
-  "dramahot.top",
-  "drama1.cfd",
-];
-
+/**
+ * Historic name for the master-host allowlist. The gate reads
+ * `aniConfig().masterHosts`, so the defaults live in `./config` and
+ * `ANI_MASTER_HOSTS` extends them; this alias only stops the two lists drifting.
+ */
+export const ANI_UPSTREAM_HOSTS: readonly string[] = DEFAULT_MASTER_HOSTS;
 const POSITIVE_TTL_MS = 10 * 60_000;
 /** AniKoto has no `url_lifetime`: 15 minutes, never longer. */
 const ANIKOTO_TTL_MS = 15 * 60_000;
