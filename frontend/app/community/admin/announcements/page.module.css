@@ -1,0 +1,39 @@
+/* The admin composer page: wide enough for two panes, capped so the text lines
+   stay readable on a monitor. */
+
+.page {
+  min-height: 100vh;
+  padding: 32px var(--page-gutter) 80px;
+}
+
+.shell {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.head {
+  margin-bottom: 22px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: var(--font-size--small-2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sakura-pink);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: var(--font-size--h2);
+  line-height: 1.1;
+  color: var(--white-100);
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--white-75);
+  font-size: var(--font-size--small-1);
+}

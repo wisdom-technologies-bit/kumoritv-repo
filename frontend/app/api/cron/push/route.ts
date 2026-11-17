@@ -23,6 +23,7 @@ import {
 } from "@/app/lib/push/cron";
 import { runCronJob, type CronContext } from "@/app/lib/cron/runner";
 import { sendPush } from "@/app/lib/push/onesignal";
+import { announcementPlainText } from "@/app/lib/community/announcement-form";
 import {
   DIGEST_TITLE_LIMIT,
   digestAllowed,
@@ -354,8 +355,18 @@ async function sendDigests(db: any, ctx: CronContext) {
   return stats;
 }
 
-/** Step 4: announcements, exactly once each. */
-async function sendAnnouncements(db: any, ctx: CronContext) {
+/**
+ * Step 4: announcements, exactly once each.
+ *
+ * Exported, and the transport is a parameter, so the real code path (the pending
+ * query, the preference filter, the plain-text body, the push_sent_at stamp) can
+ * be tested against a stand-in db and a stand-in OneSignal client.
+ */
+export async function sendAnnouncements(
+  db: any,
+  ctx: CronContext,
+  send: typeof sendPush = sendPush,
+) {
   const stats = { announcements: 0, sent: 0, users: 0 };
 
   const { data: pending } = await db
@@ -399,10 +410,12 @@ async function sendAnnouncements(db: any, ctx: CronContext) {
       continue;
     }
 
-    const result = await sendPush({
+    const result = await send({
       externalIds: userIds,
       title: announcement.title,
-      body: announcement.body,
+      // Phase 4: the body is Markdown; the push carries the plain projection,
+      // cut at a word boundary so a notification never ends mid-word.
+      body: announcementPlainText(announcement.body, 140),
       url: announcement.url || "/",
       image: announcement.image,
       topic: PUSH_TOPICS.announcement,

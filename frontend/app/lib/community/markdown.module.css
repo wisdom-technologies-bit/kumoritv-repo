@@ -1,0 +1,140 @@
+/* Announcement Markdown, on the site's own tokens.
+   Readable at 360 px, about 70 characters per line on a desktop, and a long
+   unbroken URL wraps instead of widening the page. */
+
+.body {
+  max-width: 70ch;
+  font-size: var(--font-size--p);
+  line-height: 1.65;
+  color: var(--white-75);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.body > *:first-child {
+  margin-top: 0;
+}
+
+.body > *:last-child {
+  margin-bottom: 0;
+}
+
+.body p {
+  margin: 0 0 1em;
+}
+
+.body h2,
+.body h3,
+.body h4,
+.body h5,
+.body h6 {
+  color: var(--white-100);
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+  font-weight: 700;
+}
+
+.body h2 {
+  font-size: 1.5em;
+}
+
+.body h3 {
+  font-size: 1.25em;
+}
+
+.body h4,
+.body h5,
+.body h6 {
+  font-size: 1.1em;
+}
+
+.body strong {
+  color: var(--white-100);
+  font-weight: 700;
+}
+
+.body em {
+  font-style: italic;
+}
+
+.body ul,
+.body ol {
+  margin: 0 0 1em;
+  padding-left: 1.35em;
+}
+
+.body li {
+  margin: 0.35em 0;
+}
+
+.body blockquote {
+  margin: 0 0 1em;
+  padding: 0.25em 0 0.25em 1em;
+  border-left: 3px solid var(--brand-color);
+  color: var(--white-50);
+}
+
+.body hr {
+  border: 0;
+  border-top: 1px solid var(--white-25);
+  margin: 1.6em 0;
+}
+
+.body code {
+  font-family: var(--font-family-monospace);
+  font-size: 0.9em;
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 6px;
+  padding: 0.1em 0.35em;
+}
+
+.body pre {
+  background: var(--white-05);
+  border: 1px solid var(--white-25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0 0 1em;
+}
+
+.body pre code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.body a {
+  color: var(--brand-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.body a:hover {
+  color: var(--white-100);
+}
+
+.body a:focus-visible {
+  outline: 2px solid var(--brand-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1em;
+  display: block;
+  overflow-x: auto;
+}
+
+.body th,
+.body td {
+  border: 1px solid var(--white-25);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.body del {
+  color: var(--white-50);
+}

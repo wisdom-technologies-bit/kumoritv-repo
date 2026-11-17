@@ -2,6 +2,7 @@
 // Notifications: Supabase `notification_subscriptions` + `notifications`.
 // Rows are created by the fanout_episode_notifications trigger on airing_episodes.
 
+import { plainSnippet } from "@/app/lib/community/latest";
 import { attempt, isSignedIn, resolveContext, unwrap, type UserDataContextInput } from "./context";
 import { normaliseSnapshot } from "./normalise";
 import { displayTitle } from "@/app/lib/titles";
@@ -345,7 +346,9 @@ export function toAnnouncementView(row: AnnouncementRow, readIds: Set<string>): 
   return {
     id: row.id,
     title: row.title,
-    body: row.body ?? null,
+    // Phase 4: bodies are Markdown now. The bell shows a short plain-text
+    // preview, never raw syntax and never markup.
+    body: row.body ? plainSnippet(row.body, 140) : null,
     url: row.url ?? null,
     image: row.image ?? null,
     isRead: readIds.has(row.id),

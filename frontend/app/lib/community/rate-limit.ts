@@ -24,3 +24,10 @@ export const REPORT_PER_HOUR = 5;
  */
 export const latestLimiter = createRateLimiter({ windowMs: 60_000 });
 export const LATEST_PER_MINUTE = 60;
+
+/**
+ * Phase 4: announcement writes. Ten a minute per admin is generous for a human
+ * and useless for a loop. Admin-only, so the key is the admin's own id.
+ */
+export const adminWriteLimiter = createRateLimiter({ windowMs: 60_000 });
+export const ADMIN_WRITES_PER_MINUTE = 10;
