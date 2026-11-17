@@ -26,7 +26,26 @@ import type { AniStreamResponse } from "./types";
  * in a message, not in a token.
  */
 
-export const ANI_UPSTREAM_HOSTS = ["dramahot.top", "drama1.cfd"];
+/**
+ * Hosts the ani API actually returns as `master_url`. The drama pair was inherited
+ * from the drama provider and on its own rejected every anime master with
+ * `master_host_not_allowed`, so the provider was skipped before a stream was ever
+ * used. Anime playlists come from hianime's CDN and from MegaPlay's rotating
+ * shards; their segments are Referer-locked, so they are played through the
+ * player's proxy, never straight from the browser.
+ */
+export const ANI_UPSTREAM_HOSTS = [
+  "hianime.at",
+  "nexabloom.top",
+  "twilightharbor.space",
+  "emeralddrift.world",
+  "eclipseharbor.space",
+  "crystaldrift.world",
+  "mysubsplay.com",
+  "megaplay.buzz",
+  "dramahot.top",
+  "drama1.cfd",
+];
 
 const POSITIVE_TTL_MS = 10 * 60_000;
 const NEGATIVE_TTL_LONG_MS = 30 * 60_000;

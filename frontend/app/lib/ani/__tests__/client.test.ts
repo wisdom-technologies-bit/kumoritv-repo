@@ -131,6 +131,15 @@ test("only the documented upstream hosts are accepted, lookalikes are not", () =
   assert.equal(isAllowedUpstreamUrl("https://hls1.drama1.cfd/a/seg_00000.ts.jpg"), true);
   assert.equal(isAllowedUpstreamUrl("https://evil-drama1.cfd/a/seg.ts"), false);
   assert.equal(isAllowedUpstreamUrl("https://dramahot.top.evil.example/a/master.m3u8"), false);
+  // The anime masters the ani API actually returns must be playable, not refused.
+  assert.equal(
+    isAllowedUpstreamUrl(
+      "https://fetch.nexabloom.top/anime/f899139df5e1059396431415e770c6dd/61b87186ab260d05003427e16ccf5657/master.m3u8",
+    ),
+    true,
+  );
+  assert.equal(isAllowedUpstreamUrl("https://7v8gl.eclipseharbor.space/anime/a/b/seg_1.ts"), true);
+  assert.equal(isAllowedUpstreamUrl("https://nexabloom.top.evil.example/a/master.m3u8"), false);
   assert.equal(isAllowedUpstreamUrl("http://hls.dramahot.top/a/master.m3u8"), false);
 });
 
