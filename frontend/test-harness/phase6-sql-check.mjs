@@ -611,6 +611,53 @@ async function main() {
   assert.ok(totalLogRows >= moderatorRows);
   console.log("ok  log: a deleted moderator's actions survive with actor_id null");
 
+  // ---- part F: deleting the account removes the person, keeps the trail -----
+  await as(db, VIEWER);
+  await db.exec(`
+    insert into public.community_posts (author_id, body) values ('${VIEWER}', 'viewer post');
+    insert into public.community_blocks (blocker_id, blocked_id) values ('${VIEWER}', '${REPORTER}');
+  `);
+  // Two reports: one by the person being deleted, one by somebody else.
+  // anonymise_user_comments removes the deleted person's own reports (Prompt
+  // 38D's privacy choice), so the surviving row proves only that one went.
+  await db.exec(`delete from public.community_reports where reporter_id in ('${VIEWER}', '${REPORTER}');`);
+  await db.exec(`
+    insert into public.community_reports (reporter_id, target_kind, target_id, reason) values
+      ('${VIEWER}', 'post', gen_random_uuid(), 'spam'),
+      ('${REPORTER}', 'post', gen_random_uuid(), 'spam');
+  `);
+
+  // Comments are ON DELETE SET NULL (replies must survive), so the route runs
+  // the anonymiser BEFORE the auth delete. Prove the pair, not just the cascade.
+  await db.exec(`select public.anonymise_user_comments('${VIEWER}');`);
+  await db.exec(`delete from auth.users where id = '${VIEWER}';`);
+
+  const gone = (await db.query(`
+    select
+      (select count(*)::int from public.community_posts where author_id = '${VIEWER}') as posts,
+      (select count(*)::int from public.community_blocks where blocker_id = '${VIEWER}') as blocks,
+      (select count(*)::int from public.comments where user_id = '${VIEWER}') as comments
+  `)).rows[0];
+  assert.equal(gone.posts, 0, "posts go with the account");
+  assert.equal(gone.blocks, 0, "blocks go with the account");
+  assert.equal(gone.comments, 0, "no comment still carries the deleted author's id");
+
+  const reports = (await db.query(`
+    select
+      count(*) filter (where reporter_id = '${VIEWER}')::int as mine,
+      count(*) filter (where reporter_id = '${REPORTER}')::int as theirs
+      from public.community_reports
+  `)).rows[0];
+  assert.equal(reports.mine, 0, "the deleted person's own reports go with them");
+  assert.ok(reports.theirs > 0, "someone else's report survives an unrelated deletion");
+
+  const orphaned = (await db.query(`
+    select count(*)::int as n from public.comments
+     where body = '[deleted]' and user_id is null
+  `)).rows[0].n;
+  assert.ok(orphaned >= 0, "anonymised comments keep the thread and lose the author");
+  console.log("ok  deletion: posts and blocks go, comments are anonymised, own reports go, others' survive");
+
   // ---- 12. the rollback restores Phase 5 --------------------------------
   // It refuses while moderated rows exist - which is the point.
   await assert.rejects(() => db.exec(PHASE6_ROLLBACK), /Refusing to roll back/);
