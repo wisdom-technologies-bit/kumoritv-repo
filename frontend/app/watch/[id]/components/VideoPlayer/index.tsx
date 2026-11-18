@@ -44,6 +44,7 @@ import {
 } from "@/app/lib/ads/preroll";
 import type { PrerollOutcome } from "@/app/lib/ads/preroll-engine";
 import { useClipBridge } from "../ClipBridge/context";
+import { variantBadge } from "@/app/lib/watch/adult/badge";
 
 const HLS_CONFIG = {
   autoStartLoad: true,
@@ -146,6 +147,10 @@ export default function VideoPlayer({
     switched: false,
   });
   const watch = useWatchState();
+  // Adult titles: the badge names the version being played, and the gate blocks
+  // playback until the viewer has picked one. Both are null/empty otherwise.
+  const badge = variantBadge(watch.data?.variant);
+  const needsVariant = watch.adultVariants.length > 0 && !watch.variant;
   const clipBridge = useClipBridge();
   const [clipEnded, setClipEnded] = useState(false);
   // "Watch from here" releases the range: otherwise the very next timeupdate
@@ -832,6 +837,51 @@ export default function VideoPlayer({
             allowFullScreen
             referrerPolicy="strict-origin-when-cross-origin"
           />
+        )}
+        {badge && (
+          <div
+            className={
+              styles.variantBadge +
+              " " +
+              (badge.tone === "uncensored"
+                ? styles.variantUncensored
+                : styles.variantCensored)
+            }
+            aria-label={badge.label + " version"}
+          >
+            {badge.label}
+          </div>
+        )}
+        {needsVariant && (
+          <div className={styles.variantGate}>
+            <p className={styles.variantGateTitle}>Choose a version</p>
+            <p className={styles.variantGateNote}>
+              This is an adult title. Pick censored or uncensored before
+              playback.
+            </p>
+            <div className={styles.variantGateButtons}>
+              {watch.adultVariants.includes("uncensored") && (
+                <button
+                  type="button"
+                  className={
+                    styles.variantButton + " " + styles.variantUncensored
+                  }
+                  onClick={() => watch.chooseVariant("uncensored")}
+                >
+                  Uncensored
+                </button>
+              )}
+              {watch.adultVariants.includes("censored") && (
+                <button
+                  type="button"
+                  className={styles.variantButton + " " + styles.variantCensored}
+                  onClick={() => watch.chooseVariant("censored")}
+                >
+                  Censored
+                </button>
+              )}
+            </div>
+          </div>
         )}
         {data && source && sourceType && (
           <MediaPlayer

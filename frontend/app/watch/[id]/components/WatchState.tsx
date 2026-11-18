@@ -31,6 +31,11 @@ type WatchData = {
   hardsub?: boolean;
   thumbnails?: any;
   availableAudio?: string[] | { sub?: boolean; dub?: boolean };
+  /** Set only when the adult provider answered. */
+  adult?: boolean;
+  variant?: "censored" | "uncensored";
+  adultTitle?: string;
+  quality?: string;
 };
 type LoadOptions = {
   provider?: string | null;
@@ -38,6 +43,8 @@ type LoadOptions = {
   exclude?: string[];
   /** Force a fresh upstream resolve (`refresh=1`): bypasses both caches. */
   refresh?: boolean;
+  /** Adult titles only: the censored/uncensored choice the viewer made. */
+  variant?: string | null;
 };
 type State = {
   audio: "sub" | "dub";
@@ -56,6 +63,10 @@ type State = {
   data: WatchData | null;
   subtitleLanguage: string;
   offset: number;
+  /** Adult titles only; empty for every other anime. */
+  adultVariants: string[];
+  variant: string | null;
+  chooseVariant: (value: string) => void;
   setAudio: (audio: "sub" | "dub") => void;
   selectServer: (id: string) => void;
   backupServer: () => void;
@@ -66,6 +77,34 @@ type State = {
   setOffset: (value: number) => void;
 };
 const Context = createContext<State | null>(null);
+
+/**
+ * The censored/uncensored choice is per episode, not per title: the same anime
+ * can be mapped censored for one episode and uncensored for another.
+ */
+function variantPrefKey(anilistId: number, episode: number, audio: string) {
+  return "kumori_variant_v1:" + anilistId + ":" + episode + ":" + audio;
+}
+
+function readVariantPref(anilistId: number, episode: number, audio: string) {
+  try {
+    const value = localStorage.getItem(variantPrefKey(anilistId, episode, audio));
+    return value === "censored" || value === "uncensored" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeVariantPref(
+  anilistId: number,
+  episode: number,
+  audio: string,
+  value: string,
+) {
+  try {
+    localStorage.setItem(variantPrefKey(anilistId, episode, audio), value);
+  } catch {}
+}
 
 type ServerPref = { server: string; provider: string };
 
@@ -126,6 +165,11 @@ export function WatchState({
   );
   const [offset, setOffsetState] = useState(0);
   const [nonce, setNonce] = useState(0);
+  // Adult titles have to be answered before anything resolves: the viewer picks
+  // censored or uncensored, and only then is a stream requested.
+  const [adultVariants, setAdultVariants] = useState<string[]>([]);
+  const [variant, setVariant] = useState<string | null>(null);
+  const [adultChecked, setAdultChecked] = useState(false);
   const requestRef = useRef<LoadOptions>({});
   // ani stream URLs were measured valid for about 28 minutes, so the first fatal
   // player error is far more likely to be an expired URL than a dead source.
@@ -140,6 +184,7 @@ export function WatchState({
         provider: options.provider,
         server: options.server,
         exclude: options.exclude,
+        variant: options.variant ?? requestRef.current.variant ?? null,
       };
       setStatus("loading");
       const query = new URLSearchParams({ audio, sublang: subtitleLanguage });
@@ -147,6 +192,8 @@ export function WatchState({
       if (options.server) query.set("server", options.server);
       if (options.exclude?.length) query.set("exclude", options.exclude.join(","));
       if (options.refresh) query.set("refresh", "1");
+      const requestedVariant = options.variant ?? requestRef.current.variant;
+      if (requestedVariant) query.set("variant", requestedVariant);
       try {
         const response = await fetch(
           `/api/watch/${anilistId}/${episode}?${query}`,
@@ -185,13 +232,56 @@ export function WatchState({
     } catch {}
   }, [anilistId, audio]);
 
+  // Ask once per episode whether this is an adult title with mapped variants.
+  // A non-adult title gets an empty list back and nothing else changes.
   useEffect(() => {
-    void load();
-  }, [load, nonce]);
+    let cancelled = false;
+    setAdultChecked(false);
+    setAdultVariants([]);
+    setVariant(null);
+    fetch("/api/adult/variants?anilistId=" + anilistId + "&episode=" + episode, {
+      cache: "no-store",
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (cancelled) return;
+        const list: string[] = Array.isArray(body?.variants)
+          ? body.variants.filter(
+              (value: unknown) =>
+                value === "censored" || value === "uncensored",
+            )
+          : [];
+        const saved = readVariantPref(anilistId, episode, audio);
+        setAdultVariants(list);
+        setVariant(saved && list.includes(saved) ? saved : null);
+        setAdultChecked(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAdultChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [anilistId, episode, audio]);
+
+  useEffect(() => {
+    // Wait for the answer, then refuse to resolve an adult episode until the
+    // viewer has actually chosen. Everything else loads exactly as before.
+    if (!adultChecked) return;
+    if (adultVariants.length > 0 && !variant) return;
+    void load(variant ? { ...requestRef.current, variant } : requestRef.current);
+  }, [load, nonce, adultChecked, adultVariants, variant]);
 
   useEffect(() => {
     aniRefreshTried.current = false;
   }, [anilistId, episode, audio]);
+
+  /** The viewer's censored/uncensored answer. Remembered per episode. */
+  const chooseVariant = (value: string) => {
+    if (value !== "censored" && value !== "uncensored") return;
+    writeVariantPref(anilistId, episode, audio, value);
+    setVariant(value);
+  };
 
   /** Picking a server keeps the active provider and asks for that label. */
   const selectServer = (id: string) => {
@@ -314,6 +404,9 @@ export function WatchState({
       data,
       subtitleLanguage,
       offset,
+      adultVariants,
+      variant,
+      chooseVariant,
       setAudio,
       selectServer,
       backupServer,
