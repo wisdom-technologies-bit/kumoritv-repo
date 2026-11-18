@@ -18,12 +18,12 @@ const globals = globalThis as unknown as Globals;
 function setSession(user: { id: string } | null) {
   globals.__commentsTestAuth = user
     ? {
-        user,
-        profile: { id: user.id, username: "kumori", display_name: "Kumori TV", avatar_url: null },
-        isAnonymous: false,
-        loading: false,
-        signOut: async () => {},
-      }
+      user,
+      profile: { id: user.id, username: "kumori", display_name: "Kumori TV", avatar_url: null },
+      isAnonymous: false,
+      loading: false,
+      signOut: async () => {},
+    }
     : { user: null, profile: null, isAnonymous: false, loading: false, signOut: async () => {} };
 }
 
@@ -46,8 +46,15 @@ function feedRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function mountSection(options: { client: FakeSupabaseClient | null; user?: { id: string } | null; episodeNumber?: number }) {
+async function mountSection(options: {
+  client: FakeSupabaseClient | null;
+  user?: { id: string } | null;
+  episodeNumber?: number;
+  fail?: { status: number; message: string };
+}) {
   const { store, actions } = makeTestStore();
+  installApi();
+  api.fail = options.fail ?? null;
   globals.__commentsTestClient = options.client;
   setSession(options.user === undefined ? { id: "user-1" } : options.user);
 
@@ -65,6 +72,69 @@ async function mountSection(options: { client: FakeSupabaseClient | null; user?:
 }
 
 const MODAL_ACTION = "ShowLoginModal/toggleShowLoginModalValue";
+
+/**
+ * Phase 6, part E: comment writes go through /api/comments, not the browser
+ * client. This stub is the API: it records what was sent, answers 201 with the
+ * row the server would return, and can be told to fail.
+ */
+type ApiCall = { method: string; url: string; body: Record<string, unknown> | null };
+const api = {
+  calls: [] as ApiCall[],
+  fail: null as null | { status: number; message: string },
+  /** What the server would have stored: the body is normalised server-side. */
+  posts(): Record<string, unknown>[] {
+    return this.calls
+      .filter((call) => call.method === "POST")
+      .map((call) => ({ ...(call.body ?? {}), body: String(call.body?.body ?? "").trim() }));
+  },
+  deletes(): string[] {
+    return this.calls.filter((call) => call.method === "DELETE").map((call) => call.url.split("/").pop() ?? "");
+  },
+};
+
+function installApi() {
+  api.calls = [];
+  api.fail = null;
+  globalThis.fetch = (async (input: unknown, init?: { method?: string; body?: unknown }) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+    api.calls.push({ method, url, body });
+
+    if (api.fail) {
+      return new Response(JSON.stringify({ error: "rate_limited", message: api.fail.message }), {
+        status: api.fail.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (method === "POST") {
+      return new Response(
+        JSON.stringify({
+          comment: {
+            id: "new-comment",
+            target_type: body?.targetKind ?? "anime",
+            post_id: null,
+            announcement_id: null,
+            anilist_id: body?.anilistId ?? null,
+            episode_number: body?.episodeNumber ?? null,
+            parent_id: body?.parentId ?? null,
+            user_id: "user-1",
+            body: String(body?.body ?? "").trim(),
+            is_spoiler: body?.isSpoiler === true,
+            created_at: "2026-10-03T10:00:00.000Z",
+          },
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as never;
+}
 
 /** The composer starts as one underlined line; it expands when it is used. */
 async function openComposer(container: HTMLElement) {
@@ -85,7 +155,7 @@ test("guest: writing, replying and reacting all open the login modal", async () 
   assert.equal(store.getState().ShowLoginModal.value, true);
   assert.equal(container.querySelector("textarea"), null);
   assert.equal(actions.filter((type) => type === MODAL_ACTION).length, 1);
-  assert.equal(client.rows("comments").length, 0);
+  assert.equal(api.posts().length, 0);
 
   await click(container.querySelector('[data-testid="like-comment-1"]'));
   assert.equal(actions.filter((type) => type === MODAL_ACTION).length, 2);
@@ -114,11 +184,12 @@ test("signed in: posting adds the comment to the list immediately", async () => 
   assert.match(text(container), /a brand new take/);
   assert.match(text(container), /2 Comments/);
 
-  const rows = client.rows("comments");
+  const rows = api.posts();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].body, "a brand new take");
-  assert.equal(rows[0].user_id, "user-1");
-  assert.equal(rows[0].episode_number, null);
+  // Part E: the browser never sends user_id - the server stamps it from the session.
+  assert.equal(rows[0].user_id, undefined);
+  assert.equal(rows[0].episodeNumber, null);
 
   await tree.unmount();
 });
@@ -141,7 +212,7 @@ test("signed in on the watch page: only this episode is listed and stored", asyn
   await typeInto(container.querySelector("textarea"), "episode thread");
   await submit(container.querySelector("form"));
 
-  assert.equal(client.rows("comments")[0].episode_number, 2);
+  assert.equal(api.posts()[0].episodeNumber, 2);
 
   await tree.unmount();
 });
@@ -196,8 +267,7 @@ test("signed in: only my own comment shows Delete, and it soft deletes", async (
 
   assert.doesNotMatch(text(container), /my comment/);
   assert.match(text(container), /their comment/);
-  assert.equal(typeof client.rows("comments").find((row) => row.id === "mine")?.deleted_at, "string");
-  assert.equal(client.rows("comments").find((row) => row.id === "theirs")?.deleted_at, null);
+  assert.deepEqual(api.deletes(), ["mine"], "only my own comment is deleted, through the API");
 
   await tree.unmount();
 });
@@ -226,9 +296,10 @@ test("spoiler comments stay hidden until they are clicked", async () => {
 
 test("'commenting too fast' is shown under the form and the text is kept", async () => {
   const client = new FakeSupabaseClient({ comment_feed: [feedRow()] });
-  client.failOn("comments", "You are commenting too fast. Please wait a few seconds.");
-
-  const { tree } = await mountSection({ client });
+  const { tree } = await mountSection({
+    client,
+    fail: { status: 429, message: "You are commenting too fast. Please wait a few seconds." },
+  });
   const { container } = tree;
 
   await openComposer(container);
@@ -245,9 +316,10 @@ test("'commenting too fast' is shown under the form and the text is kept", async
 
 test("a generic failure keeps the typed text and shows a short error", async () => {
   const client = new FakeSupabaseClient({ comment_feed: [feedRow()] });
-  client.failOn("comments", "permission denied for table comments");
-
-  const { tree } = await mountSection({ client });
+  const { tree } = await mountSection({
+    client,
+    fail: { status: 500, message: "We could not save that comment. Please try again." },
+  });
   const { container } = tree;
 
   await openComposer(container);
@@ -256,7 +328,9 @@ test("a generic failure keeps the typed text and shows a short error", async () 
 
   assert.match(container.querySelector('[role="alert"]')?.textContent ?? "", /Could not send your comment/);
   assert.equal((container.querySelector("textarea") as HTMLTextAreaElement).value, "unsent words");
-  assert.equal(client.rows("comments").length, 0);
+  // The attempt reached the API and was refused, so no comment was added.
+  assert.equal(api.posts().length, 1);
+  assert.equal(container.querySelectorAll('[data-testid^="comment-"]').length, 1);
 
   await tree.unmount();
 });
@@ -316,9 +390,9 @@ test("replies render nested under their top-level comment and attach to it", asy
   await typeInto(replyForm.querySelector("textarea"), "reply to the reply");
   await submit(replyForm);
 
-  const written = client.rows("comments");
+  const written = api.posts();
   assert.equal(written.length, 1);
-  assert.equal(written[0].parent_id, "parent");
+  assert.equal(written[0].parentId, "parent");
   assert.equal(written[0].body, "reply to the reply");
 
   await tree.unmount();

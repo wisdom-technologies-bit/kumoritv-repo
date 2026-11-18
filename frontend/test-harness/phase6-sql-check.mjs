@@ -644,6 +644,54 @@ async function main() {
   await db.exec(PHASE6);
   console.log("ok  re-running community-phase-6.sql after a rollback succeeds");
 
+  // ---- part E: the lockdown closes the browser's write path ----------------
+  // The SHIMS already create the browser roles; only the Phase 5 grants are
+  // restated here so the lockdown has something to take away.
+  await db.exec(`grant insert, update, delete, select on public.comments to authenticated;`);
+  await db.exec(`grant select on public.comments to anon;`);
+  assert.equal(
+    (await db.query(`select has_table_privilege('authenticated', 'public.comments', 'insert') as ok`)).rows[0].ok,
+    true,
+    "the browser can insert before the lockdown",
+  );
+
+  await db.exec(SQL("community-phase-6-lockdown.sql"));
+
+  assert.equal(
+    (await db.query(`select has_table_privilege('authenticated', 'public.comments', 'insert') as ok`)).rows[0].ok,
+    false,
+    "insert is gone",
+  );
+  assert.equal(
+    (await db.query(`select has_table_privilege('authenticated', 'public.comments', 'update') as ok`)).rows[0].ok,
+    false,
+    "update is gone",
+  );
+  assert.equal(
+    (await db.query(`select has_table_privilege('authenticated', 'public.comments', 'select') as ok`)).rows[0].ok,
+    true,
+    "reads still work",
+  );
+  assert.equal(
+    (await db.query(`select count(*)::int as n from pg_policy where polrelid = 'public.comments'::regclass and polname = 'comments insert own'`)).rows[0].n,
+    0,
+    "the insert policy is gone",
+  );
+  console.log("ok  lockdown: the browser cannot write comments, and can still read them");
+
+  await db.exec(SQL("community-phase-6-lockdown.rollback.sql"));
+  assert.equal(
+    (await db.query(`select has_table_privilege('authenticated', 'public.comments', 'insert') as ok`)).rows[0].ok,
+    true,
+    "the rollback restores the grant",
+  );
+  assert.equal(
+    (await db.query(`select count(*)::int as n from pg_policy where polrelid = 'public.comments'::regclass and polname = 'comments insert own'`)).rows[0].n,
+    1,
+    "the rollback restores the policy",
+  );
+  console.log("ok  lockdown rollback: the Phase 5 write path comes back");
+
   console.log("\nall checks passed");
 }
 

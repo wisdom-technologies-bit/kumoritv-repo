@@ -33,6 +33,13 @@ export const adminWriteLimiter = createRateLimiter({ windowMs: 60_000 });
 export const ADMIN_WRITES_PER_MINUTE = 10;
 
 /**
+ * Phase 6, part E: comments. Ten a minute per IP+user on top of the durable
+ * SQL limits (5/minute, 40/hour). Same caveat as the others: per instance.
+ */
+export const commentCreateLimiter = createRateLimiter({ windowMs: 60_000 });
+export const COMMENT_PER_MINUTE = 10;
+
+/**
  * Phase 6: moderation writes. 60 a minute per staff member - far above any
  * human reviewing a queue, far below a loop. Keyed on the staff user id.
  */
