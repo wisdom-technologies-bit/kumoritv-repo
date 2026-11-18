@@ -18,6 +18,8 @@ import {
 import { streamRequestHeaders, DEFAULT_UA } from "@/app/lib/watch/headers";
 import { probeStream } from "@/app/lib/watch/probe";
 import { providerRank } from "@/app/lib/watch/order";
+import { normalizeVariant } from "@/app/lib/watch/adult/config";
+import { resolveAdultWatch } from "@/app/lib/watch/adult/resolve";
 import {
   ANI_PROVIDER,
   aniGate,
@@ -260,7 +262,10 @@ export async function GET(
     refresh = url.searchParams.get("refresh") === "1",
     debug = url.searchParams.get("debug") === "1",
     requestedProvider = url.searchParams.get("provider"),
-    requestedServer = url.searchParams.get("server");
+    requestedServer = url.searchParams.get("server"),
+    // Named only when the viewer has chosen censored or uncensored. A request
+    // without it never enters the adult branch below.
+    variant = normalizeVariant(url.searchParams.get("variant"));
   if (!id || !episode) return json({ error: "invalid_episode" }, 400);
   if (!["sub", "dub"].includes(audio))
     return json({ error: "invalid_audio" }, 400);
@@ -291,6 +296,32 @@ export async function GET(
     return json(cached.value);
   const db: any = createAdminClient();
   if (!db) return json({ error: "database_unavailable" }, 500);
+
+  // Adult titles resolve through the watchhentai service. This block runs only
+  // when the request carries a variant, so an ordinary request takes exactly the
+  // path it took before: no extra query, no extra branch, no new provider.
+  // `resolveAdultWatch` re-checks that the title really is adult and that the
+  // episode is mapped, and reports "skip" for anything else.
+  if (variant) {
+    const decision = await resolveAdultWatch({
+      db,
+      anilistId: id,
+      episode,
+      variant,
+      proxy: proxyUrl as any,
+      fetchImpl: fetch,
+    });
+    if (decision.kind === "ok") return json(decision.body);
+    if (decision.kind === "unavailable")
+      return json(
+        {
+          error: decision.code,
+          message: decision.message,
+          variants: decision.variants ?? [],
+        },
+        409,
+      );
+  }
   let { data: row } = await getWatchEpisodeResult(db, id, episode);
   if (!row) {
     await importAnime(id, { source: "open", timeoutMs: 20000 });
