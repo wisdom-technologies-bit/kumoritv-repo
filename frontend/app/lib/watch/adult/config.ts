@@ -17,6 +17,14 @@ export type AdultConfig = {
   cacheTtlSeconds: number;
   /** Preferred source label, e.g. "1080p". Falls back to the first source. */
   preferredQuality: string;
+  /**
+   * How good a title match must be before it is trusted without a human having
+   * approved it. The service scores 1 for an exact title, so anything below this
+   * is left unmapped rather than guessed.
+   */
+  matchMinScore: number;
+  /** How many candidate series a single discovery may inspect. */
+  matchCandidates: number;
 };
 
 const DEFAULT_TTL_SECONDS = 900;
@@ -33,6 +41,15 @@ export function orderedVariants(variants: readonly string[]): AdultVariant[] {
   return (["uncensored", "censored"] as AdultVariant[]).filter((variant) =>
     set.has(variant),
   );
+}
+
+function num(raw: string | undefined, fallback: number) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function positiveInt(raw: string | undefined, fallback: number, max: number) {
@@ -57,5 +74,7 @@ export function readAdultConfig(
       MAX_TTL_SECONDS,
     ),
     preferredQuality: (env.ADULT_PREFERRED_QUALITY || "1080p").trim(),
+    matchMinScore: clamp(num(env.ADULT_MATCH_MIN_SCORE, 0.7), 0.3, 1),
+    matchCandidates: Math.round(clamp(num(env.ADULT_MATCH_MAX_CANDIDATES, 4), 1, 8)),
   };
 }

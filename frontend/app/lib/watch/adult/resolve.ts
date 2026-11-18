@@ -19,6 +19,7 @@ import {
   readAdultConfig,
   type AdultVariant,
 } from "./config";
+import { discoverAdultSources, titlesForDiscovery } from "./auto";
 import {
   fetchAdultEpisode,
   readAdultCache,
@@ -65,18 +66,73 @@ async function mappingRows(
   }
 }
 
-async function animeIsAdult(db: any, anilistId: number): Promise<boolean> {
+type AnimeAdultInfo = { isAdult: boolean; titles: string[] };
+
+async function animeAdultInfo(db: any, anilistId: number): Promise<AnimeAdultInfo> {
   try {
     const { data, error } = await db
       .from("anime")
-      .select("is_adult")
+      .select("is_adult, title, title_english, title_romaji")
       .eq("anilist_id", anilistId)
       .maybeSingle();
-    if (error) return false;
-    return data?.is_adult === true;
+    if (error || !data) return { isAdult: false, titles: [] };
+    return { isAdult: data.is_adult === true, titles: titlesForDiscovery(data) };
   } catch {
-    return false;
+    return { isAdult: false, titles: [] };
   }
+}
+
+/**
+ * Discovery writes the row it earned, so the answer is stable afterwards and a
+ * human can correct or delete it later. A curated row is never overwritten:
+ * `auto` is only set on rows this path created.
+ */
+async function saveDiscovered(
+  db: any,
+  anilistId: number,
+  episode: number,
+  sources: Array<{ variant: AdultVariant; videoSlug: string; seriesSlug: string; title: string; score: number }>,
+) {
+  if (sources.length === 0) return;
+  try {
+    await db.from("adult_sources").upsert(
+      sources.map((source) => ({
+        anilist_id: anilistId,
+        episode_number: episode,
+        variant: source.variant,
+        wh_series_slug: source.seriesSlug,
+        wh_video_slug: source.videoSlug,
+        matched_title: source.title,
+        match_score: source.score,
+        auto: true,
+        checked_at: new Date().toISOString(),
+      })),
+      { onConflict: "anilist_id,episode_number,variant", ignoreDuplicates: true },
+    );
+  } catch {
+    /* a cache write is never worth failing playback over */
+  }
+}
+
+/** Curated rows first; discovery only when the episode has none. */
+async function outcomeRows(
+  db: any,
+  config: ReturnType<typeof readAdultConfig>,
+  anilistId: number,
+  episode: number,
+  titles: string[],
+  fetchImpl?: typeof fetch,
+): Promise<MappedRow[]> {
+  const curated = await mappingRows(db, anilistId, episode);
+  if (curated.length > 0 || !config) return curated;
+  const discovered = await discoverAdultSources({ config, titles, episode, fetchImpl });
+  if (discovered.length === 0) return [];
+  await saveDiscovered(db, anilistId, episode, discovered);
+  return discovered.map((source) => ({
+    variant: source.variant,
+    wh_video_slug: source.videoSlug,
+    matched_title: source.title,
+  }));
 }
 
 /** The chooser's data source. Never reveals anything about a non-adult title. */
@@ -87,9 +143,9 @@ export async function listAdultVariants(
 ): Promise<{ providerEnabled: boolean; adult: boolean; variants: AdultVariant[] }> {
   const config = readAdultConfig();
   if (!config) return { providerEnabled: false, adult: false, variants: [] };
-  if (!(await animeIsAdult(db, anilistId)))
-    return { providerEnabled: true, adult: false, variants: [] };
-  const rows = await mappingRows(db, anilistId, episode);
+  const info = await animeAdultInfo(db, anilistId);
+  if (!info.isAdult) return { providerEnabled: true, adult: false, variants: [] };
+  const rows = await outcomeRows(db, config, anilistId, episode, info.titles);
   return {
     providerEnabled: true,
     adult: true,
@@ -111,10 +167,17 @@ export async function resolveAdultWatch(input: {
   const config = readAdultConfig();
   if (!config) return { kind: "skip", reason: "disabled" };
 
-  if (!(await animeIsAdult(input.db, input.anilistId)))
-    return { kind: "skip", reason: "not_adult" };
+  const info = await animeAdultInfo(input.db, input.anilistId);
+  if (!info.isAdult) return { kind: "skip", reason: "not_adult" };
 
-  const rows = await mappingRows(input.db, input.anilistId, input.episode);
+  const rows = await outcomeRows(
+    input.db,
+    config,
+    input.anilistId,
+    input.episode,
+    info.titles,
+    input.fetchImpl,
+  );
   const variants = orderedVariants(rows.map((row) => row.variant));
   const mapped = rows.find((row) => row.variant === variant);
   if (!mapped) {
@@ -122,8 +185,8 @@ export async function resolveAdultWatch(input: {
       kind: "unavailable",
       code: "ADULT_VARIANT_UNAVAILABLE",
       message: variants.length
-        ? "that episode is mapped, but not in the variant you asked for"
-        : "no source is mapped to this episode yet",
+        ? "that episode is available, but not in the variant you asked for"
+        : "no source matched this episode on the adult service",
       variants,
     };
   }

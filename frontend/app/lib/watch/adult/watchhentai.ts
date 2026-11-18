@@ -173,10 +173,88 @@ export async function writeAdultCache(
   }
 }
 
-export type AdultSeriesEpisode = { title: string; url: string };
+export type AdultSeriesEpisode = {
+  title: string;
+  url: string;
+  /** Parsed from the service when it gives one; null when it does not. */
+  number: number | null;
+};
+
+export type AdultMatchCandidate = {
+  title: string;
+  slug: string;
+  url: string;
+  score: number;
+  variant: string;
+};
+
+export type AdultMatchResult =
+  | { ok: true; candidates: AdultMatchCandidate[] }
+  | AdultServiceError;
+
+/**
+ * Title -> candidate series. This is what makes the provider work without any
+ * hand-made mapping: the service ranks what its own search returns, and the
+ * caller decides whether the score is good enough to trust.
+ */
+export async function fetchAdultMatch(
+  config: AdultConfig,
+  title: string,
+  limit: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AdultMatchResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const query = `${config.baseUrl}/api/match?title=${encodeURIComponent(title)}&limit=${limit}`;
+    const response = await fetchImpl(query, {
+      headers: { "x-api-key": config.apiKey, accept: "application/json" },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        code: "ADULT_SERVICE_REJECTED",
+        message: `watchhentai responded ${response.status}`,
+      };
+    }
+    const body = (await response.json()) as {
+      data?: {
+        candidates?: Array<{
+          title?: unknown;
+          slug?: unknown;
+          url?: unknown;
+          score?: unknown;
+          variant?: unknown;
+        }>;
+      };
+    };
+    return {
+      ok: true,
+      candidates: (body?.data?.candidates ?? [])
+        .map((candidate) => ({
+          title: typeof candidate?.title === "string" ? candidate.title : "",
+          slug: typeof candidate?.slug === "string" ? candidate.slug : "",
+          url: typeof candidate?.url === "string" ? candidate.url : "",
+          score: Number(candidate?.score) || 0,
+          variant: typeof candidate?.variant === "string" ? candidate.variant : "unknown",
+        }))
+        .filter((candidate) => candidate.slug),
+    };
+  } catch {
+    return {
+      ok: false,
+      code: "ADULT_SERVICE_UNREACHABLE",
+      message: "watchhentai did not answer the title search",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type AdultSeriesResult =
-  | { ok: true; title: string; episodes: AdultSeriesEpisode[] }
+  | { ok: true; title: string; censored: string; episodes: AdultSeriesEpisode[] }
   | AdultServiceError;
 
 /** One series, so a whole run can be mapped from a single slug. */
@@ -204,14 +282,25 @@ export async function fetchAdultSeries(
       };
     }
     const body = (await response.json()) as {
-      data?: { title?: string; episodes?: Array<{ title?: string; url?: string }> };
+      data?: {
+        title?: string;
+        censored?: unknown;
+        episodes?: Array<{ title?: string; url?: string; number?: unknown }>;
+      };
     };
     return {
       ok: true,
       title: typeof body?.data?.title === "string" ? body.data.title : "",
+      censored: typeof (body?.data as { censored?: unknown })?.censored === "string"
+        ? String((body?.data as { censored?: unknown }).censored)
+        : "",
       episodes: (body?.data?.episodes ?? []).map((episode) => ({
         title: typeof episode?.title === "string" ? episode.title : "",
         url: typeof episode?.url === "string" ? episode.url : "",
+        number:
+          typeof episode?.number === "number" && Number.isFinite(episode.number)
+            ? episode.number
+            : null,
       })),
     };
   } catch (error) {

@@ -1,8 +1,11 @@
 -- Adult (hentai) playback through the watchhentai service.
 --
--- Two tables, nothing existing is altered. A title is only ever served by the
--- adult provider when a row exists here for its episode, so an unmapped anime
--- keeps resolving through ani and the Anivexa providers exactly as it does now.
+-- Two tables, nothing existing is altered.
+--
+-- A row is either curated by hand or written by title discovery when the anime
+-- is marked adult and no row exists yet. Either way the row is the proof: an
+-- anime with no row keeps resolving through ani and the Anivexa providers
+-- exactly as it does now.
 
 create table if not exists public.adult_sources (
   anilist_id      int         not null,
@@ -11,6 +14,10 @@ create table if not exists public.adult_sources (
   wh_series_slug  text        not null,
   wh_video_slug   text        not null,
   matched_title   text,
+  -- true when title discovery created the row rather than a curator, so
+  -- what the machine chose is visible and can be overwritten deliberately
+  auto            boolean     not null default false,
+  match_score     numeric,
   checked_at      timestamptz not null default now(),
   primary key (anilist_id, episode_number, variant)
 );
