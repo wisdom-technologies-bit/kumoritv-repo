@@ -20,6 +20,7 @@ import { clientIp } from "@/app/lib/clips/request";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { latestLimiter, LATEST_PER_MINUTE } from "@/app/lib/community/rate-limit";
 import {
+  CURSOR_SAFETY_MS,
   LATEST_CACHE_MAX_ENTRIES,
   LATEST_CACHE_TTL_MS,
   latestCache,
@@ -27,6 +28,7 @@ import {
   LATEST_LIMIT_MAX,
   latestETag,
   shapeLatestRow,
+  timeOf,
   type LatestItem,
   type LatestRow,
 } from "@/app/lib/community/latest";
@@ -42,7 +44,18 @@ export type LatestDeps = {
   limiter?: { check: (key: string, limit: number, now?: number) => { allowed: boolean; retryAfterSeconds: number } };
 };
 
-const CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=20";
+// 5 s at the edge and 10 s of stale-while-revalidate: the longest a new item can
+// be hidden is 15 s, half of the 30 s poll, so it can never lose a full cycle.
+const CACHE_CONTROL = "public, s-maxage=5, stale-while-revalidate=10";
+
+/**
+ * The first poll has no cursor. The SQL function deliberately returns nothing
+ * when `p_after` is null (there is no "first page" concept there), so a null
+ * cursor is read from the beginning of time instead and the SERVER decides the
+ * seed. This is the difference between a bar that works and one that never
+ * shows anything: without it every poll looks like a first load forever.
+ */
+const SEED_FLOOR = "1970-01-01T00:00:00.000Z";
 
 function jsonResponse(body: unknown, status: number, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -86,6 +99,9 @@ function parseCursor(raw: string | null): { ok: true; value: string | null } | {
 }
 
 function parseLimit(raw: string | null): number {
+  // `Number(null)` is 0, which used to turn a request without `limit` into a
+  // page of ONE item. Absent and blank both mean "the default".
+  if (raw === null || raw.trim() === "") return LATEST_LIMIT_DEFAULT;
   const value = Number(raw);
   if (!Number.isFinite(value)) return LATEST_LIMIT_DEFAULT;
   return Math.min(Math.max(Math.trunc(value), 1), LATEST_LIMIT_MAX);
@@ -138,9 +154,15 @@ export async function handleLatest(request: Request, deps: LatestDeps = {}): Pro
     });
   }
 
+  // The cursor is inclusive: read from one millisecond BEFORE it and let the
+  // client drop what it has already counted. Two items can share a millisecond,
+  // and `created_at > cursor` would otherwise lose the second one forever.
+  const afterMs = timeOf(after);
+  const readFrom = after === null ? SEED_FLOOR : new Date(Math.max(0, afterMs - 1)).toISOString();
+
   let rows: LatestRow[] | null = null;
   try {
-    rows = await (deps.reader ?? databaseReader())({ after, limit });
+    rows = await (deps.reader ?? databaseReader())({ after: readFrom, limit });
   } catch (error) {
     console.error("[community] latest read failed", error);
     return jsonResponse({ error: "unavailable", message: "Community is unavailable right now." }, 503, {
@@ -148,17 +170,28 @@ export async function handleLatest(request: Request, deps: LatestDeps = {}): Pro
     });
   }
 
-  const items: LatestItem[] = (rows ?? [])
-    .map((row) => shapeLatestRow(row))
-    .filter((item): item is LatestItem => Boolean(item))
+  // One row per (kind,id): the SQL unions two sources and a re-read of the
+  // boundary instant must never duplicate an item.
+  const byKey = new Map<string, LatestItem>();
+  for (const row of rows ?? []) {
+    const item = shapeLatestRow(row);
+    if (item) byKey.set(`${item.kind}:${item.id}`, item);
+  }
+  const items: LatestItem[] = [...byKey.values()]
+    .sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt))
     .slice(0, limit);
-
-  // Newest first, defensively: the SQL orders by created_at, the route does not
-  // trust a function it cannot see.
-  items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  items.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
 
   const etag = latestETag(items);
-  const body = JSON.stringify({ items, cursor: items[0]?.createdAt ?? after });
+  // The seed always comes from the server. With no items at all (an empty or
+  // fully hidden community) it is "now" minus a safety margin, so the next poll
+  // is a normal poll and the first real post is shown, not swallowed.
+  const newestMs = items.reduce((max, item) => Math.max(max, timeOf(item.createdAt)), 0);
+  const cursorMs = after === null
+    ? newestMs || Math.max(0, now() - CURSOR_SAFETY_MS)
+    : Math.max(afterMs, newestMs);
+  const responseCursor = new Date(cursorMs).toISOString();
+  const body = JSON.stringify({ items, cursor: responseCursor });
 
   if (cache.size >= LATEST_CACHE_MAX_ENTRIES) cache.clear();
   cache.set(key, { at, etag, body });

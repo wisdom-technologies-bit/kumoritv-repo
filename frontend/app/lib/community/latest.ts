@@ -184,7 +184,8 @@ export function hashString(input: string): string {
  */
 export function latestETag(items: LatestItem[]): string {
   const ids = items.map((item) => `${item.kind}:${item.id}`).sort().join(",");
-  const newest = items.reduce((max, item) => (item.createdAt > max ? item.createdAt : max), "");
+  // Numeric newest, so two ISO spellings of one instant cannot produce two tags.
+  const newest = items.reduce((max, item) => Math.max(max, timeOf(item.createdAt)), 0);
   return `W/"${hashString(`${ids}|${newest}`)}-${items.length}"`;
 }
 
@@ -193,8 +194,10 @@ export function latestETag(items: LatestItem[]): string {
 /* -------------------------------------------------------------------------- */
 
 export type ToastState = {
-  /** Newest created_at already accounted for. null = the first load. */
+  /** Newest created_at already accounted for, ISO with milliseconds. null = first load. */
   cursor: string | null;
+  /** Recently seen `kind:id` keys, so an inclusive re-read never fires twice. */
+  seen?: string[];
   /** Items waiting for the next toast (collapsed into one line). */
   pending: LatestItem[];
   /** When the last toast appeared, for the 10 s throttle. */
@@ -210,40 +213,95 @@ export type ToastContext = {
   suppressed?: boolean;
   /** The clip toast owns the toast layer: queue, but do not show yet. */
   defer?: boolean;
+  /**
+   * The server's cursor from the same response (`payload.cursor`). The first
+   * poll seeds from THIS, never from the items themselves: an empty community
+   * would otherwise leave the cursor null and swallow the first real post.
+   */
+  serverCursor?: string | null;
   visibleMs?: number;
   minGapMs?: number;
 };
 
-export type ToastDecision = { state: ToastState; show: LatestItem[] | null };
+export type ToastDecision = {
+  state: ToastState;
+  show: LatestItem[] | null;
+  fresh: LatestItem[];
+  /** Items dropped because the viewer wrote them (never a toast, still counted). */
+  ownSkipped: number;
+};
+
+/** Keep a small, bounded memory of what has already been accounted for. */
+export const SEEN_MAX = 100;
+/** A first load with nothing to read starts this far behind "now". */
+export const CURSOR_SAFETY_MS = 10_000;
+
+/** Milliseconds for any ISO instant, in any format (`Z`, `+00:00`, microseconds). */
+export function timeOf(value: string | null | undefined): number {
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** One canonical form for a cursor: ISO with milliseconds, so strings compare. */
+export function normalizeCursor(value: string | null | undefined): string | null {
+  const ms = timeOf(value);
+  return ms > 0 ? new Date(ms).toISOString() : null;
+}
+
+export function itemKey(item: LatestItem): string {
+  return `${item.kind}:${item.id}`;
+}
 
 export function initialToastState(): ToastState {
-  return { cursor: null, pending: [], lastShownAt: null, visibleUntil: null };
+  return { cursor: null, seen: [], pending: [], lastShownAt: null, visibleUntil: null };
 }
 
 function dedupe(items: LatestItem[]): LatestItem[] {
   const seen = new Set<string>();
   const out: LatestItem[] = [];
   for (const item of items) {
-    const key = `${item.kind}:${item.id}`;
+    const key = itemKey(item);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
   }
-  // Newest first, so the representative is unambiguous.
-  return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  // Newest first (numeric, never string order), so the representative is clear.
+  return out.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
 }
 
-function newestOf(items: LatestItem[], fallback: string | null): string | null {
-  let newest = fallback;
-  for (const item of items) if (!newest || item.createdAt > newest) newest = item.createdAt;
+/**
+ * The newest instant across the items, the server cursor and a fallback.
+ * Compared as numbers: `2026-...00.123Z` and `2026-...00.123456+00:00` are the
+ * same instant even though the strings are not.
+ */
+export function newestInstant(
+  items: LatestItem[],
+  serverCursor?: string | null,
+  fallbackMs = 0,
+): number {
+  let newest = Math.max(timeOf(serverCursor ?? ""), fallbackMs, 0);
+  for (const item of items) newest = Math.max(newest, timeOf(item.createdAt));
   return newest;
+}
+
+function withSeen(state: ToastState, items: LatestItem[]): string[] {
+  const seen = Array.isArray(state.seen) ? state.seen : [];
+  const next = [...seen];
+  for (const item of items) {
+    const key = itemKey(item);
+    if (!next.includes(key)) next.push(key);
+  }
+  return next.slice(-SEEN_MAX);
 }
 
 /**
  * Feeds one poll result into the toast state.
  *
- *   * the FIRST response only seeds the cursor: a returning visitor is never
- *     shown the backlog;
+ *   * the FIRST response only seeds the cursor, from the SERVER cursor when the
+ *     response carries one: a returning visitor is never shown the backlog;
+ *   * an item is new when its instant is strictly newer than the cursor, or when
+ *     it is exactly on the cursor and was never seen (the route re-reads the
+ *     boundary second inclusively, so nothing can fall between two polls);
  *   * the author's own items are skipped (their cursor still advances);
  *   * while suppressed nothing is queued - the pill carries the count instead;
  *   * at most one toast per `minGapMs`; anything newer waits in `pending` and is
@@ -260,53 +318,81 @@ export function nextToast(
   const visibleMs = context.visibleMs ?? TOAST_VISIBLE_MS;
   const minGapMs = context.minGapMs ?? TOAST_MIN_GAP_MS;
   const incoming = Array.isArray(items) ? items.filter(Boolean) : [];
+  const seen = Array.isArray(state.seen) ? state.seen : [];
 
   // First load: seed only, never toast the backlog.
   if (state.cursor === null) {
+    // The server cursor (and the newest item) are authoritative. `now` is only a
+    // last resort when the response carries neither: mixing the client clock in
+    // would let a small skew swallow an item whose date is older than "now".
+    const seeded =
+      newestInstant(incoming, context.serverCursor, 0) ||
+      Math.max(0, now - CURSOR_SAFETY_MS);
     return {
-      state: { ...state, cursor: newestOf(incoming, null) },
+      state: {
+        ...state,
+        cursor: seeded > 0 ? new Date(seeded).toISOString() : null,
+        seen: withSeen(state, incoming),
+      },
       show: null,
+      fresh: [],
+      ownSkipped: 0,
     };
   }
 
-  const previousCursor = state.cursor;
-  const cursor = newestOf(incoming, previousCursor);
-  const fresh = incoming.filter(
-    (item) =>
-      item.createdAt > previousCursor &&
-      (!context.viewerId || item.authorId !== context.viewerId),
+  const previousMs = timeOf(state.cursor);
+  let ownSkipped = 0;
+  const fresh = incoming.filter((item) => {
+    if (context.viewerId && item.authorId === context.viewerId) {
+      ownSkipped += 1;
+      return false;
+    }
+    const instant = timeOf(item.createdAt);
+    if (instant > previousMs) return true;
+    // Same instant as the cursor: only new if this exact item was never counted.
+    return instant === previousMs && instant > 0 && !seen.includes(itemKey(item));
+  });
+
+  const cursorMs = Math.max(
+    previousMs,
+    newestInstant(incoming, context.serverCursor, 0),
   );
+  const cursor = cursorMs > 0 ? new Date(cursorMs).toISOString() : state.cursor;
+  const nextState: ToastState = { ...state, cursor, seen: withSeen(state, incoming) };
 
   if (context.suppressed) {
     // The pill owns the count where the toast is suppressed. Nothing is queued.
-    return { state: { ...state, cursor, pending: [] }, show: null };
+    return { state: { ...nextState, pending: [] }, show: null, fresh, ownSkipped };
   }
 
   const pending = fresh.length ? dedupe([...state.pending, ...fresh]) : state.pending;
-  if (!pending.length) return { state: { ...state, cursor }, show: null };
+  if (!pending.length) return { state: nextState, show: null, fresh, ownSkipped };
 
   // Another toast owns the layer (the clip editor's status line). Wait, do not
   // drop: the community toast is shown as soon as the layer is free.
-  if (context.defer) return { state: { ...state, cursor, pending }, show: null };
+  if (context.defer) return { state: { ...nextState, pending }, show: null, fresh, ownSkipped };
 
   // Still on screen: wait for the fade, then flush.
   if (state.visibleUntil !== null && now < state.visibleUntil) {
-    return { state: { ...state, cursor, pending }, show: null };
+    return { state: { ...nextState, pending }, show: null, fresh, ownSkipped };
   }
 
   // Throttled: one toast per window, no matter how many posts arrived.
   if (state.lastShownAt !== null && now < state.lastShownAt + minGapMs) {
-    return { state: { ...state, cursor, pending }, show: null };
+    return { state: { ...nextState, pending }, show: null, fresh, ownSkipped };
   }
 
   return {
     state: {
       cursor,
+      seen: nextState.seen,
       pending: [],
       lastShownAt: now,
       visibleUntil: now + visibleMs,
     },
     show: pending,
+    fresh,
+    ownSkipped,
   };
 }
 
@@ -385,15 +471,16 @@ export function readLatestConfig(env: (key: string) => string | undefined): {
 }
 
 /**
- * The route's 10 s per-instance cache, kept out of the route file: Next allows a
+ * The route's 5 s per-instance cache, kept out of the route file: Next allows a
  * route module to export only its own symbols, and the test hook below is not
- * one of them.
+ * one of them. Five seconds (not ten) is deliberate: with a 30 s poll and a CDN
+ * `s-maxage=5`, a brand new post can never be hidden for a whole cycle.
  *
  * It lives on `globalThis` so a dev-server module reload does not hand every
  * request a cold cache, and so a unit test can clear the exact map the route
  * uses.
  */
-export const LATEST_CACHE_TTL_MS = 10_000;
+export const LATEST_CACHE_TTL_MS = 5_000;
 export const LATEST_CACHE_MAX_ENTRIES = 100;
 
 export type LatestCacheEntry = { at: number; etag: string; body: string };

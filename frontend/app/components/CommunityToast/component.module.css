@@ -221,3 +221,43 @@
     transform: none;
   }
 }
+
+/* ?toastdebug=1 only. Small, fixed, bottom-left, above the page but below the
+   toast itself; it never renders without the query parameter. */
+.debug {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2147483000;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(11, 11, 20, 0.94);
+  color: #f2f2f7;
+  font-size: 12px;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.debug_row {
+  margin: 0 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.debug_button {
+  margin-top: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.debug_button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}

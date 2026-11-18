@@ -277,3 +277,79 @@ test("the mobile line is author + text, and never an empty name", () => {
     "KumoriTV · We are back",
   );
 });
+
+/* ------------------------- Part A: the seed and clocks --------------------- */
+
+test("an EMPTY first response seeds from the server cursor, so the next post toasts", () => {
+  // The owner's report: an empty community (or every item hidden). Seeding from
+  // the items alone leaves the cursor null, every poll looks like the first
+  // load, and the first real post is swallowed as a seed - forever.
+  const seeded = nextToast(initialToastState(), 1_000, [], { serverCursor: at(5) });
+  assert.equal(seeded.state.cursor, at(5));
+  assert.equal(seeded.show, null);
+
+  const next = nextToast(seeded.state, 31_000, [item({ id: "b", createdAt: at(10) })]);
+  assert.equal(next.show?.[0].id, "b");
+});
+
+test("an empty first response without a server cursor still stops being a first load", () => {
+  const seeded = nextToast(initialToastState(), 60_000, []);
+  assert.ok(seeded.state.cursor);
+  assert.equal(Date.parse(String(seeded.state.cursor)), 50_000);
+  const next = nextToast(seeded.state, 90_000, [item({ id: "b", createdAt: at(70) })]);
+  assert.equal(next.show?.[0].id, "b");
+});
+
+test("a full first page seeds to its newest item and never toasts the backlog", () => {
+  const seeded = nextToast(initialToastState(), 1_000, [
+    item({ id: "old", createdAt: at(1) }),
+    item({ id: "newest", createdAt: at(5) }),
+  ], { serverCursor: at(5) });
+  assert.equal(seeded.show, null);
+  assert.equal(seeded.state.cursor, at(5));
+});
+
+test("timestamps are compared as instants, never as strings", () => {
+  // Postgres returns microseconds and `+00:00`; the cursor is `...123Z`.
+  const state = { ...initialToastState(), cursor: "2026-11-17T12:00:10.123Z", seen: ["post:same"] };
+  const same = nextToast(state, 31_000, [
+    item({ id: "same", createdAt: "2026-11-17T12:00:10.123456+00:00" }),
+  ]);
+  assert.equal(same.show, null, "the same instant is not new");
+
+  const later = nextToast(state, 31_000, [
+    item({ id: "later", createdAt: "2026-11-17T12:00:10.124+00:00" }),
+  ]);
+  assert.equal(later.show?.[0].id, "later");
+  // The cursor is stored in ONE canonical form.
+  assert.equal(later.state.cursor, "2026-11-17T12:00:10.124Z");
+});
+
+test("a second item on the boundary instant is new exactly once", () => {
+  const state = { ...initialToastState(), cursor: at(10), seen: ["post:first"] };
+  const first = nextToast(state, 31_000, [
+    item({ id: "first", createdAt: at(10) }),
+    item({ id: "second", createdAt: at(10) }),
+  ]);
+  assert.deepEqual(first.fresh.map((entry) => entry.id), ["second"]);
+  assert.equal(first.show?.[0].id, "second");
+
+  const again = nextToast(first.state, 42_000, [
+    item({ id: "first", createdAt: at(10) }),
+    item({ id: "second", createdAt: at(10) }),
+  ]);
+  assert.equal(again.show, null, "an inclusive re-read never fires twice");
+});
+
+test("the server cursor advances the client even when the page has no new items", () => {
+  const state = { ...initialToastState(), cursor: at(5) };
+  const decision = nextToast(state, 31_000, [], { serverCursor: at(9) });
+  assert.equal(decision.state.cursor, at(9));
+  assert.equal(decision.show, null);
+});
+
+test("latestETag changes when one item is inserted", () => {
+  const before = latestETag([item({ id: "a", createdAt: at(5) })]);
+  const after = latestETag([item({ id: "b", createdAt: at(10) }), item({ id: "a", createdAt: at(5) })]);
+  assert.notEqual(before, after);
+});
