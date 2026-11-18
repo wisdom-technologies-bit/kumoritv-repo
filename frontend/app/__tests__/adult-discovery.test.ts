@@ -199,6 +199,8 @@ test("an unmapped adult episode resolves by discovery alone", async () => {
     const body = (decision as any).body;
     assert.equal(body.provider, "wh");
     assert.equal(body.variant, "censored");
+    assert.equal(body.hardsub, true);
+    assert.deepEqual(body.subtitles, []);
     assert.equal(body.url, "https://kumoritv.top/api/proxy/segment?u=signed");
     assert.deepEqual(proxied[0], {
       u: "https://hstorage.xyz/hitori_1080p.mp4",

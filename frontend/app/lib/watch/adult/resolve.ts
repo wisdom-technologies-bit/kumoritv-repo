@@ -234,6 +234,11 @@ export async function resolveAdultWatch(input: {
       hasBackup: false,
       type: "mp4",
       url,
+      // The source publishes subtitles burned into the picture, never as a
+      // track: the watchhentai player carries no .vtt/.srt at all. Flagging it
+      // hardsub keeps the player from offering a track selector that would be
+      // empty and from nudging the viewer toward external subs.
+      hardsub: true,
       subtitles: [],
       thumbnails: null,
       intro: null,
