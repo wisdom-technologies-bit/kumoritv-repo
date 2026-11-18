@@ -1425,3 +1425,237 @@ begin
   end if;
   return new;
 end $$;
+
+-- =====================================================================
+-- 14. Durable rate limits (part D)
+-- =====================================================================
+-- The in-memory limiter in the app is per instance and resets on deploy. These
+-- are the durable ones: they live in the database, so they hold across Railway
+-- restarts and across however many instances are running.
+--
+-- Every check below counts rows in a short window for one user id. Each one is
+-- backed by an index on (user, created_at), so the planner reads a range, not
+-- the table.
+create index if not exists comments_user_created_idx
+  on public.comments (user_id, created_at desc);
+
+create index if not exists community_posts_author_created_idx
+  on public.community_posts (author_id, created_at desc);
+
+create index if not exists community_reports_reporter_created_idx
+  on public.community_reports (reporter_id, created_at desc);
+
+-- community_reactions has created_at on Phase 1's schema; the guard keeps the
+-- index creation from failing on an older database that never added it.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'community_reactions' and column_name = 'created_at'
+  ) then
+    create index if not exists community_reactions_user_created_idx
+      on public.community_reactions (user_id, created_at desc);
+  end if;
+end $$;
+
+-- Reactions: 60 per minute, whoever writes them. A BEFORE INSERT trigger rather
+-- than a rewrite of community_react(): the function is long, and a trigger also
+-- covers any future writer.
+create or replace function public.community_reaction_rate_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.is_staff() then
+    return new;
+  end if;
+
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'community_reactions' and column_name = 'created_at'
+  ) then
+    if (select count(*) from public.community_reactions r
+         where r.user_id = new.user_id
+           and r.created_at > now() - interval '1 minute') >= 60 then
+      raise exception 'rate_limit:reactions_minute';
+    end if;
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists community_reaction_rate_guard_trg on public.community_reactions;
+create trigger community_reaction_rate_guard_trg
+  before insert on public.community_reactions
+  for each row execute function public.community_reaction_rate_guard();
+
+-- Reports: 10 per hour per signed-in reporter. Guests (reporter_id null) are
+-- already throttled by the salted hash and the route's in-memory limiter, and
+-- they have no id to count.
+create or replace function public.community_report_rate_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.reporter_id is null or public.is_staff() then
+    return new;
+  end if;
+
+  if (select count(*) from public.community_reports r
+       where r.reporter_id = new.reporter_id
+         and r.created_at > now() - interval '1 hour') >= 10 then
+    raise exception 'rate_limit:reports_hour';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists community_report_rate_guard_trg on public.community_reports;
+create trigger community_report_rate_guard_trg
+  before insert on public.community_reports
+  for each row execute function public.community_report_rate_guard();
+
+-- ---------------------------------------------------------------------
+-- 14b. The two insert guards, with the durable limits added
+-- ---------------------------------------------------------------------
+-- Both are create-or-replace of the SAME function with the SAME trigger
+-- signature: no return type changes, no column changes, nothing to re-grant
+-- (triggers are not executed by browser roles).
+create or replace function public.comments_guard() returns trigger
+language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    -- ORIGINAL BEHAVIOUR 1: one comment per user per 10 seconds, site-wide.
+    if exists (
+      select 1 from public.comments c
+       where c.user_id = new.user_id and c.created_at > now() - interval '10 seconds'
+    ) then
+      raise exception 'You are commenting too fast. Please wait a few seconds.';
+    end if;
+
+    -- PART D: durable limits, counted from comments_user_created_idx. Staff are
+    -- exempt: they moderate in bulk and the log already records what they do.
+    if not public.is_staff() then
+      if (select count(*) from public.comments c
+           where c.user_id = new.user_id
+             and c.created_at > now() - interval '1 minute') >= 5 then
+        raise exception 'rate_limit:comments_minute';
+      end if;
+      if (select count(*) from public.comments c
+           where c.user_id = new.user_id
+             and c.created_at > now() - interval '1 hour') >= 40 then
+        raise exception 'rate_limit:comments_hour';
+      end if;
+    end if;
+
+    -- ORIGINAL BEHAVIOUR 2: a reply must point at a live top-level comment of
+    -- the same thing (anime -> same anilist_id; post/announcement -> same id).
+    if new.parent_id is not null then
+      if new.target_type = 'anime' then
+        if not exists (
+          select 1 from public.comments p
+           where p.id = new.parent_id and p.parent_id is null
+             and p.anilist_id = new.anilist_id and p.deleted_at is null
+        ) then
+          raise exception 'Invalid reply target.';
+        end if;
+      else
+        if not exists (
+          select 1 from public.comments p
+           where p.id = new.parent_id and p.parent_id is null
+             and p.target_type = new.target_type
+             and p.post_id is not distinct from new.post_id
+             and p.announcement_id is not distinct from new.announcement_id
+             and p.deleted_at is null
+        ) then
+          raise exception 'Invalid reply target.';
+        end if;
+      end if;
+    end if;
+  else
+    -- ORIGINAL BEHAVIOUR 3: only is_spoiler / deleted_at may move; every other
+    -- column is frozen, and updated_at is stamped.
+    new.user_id := old.user_id;
+    new.anilist_id := old.anilist_id;
+    new.episode_number := old.episode_number;
+    new.parent_id := old.parent_id;
+    new.body := old.body;
+    new.created_at := old.created_at;
+    new.target_type := old.target_type;
+    new.post_id := old.post_id;
+    new.announcement_id := old.announcement_id;
+    new.updated_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists comments_guard_trg on public.comments;
+create trigger comments_guard_trg before insert or update on public.comments
+  for each row execute function public.comments_guard();
+
+create or replace function public.community_posts_guard() returns trigger
+language plpgsql as $$
+declare
+  normalised text;
+begin
+  if tg_op = 'INSERT' then
+    if exists (select 1 from public.community_posts p
+                where p.author_id = new.author_id
+                  and p.created_at > now() - interval '30 seconds') then
+      raise exception 'You are posting too fast. Please wait a moment.';
+    end if;
+    -- PART D: 3 per 10 minutes and 20 per day, counted from
+    -- community_posts_author_created_idx. This replaces the old 20/hour cap with
+    -- the 20/day the plan asks for; the 30 s gap above is unchanged.
+    if not public.is_staff() then
+      if (select count(*) from public.community_posts p
+           where p.author_id = new.author_id
+             and p.created_at > now() - interval '10 minutes') >= 3 then
+        raise exception 'rate_limit:posts_10min';
+      end if;
+      if (select count(*) from public.community_posts p
+           where p.author_id = new.author_id
+             and p.created_at > now() - interval '1 day') >= 20 then
+        raise exception 'rate_limit:posts_day';
+      end if;
+    end if;
+
+    normalised := regexp_replace(lower(btrim(new.body)), '\s+', ' ', 'g');
+    if exists (select 1 from public.community_posts p
+                where p.author_id = new.author_id
+                  and regexp_replace(lower(btrim(p.body)), '\s+', ' ', 'g') = normalised
+                  and p.created_at > now() - interval '10 minutes') then
+      raise exception 'You just posted that.';
+    end if;
+
+    new.body := btrim(new.body);
+    if char_length(new.body) = 0 then
+      raise exception 'Write something first.';
+    end if;
+  else
+    -- Only these may move from a browser; status/pinned are staff-only and
+    -- are enforced by the RLS update policy plus this freeze.
+    new.author_id := old.author_id;
+    new.body := old.body;
+    new.clip_id := old.clip_id;
+    new.link_url := old.link_url;
+    new.link_title := old.link_title;
+    new.link_image := old.link_image;
+    new.created_at := old.created_at;
+    if not public.is_staff() then
+      new.status := old.status;
+      new.pinned := old.pinned;
+      new.removed_reason := old.removed_reason;
+    end if;
+    new.updated_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists community_posts_guard_trg on public.community_posts;
+create trigger community_posts_guard_trg before insert or update on public.community_posts
+  for each row execute function public.community_posts_guard();

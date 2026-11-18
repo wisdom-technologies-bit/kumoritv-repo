@@ -9,6 +9,7 @@ import { clientIp } from "@/app/lib/clips/request";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { postCreateLimiter } from "@/app/lib/community/rate-limit";
 import { handleCreatePost, type CommunitySession } from "@/app/lib/community/posts-server";
+import { readSpamFacts } from "@/app/lib/community/antispam-server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getClipByCode } from "@/app/lib/clips/server";
 import { createAuthServerClient } from "@/app/lib/supabase/auth-server";
@@ -52,6 +53,15 @@ export async function POST(request: Request) {
       const row = await getClipByCode(code);
       return row ? { id: row.id, title: row.title } : null;
     },
+    // Part D: the facts the SQL guards cannot see cheaply - account age, links,
+    // and whether the same body just went up.
+    spam: session?.userId
+      ? await readSpamFacts(
+        admin,
+        session.userId,
+        typeof (raw as { body?: unknown })?.body === "string" ? String((raw as { body?: unknown }).body) : "",
+      )
+      : undefined,
     insert: async (row) => {
       const { data, error } = await (admin as any)
         .from("community_posts")

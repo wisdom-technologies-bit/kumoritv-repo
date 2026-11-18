@@ -486,6 +486,112 @@ async function main() {
   assert.equal(Number(stats.removed_items) > 0, true);
   console.log("ok  stats: counters answer for staff");
 
+  // ---- 10c. durable rate limits (part D) ---------------------------------
+  // Backdated rows keep the 10 s gap out of the way, so each check tests the
+  // window it claims to test rather than the gap in front of it.
+  await db.exec(`delete from public.staff_roles where user_id in ('${REPORTER}', '${VIEWER}');`);
+  // The guards exempt staff by the SESSION user, exactly as RLS forces
+  // user_id = auth.uid() in production; the fixture has to set the session too.
+  await as(db, REPORTER);
+  for (let i = 0; i < 5; i += 1) {
+    await db.exec(`
+      insert into public.comments (user_id, body, target_type, anilist_id, created_at)
+      values ('${REPORTER}', 'burst ${i}', 'anime', 21, now() - interval '30 seconds');
+    `);
+  }
+  await assert.rejects(
+    () =>
+      db.exec(`
+        insert into public.comments (user_id, body, target_type, anilist_id, created_at)
+        values ('${REPORTER}', 'burst 6', 'anime', 21, now() - interval '30 seconds');
+      `),
+    /rate_limit:comments_minute/,
+    "a sixth comment inside the minute is refused",
+  );
+  await db.exec(`delete from public.comments where body like 'burst %';`);
+  console.log("ok  rate limit: comments 5/minute");
+
+  await as(db, VIEWER);
+  for (let i = 0; i < 3; i += 1) {
+    await db.exec(`
+      insert into public.community_posts (author_id, body, created_at)
+      values ('${VIEWER}', 'burst post ${i}', now() - interval '5 minutes');
+    `);
+  }
+  await assert.rejects(
+    () =>
+      db.exec(`
+        insert into public.community_posts (author_id, body, created_at)
+        values ('${VIEWER}', 'burst post 4', now() - interval '5 minutes');
+      `),
+    /rate_limit:posts_10min/,
+    "a fourth post inside ten minutes is refused",
+  );
+  await db.exec(`delete from public.community_posts where body like 'burst post %';`);
+  console.log("ok  rate limit: posts 3/10 minutes");
+
+  // 61 announcements give 61 distinct targets for reactions and reports.
+  await db.exec(`
+    insert into public.announcements (title, body, created_by)
+    select 'target ' || g, 'x', '${ADMIN}' from generate_series(1, 61) g;
+  `);
+  await as(db, VIEWER);
+  await db.exec(`
+    insert into public.community_reactions (user_id, target_kind, announcement_id, value)
+    select '${VIEWER}', 'announcement', a.id, 1
+      from public.announcements a where a.title like 'target %' limit 60;
+  `);
+  await assert.rejects(
+    () =>
+      db.exec(`
+        insert into public.community_reactions (user_id, target_kind, announcement_id, value)
+        select '${VIEWER}', 'announcement', a.id, 1
+          from public.announcements a
+         where a.title like 'target %'
+           and a.id not in (select announcement_id from public.community_reactions where user_id = '${VIEWER}')
+         limit 1;
+      `),
+    /rate_limit:reactions_minute/,
+    "a 61st reaction inside the minute is refused",
+  );
+  await db.exec(`delete from public.community_reactions where user_id = '${VIEWER}';`);
+  console.log("ok  rate limit: reactions 60/minute");
+
+  await as(db, REPORTER);
+  await db.exec(`delete from public.community_reports where reporter_id = '${REPORTER}';`);
+  await db.exec(`
+    insert into public.community_reports (reporter_id, target_kind, target_id, reason)
+    select '${REPORTER}', 'announcement', a.id, 'spam'
+      from public.announcements a where a.title like 'target %' limit 10;
+  `);
+  await assert.rejects(
+    () =>
+      db.exec(`
+        insert into public.community_reports (reporter_id, target_kind, target_id, reason)
+        select '${REPORTER}', 'announcement', a.id, 'spam'
+          from public.announcements a
+         where a.title like 'target %'
+           and a.id not in (select target_id from public.community_reports where reporter_id = '${REPORTER}')
+         limit 1;
+      `),
+    /rate_limit:reports_hour/,
+    "an 11th report inside the hour is refused",
+  );
+  await db.exec(`delete from public.community_reports where reporter_id = '${REPORTER}' and target_kind = 'announcement';`);
+  console.log("ok  rate limit: reports 10/hour");
+
+  await as(db, MOD);
+  for (let i = 0; i < 6; i += 1) {
+    await db.exec(`
+      insert into public.comments (user_id, body, target_type, anilist_id, created_at)
+      values ('${MOD}', 'staff ${i}', 'anime', 22, now() - interval '20 seconds');
+    `);
+  }
+  assert.equal(await count("public.comments", `user_id = '${MOD}' and body like 'staff %'`), 6, "staff are exempt");
+  await db.exec(`delete from public.comments where body like 'staff %';`);
+  await db.exec(`delete from public.announcements where title like 'target %';`);
+  console.log("ok  rate limit: staff exempt");
+
   // ---- 11. the log survives the actor leaving ----------------------------
   const moderatorRows = await count("public.community_moderation_log", `actor_id = '${MOD}'`);
   await db.exec(`delete from auth.users where id = '${MOD}';`);

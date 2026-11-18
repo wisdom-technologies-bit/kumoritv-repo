@@ -10,6 +10,7 @@ import ModerationActions from "./components/ModerationActions";
 import styles from "./admin.module.css";
 import { REASON_LABEL, readModerationQueue, readModerationStats, readReportGroups } from "@/app/lib/community/admin-server";
 import { readStaffForPage } from "@/app/lib/community/staff";
+import { readRuleHits } from "@/app/lib/community/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,10 @@ export default async function AdminDashboard() {
     readReportGroups({ status: "open", limit: 5 }),
     readModerationQueue({ limit: 5 }),
   ]);
+
+  // Part D: refusals this process made. Per instance, and it says so - the
+  // durable numbers are in the database, these are a smoke signal.
+  const ruleHits = readRuleHits().slice(0, 6);
 
   const counters = [
     { label: "Open reports", value: stats?.open_reports ?? 0, href: "/community/admin/reports" },
@@ -54,6 +59,30 @@ export default async function AdminDashboard() {
             <span className={styles.counter_label}>{counter.label}</span>
           </Link>
         ))}
+      </section>
+
+      <section className={styles.card} aria-labelledby="rule-hits">
+        <h2 id="rule-hits" className={styles.card_title}>
+          Refusals on this instance
+        </h2>
+        {ruleHits.length === 0 ? (
+          <p className={styles.empty}>No write was refused here since the last deploy.</p>
+        ) : (
+          <ul className={styles.list}>
+            {ruleHits.map((hit) => (
+              <li key={hit.rule} className={styles.card_row}>
+                <div className={styles.card_row_head}>
+                  <span className={styles.badge}>{hit.rule}</span>
+                  <span className={styles.muted}>{hit.count}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className={styles.small}>
+          Counted in memory per server instance, so this resets on deploy and does not include other instances. The
+          limits themselves are enforced in the database.
+        </p>
       </section>
 
       <section className={styles.card} aria-labelledby="attention">

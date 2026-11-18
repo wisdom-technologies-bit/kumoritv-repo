@@ -528,3 +528,127 @@ drop trigger if exists community_blocked_push_guard on public.push_outbox;
 drop trigger if exists community_blocked_notification_guard on public.user_notifications;
 drop function if exists public.community_blocked_push_guard();
 drop function if exists public.community_blocked_notification_guard();
+
+-- ---------------------------------------------------------------------
+-- 14. part D: durable rate limits
+-- ---------------------------------------------------------------------
+drop trigger if exists community_report_rate_guard_trg on public.community_reports;
+drop trigger if exists community_reaction_rate_guard_trg on public.community_reactions;
+drop function if exists public.community_report_rate_guard();
+drop function if exists public.community_reaction_rate_guard();
+
+drop index if exists public.community_reactions_user_created_idx;
+drop index if exists public.community_reports_reporter_created_idx;
+drop index if exists public.community_posts_author_created_idx;
+drop index if exists public.comments_user_created_idx;
+
+-- the Phase 5 guards, exactly as they were
+create or replace function public.comments_guard() returns trigger
+language plpgsql as $$
+begin
+  if tg_op = 'INSERT' then
+    -- ORIGINAL BEHAVIOUR 1: one comment per user per 10 seconds, site-wide.
+    if exists (
+      select 1 from public.comments c
+       where c.user_id = new.user_id and c.created_at > now() - interval '10 seconds'
+    ) then
+      raise exception 'You are commenting too fast. Please wait a few seconds.';
+    end if;
+
+    -- ORIGINAL BEHAVIOUR 2: a reply must point at a live top-level comment of
+    -- the same thing (anime -> same anilist_id; post/announcement -> same id).
+    if new.parent_id is not null then
+      if new.target_type = 'anime' then
+        if not exists (
+          select 1 from public.comments p
+           where p.id = new.parent_id and p.parent_id is null
+             and p.anilist_id = new.anilist_id and p.deleted_at is null
+        ) then
+          raise exception 'Invalid reply target.';
+        end if;
+      else
+        if not exists (
+          select 1 from public.comments p
+           where p.id = new.parent_id and p.parent_id is null
+             and p.target_type = new.target_type
+             and p.post_id is not distinct from new.post_id
+             and p.announcement_id is not distinct from new.announcement_id
+             and p.deleted_at is null
+        ) then
+          raise exception 'Invalid reply target.';
+        end if;
+      end if;
+    end if;
+  else
+    -- ORIGINAL BEHAVIOUR 3: only is_spoiler / deleted_at may move; every other
+    -- column is frozen, and updated_at is stamped.
+    new.user_id := old.user_id;
+    new.anilist_id := old.anilist_id;
+    new.episode_number := old.episode_number;
+    new.parent_id := old.parent_id;
+    new.body := old.body;
+    new.created_at := old.created_at;
+    new.target_type := old.target_type;
+    new.post_id := old.post_id;
+    new.announcement_id := old.announcement_id;
+    new.updated_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists comments_guard_trg on public.comments;
+create trigger comments_guard_trg before insert or update on public.comments
+  for each row execute function public.comments_guard();
+
+create or replace function public.community_posts_guard() returns trigger
+language plpgsql as $$
+declare
+  normalised text;
+begin
+  if tg_op = 'INSERT' then
+    if exists (select 1 from public.community_posts p
+                where p.author_id = new.author_id
+                  and p.created_at > now() - interval '30 seconds') then
+      raise exception 'You are posting too fast. Please wait a moment.';
+    end if;
+    if (select count(*) from public.community_posts p
+         where p.author_id = new.author_id
+           and p.created_at > now() - interval '1 hour') >= 20 then
+      raise exception 'You have reached the posting limit for this hour.';
+    end if;
+
+    normalised := regexp_replace(lower(btrim(new.body)), '\s+', ' ', 'g');
+    if exists (select 1 from public.community_posts p
+                where p.author_id = new.author_id
+                  and regexp_replace(lower(btrim(p.body)), '\s+', ' ', 'g') = normalised
+                  and p.created_at > now() - interval '10 minutes') then
+      raise exception 'You just posted that.';
+    end if;
+
+    new.body := btrim(new.body);
+    if char_length(new.body) = 0 then
+      raise exception 'Write something first.';
+    end if;
+  else
+    -- Only these may move from a browser; status/pinned are staff-only and
+    -- are enforced by the RLS update policy plus this freeze.
+    new.author_id := old.author_id;
+    new.body := old.body;
+    new.clip_id := old.clip_id;
+    new.link_url := old.link_url;
+    new.link_title := old.link_title;
+    new.link_image := old.link_image;
+    new.created_at := old.created_at;
+    if not public.is_staff() then
+      new.status := old.status;
+      new.pinned := old.pinned;
+      new.removed_reason := old.removed_reason;
+    end if;
+    new.updated_at := now();
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists community_posts_guard_trg on public.community_posts;
+create trigger community_posts_guard_trg before insert or update on public.community_posts
+  for each row execute function public.community_posts_guard();
