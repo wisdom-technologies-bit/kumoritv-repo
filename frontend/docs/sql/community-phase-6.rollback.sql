@@ -522,3 +522,9 @@ drop index if exists public.clip_reports_open_idx;
 alter table public.clip_reports drop column if exists resolved_by;
 alter table public.clip_reports drop column if exists resolved_at;
 alter table public.clip_reports drop column if exists status;
+
+-- 13. part C: block guards
+drop trigger if exists community_blocked_push_guard on public.push_outbox;
+drop trigger if exists community_blocked_notification_guard on public.user_notifications;
+drop function if exists public.community_blocked_push_guard();
+drop function if exists public.community_blocked_notification_guard();

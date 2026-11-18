@@ -403,6 +403,41 @@ async function main() {
   assert.equal((await db.query(`select public.is_admin() as a`)).rows[0].a, true);
   console.log("ok  roles: moderator is staff but not admin");
 
+  // ---- 9b. blocks (part C) ------------------------------------------------
+  await db.exec(`
+    insert into public.community_blocks (blocker_id, blocked_id) values ('${VIEWER}', '${AUTHOR}');
+  `);
+  const blockedFeed = (await comments(VIEWER)).filter((row) => row.id === COMMENT_NO_REPLY);
+  assert.equal(blockedFeed.length, 0, "a blocked author's comments are not in this viewer's thread");
+  const unblockedFeed = (await comments(REPORTER)).filter((row) => row.id === COMMENT_NO_REPLY);
+  assert.equal(unblockedFeed.length, 1, "blocking is per viewer, not global");
+
+  await as(db, MOD);
+  await db.query(`select public.community_moderate('comment', '${COMMENT_NO_REPLY}', 'restore', null)`);
+  await db.exec(`
+    insert into public.user_notifications (user_id, comment_id, kind)
+      values ('${VIEWER}', '${COMMENT_NO_REPLY}', 'reply');
+    insert into public.push_outbox (user_id, type, title, dedupe_key)
+      values ('${VIEWER}', 'reply', 'blocked', 'reply:${COMMENT_NO_REPLY}');
+  `);
+  assert.equal(
+    await count("public.user_notifications", `user_id = '${VIEWER}' and comment_id = '${COMMENT_NO_REPLY}'`),
+    0,
+    "a blocked author's reply writes no bell row for the blocker",
+  );
+  assert.equal(
+    await count("public.push_outbox", `dedupe_key = 'reply:${COMMENT_NO_REPLY}'`),
+    0,
+    "and no push row",
+  );
+  assert.equal(
+    await count("public.user_notifications", `user_id = '${REPORTER}' and comment_id = '${COMMENT_NO_REPLY}'`),
+    0,
+    "nothing was written for anyone in that test",
+  );
+  await db.exec(`delete from public.community_blocks where blocker_id = '${VIEWER}';`);
+  console.log("ok  blocks: threads filtered per viewer, notifications suppressed");
+
   // ---- 10b. the report inbox (part B) ------------------------------------
   await db.exec(`
     insert into public.community_reports (reporter_id, target_kind, target_id, reason) values

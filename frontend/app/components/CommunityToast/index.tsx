@@ -25,6 +25,7 @@ import React, {
 import { usePathname } from "next/navigation";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
+import { fetchBlocked } from "@/app/lib/community/blocks-client";
 import {
   TOAST_FADE_MS,
   TOAST_VISIBLE_MS,
@@ -126,6 +127,10 @@ export default function CommunityLatestProvider({
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Part C: the /api/community/latest payload is public and shared, so a blocked
+  // author has to be filtered here, against this viewer's own block list.
+  const blockedRef = useRef<Set<string>>(new Set());
+
   const pathRef = useRef<string | null>(pathname);
   const viewerRef = useRef<string | null>(user?.id ?? null);
 
@@ -150,6 +155,18 @@ export default function CommunityLatestProvider({
       active = false;
     };
   }, [user?.id]);
+  useEffect(() => {
+    // Guests have no block list, and a disabled toast must not poll anything.
+    if (!enabled || !user?.id) return;
+    let active = true;
+    void fetchBlocked().then((people) => {
+      if (active) blockedRef.current = new Set(people.map((person) => person.id));
+    });
+    return () => {
+      active = false;
+    };
+  }, [enabled, user?.id]);
+
   const settingRef = useRef<boolean>(settingOn);
   const configRef = useRef<CommunityLatestConfig>(config);
   const toastRef = useRef<VisibleToast | null>(toast);
@@ -249,7 +266,11 @@ export default function CommunityLatestProvider({
     return blockReason() !== null;
   }
 
-  function handleItems(items: LatestItem[], serverCursor: string | null): void {
+  function handleItems(all: LatestItem[], serverCursor: string | null): void {
+    const items =
+      blockedRef.current.size === 0
+        ? all
+        : all.filter((item) => !(item.authorId && blockedRef.current.has(item.authorId)));
     const before = stateRef.current.cursor;
     const block = blockReason();
     const suppressed = block !== null;

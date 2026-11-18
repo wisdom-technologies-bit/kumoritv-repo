@@ -495,6 +495,12 @@ where c.deleted_at is null
   and (c.target_type <> 'announcement'
        or (an.id is not null and an.status = 'published'
            and (an.expires_at is null or an.expires_at > now())))
+  -- Part C: a blocked author's comments are not in this viewer's thread at all.
+  -- The view already runs per viewer (auth.uid()), which is what makes this safe:
+  -- blocking is never global, and the blocked person is never told.
+  and not exists (
+    select 1 from public.community_blocks bl
+     where bl.blocker_id = auth.uid() and bl.blocked_id = c.user_id)
 group by c.id, p.username, p.display_name, p.avatar_url;
 grant select on public.comment_feed to anon, authenticated;
 
@@ -1285,3 +1291,137 @@ end $$;
 
 revoke execute on function public.community_resolve_clip_reports(uuid[], text) from public;
 grant execute on function public.community_resolve_clip_reports(uuid[], text) to authenticated;
+
+-- =====================================================================
+-- 13. Blocks silence notifications (part C)
+-- =====================================================================
+-- If you block someone, their replies and mentions must not reach you as a bell
+-- row or a push. The row does not carry the actor's id, but it carries the
+-- comment id, and the comment's author is the actor for exactly the two kinds
+-- this guard covers ('reply' and 'mention'). 'like' is handled inside
+-- notify_comment_like below, where the liker is known.
+--
+-- A trigger, not a rewrite of three long functions: every future writer of
+-- user_notifications inherits the rule.
+create or replace function public.community_blocked_notification_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid;
+begin
+  if new.kind not in ('reply','mention') or new.comment_id is null then
+    return new;
+  end if;
+
+  select c.user_id into v_actor from public.comments c where c.id = new.comment_id;
+  if v_actor is null then
+    return new;
+  end if;
+
+  if exists (
+    select 1 from public.community_blocks b
+     where b.blocker_id = new.user_id and b.blocked_id = v_actor
+  ) then
+    return null; -- silently dropped: the blocked user is never told
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists community_blocked_notification_guard on public.user_notifications;
+create trigger community_blocked_notification_guard
+  before insert on public.user_notifications
+  for each row execute function public.community_blocked_notification_guard();
+
+-- The push queue has no comment column; its dedupe_key starts with the kind and
+-- carries the comment id next ('reply:<comment>', 'mention:<comment>:<user>').
+create or replace function public.community_blocked_push_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor uuid;
+  v_comment uuid;
+begin
+  if new.type not in ('reply','mention') then
+    return new;
+  end if;
+
+  begin
+    v_comment := split_part(new.dedupe_key, ':', 2)::uuid;
+  exception when others then
+    return new; -- an unfamiliar key shape is left alone
+  end;
+
+  select c.user_id into v_actor from public.comments c where c.id = v_comment;
+  if v_actor is null then
+    return new;
+  end if;
+
+  if exists (
+    select 1 from public.community_blocks b
+     where b.blocker_id = new.user_id and b.blocked_id = v_actor
+  ) then
+    return null;
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists community_blocked_push_guard on public.push_outbox;
+create trigger community_blocked_push_guard
+  before insert on public.push_outbox
+  for each row execute function public.community_blocked_push_guard();
+
+-- The like notification, with the block guard (the rest is Phase 1's).
+create or replace function public.notify_comment_like() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  c public.comments; n int; ttl text; snippet text; link text;
+begin
+  if new.value <> 1 then return new; end if;
+  if tg_op = 'UPDATE' and old.value = 1 then return new; end if;
+
+  select * into c from public.comments where id = new.comment_id and deleted_at is null;
+  if not found or c.user_id = new.user_id then return new; end if;
+
+  -- Part C: a blocked user's like is not news. Dropped here (both the bell row
+  -- and the push row are written by this function), and the liker is never told.
+  if exists (
+    select 1 from public.community_blocks b
+     where b.blocker_id = c.user_id and b.blocked_id = new.user_id
+  ) then
+    return new;
+  end if;
+
+  select count(*) into n from public.comment_reactions
+   where comment_id = new.comment_id and value = 1;
+
+  ttl := case when n = 1 then 'Your comment got 1 like' else 'Your comment got ' || n || ' likes' end;
+  snippet := case when c.is_spoiler then 'Spoiler' else left(c.body, 120) end;
+  link := public.comment_link(c);
+
+  insert into public.user_notifications (user_id, kind, title, body, url, comment_id, count)
+  values (c.user_id, 'like', ttl, snippet, link, c.id, n)
+  on conflict (user_id, kind, comment_id) do update
+    set title = excluded.title,
+        body = excluded.body,
+        count = excluded.count,
+        created_at = case when excluded.count > public.user_notifications.count
+                          then now() else public.user_notifications.created_at end,
+        read_at = case when excluded.count > public.user_notifications.count
+                       then null else public.user_notifications.read_at end;
+
+  if public.push_allowed(c.user_id, 'like') then
+    insert into public.push_outbox (user_id, type, title, body, url, dedupe_key)
+    values (c.user_id, 'like', ttl, snippet, link,
+            'like:' || c.id || ':' || to_char(now() at time zone 'utc', 'YYYYMMDDHH24'))
+    on conflict (dedupe_key) do nothing;
+  end if;
+  return new;
+end $$;

@@ -16,6 +16,7 @@ import { formatTimeAgo } from "@/app/lib/comments/timeAgo";
 import type { CommentFeedRow, ReactionValue } from "@/app/lib/comments/queries";
 import { splitMentions } from "@/app/lib/comments/mentions";
 import { hiddenBannerText, removedBannerText } from "@/app/lib/community/moderation";
+import BlockButton from "@/app/community/components/BlockButton";
 
 export type CommentContainerTypes = {
   comment: CommentFeedRow;
@@ -225,6 +226,13 @@ export default function CommentContainer({
               )}
               <span>{comment.dislikes > 0 ? comment.dislikes : ""}</span>
             </button>
+
+            <BlockButton
+              userId={comment.user_id}
+              name={comment.username || "this person"}
+              isSignedIn={isSignedIn}
+              className={styles.reaction_button}
+            />
 
             {(
               <button

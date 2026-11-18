@@ -1791,3 +1791,19 @@
   border-color: rgba(255, 255, 255, 0.4);
   color: #fff;
 }
+
+.form_error {
+  color: #ff9db4;
+  font-size: 0.85rem;
+}
+
+/* The author's own view of a hidden or removed item (post page and profile). */
+.author_state {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 95, 162, 0.4);
+  background: rgba(255, 95, 162, 0.1);
+  color: #ffc2d8;
+  font-size: 0.9rem;
+}
