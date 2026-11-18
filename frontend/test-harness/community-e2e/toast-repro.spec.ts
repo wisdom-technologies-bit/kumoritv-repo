@@ -105,8 +105,17 @@ async function signIn(page: Page) {
   };
   await page.context().addCookies([
     { name: "standin-user", value: "1", path: "/", domain: "127.0.0.1" },
-    { name: "sb-127-auth-token", value: JSON.stringify(session), path: "/", domain: "127.0.0.1" },
+    { name: "sb-127-auth-token", value: encodeSessionCookie(session), path: "/", domain: "127.0.0.1" },
   ]);
+}
+
+/**
+ * `@supabase/ssr` stores the session as `base64-` + base64url(JSON). A raw JSON
+ * cookie is silently ignored, so a spec that writes one is still a GUEST: that
+ * is why the "signed in" scenarios had never actually signed in.
+ */
+function encodeSessionCookie(session: unknown): string {
+  return `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`;
 }
 
 async function shot(page: Page, name: string) {

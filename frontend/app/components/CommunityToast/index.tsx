@@ -24,6 +24,7 @@ import React, {
 } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
+import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import {
   TOAST_FADE_MS,
   TOAST_VISIBLE_MS,
@@ -127,6 +128,28 @@ export default function CommunityLatestProvider({
 
   const pathRef = useRef<string | null>(pathname);
   const viewerRef = useRef<string | null>(user?.id ?? null);
+
+  // The author's own items must never toast. AuthProvider resolves the user
+  // through getUser(), a NETWORK call: until it answers (or if it fails) the
+  // viewer looks like a guest, and the first poll can toast the viewer's own
+  // post. getSession() reads the SAME session locally from the cookie, so the
+  // id is known before the first poll ever fires.
+  useEffect(() => {
+    if (viewerRef.current) return;
+    const client = createBrowserSupabaseClient();
+    if (!client) return;
+    let active = true;
+    void client.auth
+      .getSession()
+      .then(({ data }) => {
+        const id = data.session?.user?.id ?? null;
+        if (active && id) viewerRef.current = id;
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
   const settingRef = useRef<boolean>(settingOn);
   const configRef = useRef<CommunityLatestConfig>(config);
   const toastRef = useRef<VisibleToast | null>(toast);
