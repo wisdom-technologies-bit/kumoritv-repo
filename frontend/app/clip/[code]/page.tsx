@@ -13,6 +13,7 @@ import ClipPlayer from "./components/ClipPlayer";
 import ReportClip from "./components/ReportClip";
 import { getAnimeSummary, getClipByCode, toPublicClip, type AnimeSummary } from "@/app/lib/clips/server";
 import { isClipCode } from "@/app/lib/clips/code";
+import { clipsBackHref } from "@/app/lib/clips/browse";
 import { formatRange, formatTime } from "@/app/lib/clips/time";
 import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import { getEpisodeSeo } from "@/app/lib/seo/episode-seo";
@@ -22,7 +23,7 @@ import { absoluteUrl } from "@/app/lib/seo/text";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 import { displayTitle } from "@/app/lib/titles";
 
-type Params = { params: { code: string } };
+type Params = { params: { code: string }; searchParams?: Record<string, string | string[] | undefined> };
 
 const plain = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -104,9 +105,12 @@ export async function generateMetadata({ params }: Params) {
   };
 }
 
-export default async function ClipPage({ params }: Params) {
+export default async function ClipPage({ params, searchParams }: Params) {
   const loaded = await loadClip(params.code);
   if (!loaded) notFound();
+  // Phase 5: the list a reader arrived from, restored. Parsed and rebuilt, never
+  // echoed, so this cannot become an open redirect.
+  const backHref = clipsBackHref(searchParams?.from);
 
   const { clip, anime } = loaded;
   const name = (anime?.title || "").trim() || `Anime ${clip.anilistId}`;
@@ -119,6 +123,9 @@ export default async function ClipPage({ params }: Params) {
   if (adultHidden) {
     return (
       <main id={styles.container}>
+        <Link href={backHref} className={styles.back} data-testid="clip-back">
+          Back to clips
+        </Link>
         <section className={styles.gate} data-testid="clip-adult-gate">
           <h1>This clip is from adult content</h1>
           <p>
@@ -143,6 +150,9 @@ export default async function ClipPage({ params }: Params) {
 
   return (
     <main id={styles.container}>
+      <Link href={backHref} className={styles.back} data-testid="clip-back">
+        Back to clips
+      </Link>
       <div id={styles.video_area}>
         <ClipPlayer
           code={clip.code}

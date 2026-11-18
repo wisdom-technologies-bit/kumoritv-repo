@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AnnouncementMarkdown from "@/app/lib/community/markdown";
 import { convertFromUnix } from "@/app/lib/formatDateUnix";
 import { useAppSelector } from "@/app/lib/redux/hooks";
 import HeartFillSvg from "@/public/assets/heart-fill.svg";
@@ -303,7 +304,13 @@ function AnnouncementItem({
           )}
         </div>
 
-        {announcement.body && <p className={styles.item_snippet}>{announcement.body}</p>}
+        {announcement.body && (
+          // Part B: the bell shows the same safe, flattened preview (no links:
+          // the row owns the interaction), two clamped lines.
+          <div className={styles.item_snippet}>
+            <AnnouncementMarkdown body={announcement.body} variant="preview" links={false} maxChars={160} maxLines={2} />
+          </div>
+        )}
 
         {announcement.image && (
           <div className={styles.announcement_image}>

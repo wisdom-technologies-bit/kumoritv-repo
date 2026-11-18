@@ -76,7 +76,7 @@ test("200 carries the items, the newest cursor and an ETag", async () => {
   });
   assert.equal(response.status, 200);
   assert.match(String(response.headers.get("etag")), /^W\/"/);
-  assert.equal(response.headers.get("cache-control"), "public, s-maxage=10, stale-while-revalidate=20");
+  assert.equal(response.headers.get("cache-control"), "public, s-maxage=5, stale-while-revalidate=10");
 
   const body = (await response.json()) as { items: Array<Record<string, unknown>>; cursor: string };
   assert.equal(body.items.length, 2);
@@ -181,6 +181,73 @@ test("no new items answers the same cursor it was given", async () => {
   const payload = (await response.json()) as { items: unknown[]; cursor: string };
   assert.deepEqual(payload.items, []);
   assert.equal(payload.cursor, at(4));
+});
+
+test("the FIRST poll seeds from the server: it reads from the beginning and returns a cursor", async () => {
+  let asked: string | null = null;
+  const response = await handleLatest(request("?limit=5"), {
+    reader: async ({ after }) => {
+      asked = after;
+      return [row({ id: "a", created_at: at(10) }), row({ id: "b", created_at: at(12) })];
+    },
+    limiter: allowAll(),
+    ip: "1.1.1.1",
+    now: () => Date.parse(at(60)),
+  });
+  const body = (await response.json()) as { cursor: string };
+  // A null cursor would make the SQL function return nothing at all. The route
+  // reads from the epoch instead and lets the CLIENT seed from `cursor`.
+  assert.equal(asked, "1970-01-01T00:00:00.000Z");
+  assert.equal(body.cursor, at(12));
+});
+
+test("an EMPTY first poll still returns a real cursor, so the next post is not swallowed", async () => {
+  const nowMs = Date.parse(at(60));
+  const first = await handleLatest(request(), {
+    reader: async () => [],
+    limiter: allowAll(),
+    ip: "1.1.1.1",
+    now: () => nowMs,
+  });
+  const seeded = (await first.json()) as { items: unknown[]; cursor: string };
+  assert.deepEqual(seeded.items, []);
+  assert.equal(typeof seeded.cursor, "string");
+  const cursorMs = Date.parse(seeded.cursor);
+  assert.ok(Math.abs(nowMs - cursorMs - 10_000) < 2, `cursor ${seeded.cursor} is now-10s`);
+
+  // The next poll uses that cursor and a genuinely new post comes through.
+  let asked: string | null = null;
+  const second = await handleLatest(request(`?after=${encodeURIComponent(seeded.cursor)}`), {
+    reader: async ({ after }) => {
+      asked = after;
+      return [row({ id: "new", created_at: at(61) })];
+    },
+    limiter: allowAll(),
+    ip: "1.1.1.1",
+    now: () => nowMs + 30_000,
+  });
+  assert.ok(asked && Date.parse(asked) === Date.parse(seeded.cursor) - 1, "inclusive by one millisecond");
+  const payload = (await second.json()) as { items: Array<{ id: string }>; cursor: string };
+  assert.equal(payload.items.length, 1);
+  assert.equal(payload.items[0].id, "new");
+  assert.equal(payload.cursor, at(61));
+});
+
+test("the boundary instant is read inclusively and deduplicated by id", async () => {
+  let asked: string | null = null;
+  const response = await handleLatest(request(`?after=${encodeURIComponent(at(10))}`), {
+    reader: async ({ after }) => {
+      asked = after;
+      // The same row twice, plus one that shares the boundary instant.
+      return [row({ id: "a", created_at: at(10) }), row({ id: "a", created_at: at(10) }), row({ id: "b", created_at: at(10) })];
+    },
+    limiter: allowAll(),
+    ip: "1.1.1.1",
+  });
+  assert.ok(asked);
+  assert.equal(Date.parse(asked) === Date.parse(at(10)) - 1, true);
+  const payload = (await response.json()) as { items: Array<{ id: string }> };
+  assert.deepEqual(payload.items.map((item) => item.id).sort(), ["a", "b"]);
 });
 
 test("an invalid cursor is a 400, not a silent backlog", async () => {

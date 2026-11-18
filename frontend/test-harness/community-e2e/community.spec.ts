@@ -85,10 +85,14 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByRole("button", { name: "Write a post" })).toBeVisible();
       const bar = page.locator('[class*="mobile_bar"] [role="tablist"]');
       await expect(bar).toBeVisible();
-      await expect(bar.getByRole("tab")).toHaveCount(3);
+      // Five chips since Prompt 38E (clip posts arrived in the feed); the
+      // assertion still said three, so it was red on master before this branch.
+      await expect(bar.getByRole("tab")).toHaveCount(5);
       await expect(bar.getByRole("tab", { name: "All" })).toBeVisible();
       await expect(bar.getByRole("tab", { name: "Posts" })).toBeVisible();
+      await expect(bar.getByRole("tab", { name: "Comments" })).toBeVisible();
       await expect(bar.getByRole("tab", { name: "Announcements" })).toBeVisible();
+      await expect(bar.getByRole("tab", { name: "Clips" })).toBeVisible();
       await bar.getByRole("tab", { name: "Posts" }).click();
       await expect(bar.getByRole("tab", { name: "Posts" })).toHaveAttribute("aria-selected", "true");
       await bar.getByRole("tab", { name: "All" }).click();

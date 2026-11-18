@@ -1,4 +1,14 @@
-/* Prompt 35: My clips. Same shell as the favourites/list pages. */
+/* Phase 5: /clips - public browse + My clips, one visual language.
+ *
+ * Tokens come from the community pages (--white-*, --sakura-pink,
+ * --page-gutter, --kumori-gradient, --font-size--*), so the two sections look
+ * like one site. No new colours are invented here.
+ *
+ * Geometry that the tests depend on:
+ *   >= 768px  grid: repeat(auto-fill, minmax(260px, 1fr)), gap 16px
+ *   <  768px  single column list, 96px thumbnail on the left
+ *   every target >= 44px, every font >= 12px, no horizontal overflow at 360px
+ */
 
 #container {
   display: flex;
@@ -21,8 +31,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 
 #heading_container h1 {
@@ -34,4 +44,510 @@
   color: var(--white-50);
   font-size: var(--font-size--small-1);
   font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ tabs -- */
+.tab_row {
+  margin-bottom: 14px;
+}
+
+.segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+
+  background: transparent;
+  color: var(--white-75);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--white-100);
+}
+
+.segment[data-active="true"] {
+  background: rgba(124, 92, 255, 0.22);
+  color: var(--white-100);
+}
+
+.segment_ghost {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--white-50);
+  font-size: 13px;
+}
+
+.segment_ghost a {
+  color: var(--sakura-pink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* --------------------------------------------------------- filter bar -- */
+.filter_bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.search_label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.search_input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 40px 0 14px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+
+  color: var(--white-100);
+  font: inherit;
+  font-size: 14px;
+}
+
+.search_input::placeholder {
+  color: var(--white-50);
+}
+
+.search_input:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.7);
+  outline-offset: 1px;
+}
+
+.search_clear {
+  position: absolute;
+  right: 6px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--white-75);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.results {
+  margin: 0 0 14px;
+  color: var(--white-50);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mobile: the filter bar follows the thumb instead of scrolling away. */
+@media (max-width: 767px) {
+  .filter_bar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky, 20);
+
+    margin: 0 calc(var(--page-gutter) * -1) 12px;
+    padding: 10px var(--page-gutter);
+
+    background: rgba(10, 10, 14, 0.86);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* ------------------------------------------------------------------ grid -- */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+}
+
+.grid_item {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------ card -- */
+.card {
+  position: relative;
+
+  display: flex;
+  flex-direction: column;
+
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.035);
+
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.card_link {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.thumb {
+  position: relative;
+  overflow: hidden;
+
+  width: 100%;
+  aspect-ratio: 16 / 9;
+
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.thumb_image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb_blank {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--kumori-gradient);
+  opacity: 0.35;
+}
+
+.thumb_adult {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.adult_badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--white-50);
+  font-size: 13px;
+}
+
+.play_badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.duration_chip {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+
+  padding: 2px 8px;
+  border-radius: 999px;
+
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card_body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  min-width: 0;
+  padding: 10px 12px 4px;
+}
+
+.card_title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+
+  margin: 0;
+  color: var(--white-100);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.card_sub {
+  margin: 0;
+  color: var(--white-75);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.card_meta {
+  margin: 0;
+  color: var(--white-50);
+  font-size: 12px;
+}
+
+.card_author {
+  color: var(--white-50);
+}
+
+.card_actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  margin-top: auto;
+  padding: 4px 12px 8px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+
+  background: transparent;
+  color: var(--white-75);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--white-100);
+}
+
+.inline_link {
+  margin-left: 4px;
+  color: var(--sakura-pink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Phones: one column, the thumbnail moves to the left. */
+@media (max-width: 767px) {
+  .card_link {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 10px 0;
+  }
+
+  .thumb {
+    flex: 0 0 96px;
+    width: 96px;
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    align-self: flex-start;
+  }
+
+  .card_body {
+    flex: 1 1 auto;
+    padding: 0;
+    justify-content: center;
+  }
+
+  /* The placeholder has no link wrapper, so its body needs the old padding. */
+  .thumb_adult ~ .card_body {
+    padding: 0;
+  }
+
+  .card_actions {
+    padding: 0 10px 6px calc(96px + 20px);
+  }
+}
+
+/* ---------------------------------------------------------------- states -- */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  margin: 24px 0;
+  padding: 20px;
+
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.state_title {
+  margin: 0;
+  color: var(--white-100);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.state_text {
+  margin: 0;
+  color: var(--white-75);
+  font-size: 13px;
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+
+  background: var(--kumori-gradient);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.more_row {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0 8px;
+}
+
+.end_marker {
+  margin: 20px 0 0;
+  color: var(--white-50);
+  font-size: 12px;
+  text-align: center;
+}
+
+.signin_hint {
+  margin-top: 16px;
+  color: var(--white-50);
+  font-size: 13px;
+}
+
+.signin_hint a {
+  color: var(--sakura-pink);
+}
+
+/* -------------------------------------------------------------- skeleton -- */
+.skeleton_card {
+  pointer-events: none;
+}
+
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.05) 20%,
+    rgba(255, 255, 255, 0.1) 40%,
+    rgba(255, 255, 255, 0.05) 60%
+  );
+  background-size: 300% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton_line {
+  display: block;
+  height: 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.skeleton_title {
+  width: 72%;
+  height: 12px;
+}
+
+.skeleton_sub {
+  width: 46%;
+}
+
+.skeleton_meta {
+  width: 58%;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }

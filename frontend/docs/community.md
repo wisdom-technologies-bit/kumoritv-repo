@@ -266,10 +266,24 @@ Nothing else changed: it polls, it never opens a websocket, and with
 items created after the cursor: posts with status `visible`, and announcements
 that are published and not expired. The toast polls it every 30 s with
 `If-None-Match`, so an unchanged feed costs a `304` with no body. The response
-carries `Cache-Control: public, s-maxage=10, stale-while-revalidate=20` and the
+carries `Cache-Control: public, s-maxage=5, stale-while-revalidate=10` and the
 endpoint keeps a 10 s in-memory cache per instance, because the payload is
 identical for every viewer. A per-IP limit of 60 requests a minute answers a
-scraper with `429` and `Retry-After`.
+scraper with `429` and `Retry-After`. Worst case, an edge cache delays a new
+post by 15 s; it can never hide it, because the next poll's cursor is still
+behind the post.
+
+**Where "new" starts.** The response ALWAYS carries `cursor`, even when `items`
+is empty: it is the newest `created_at` among public items, or the server's
+`now` minus 10 s when the community has nothing public yet. The client seeds its
+cursor from that field on the first poll and never from the max of the items it
+received. That distinction is the whole fix in Part A below: seeding from an
+empty item list leaves the client with no starting point, so the next poll is
+treated as a first load again and the first real post is swallowed. The `after`
+filter is **inclusive** (`>=`) and the client de-duplicates by id, so a post
+written in the same millisecond as the cursor cannot fall between two polls.
+Timestamps are compared as numbers (`Date.parse`), never as strings, so `Z` and
+`+00:00`, microseconds and milliseconds all compare correctly.
 
 ### The API contract
 
@@ -320,6 +334,41 @@ GET /api/community/latest?after=2026-11-17T09:00:00.000Z&limit=5
 * Tuning, all optional: `COMMUNITY_POLL_SECONDS` (30), `COMMUNITY_TOAST_SECONDS`
   (5), `COMMUNITY_TOAST_MIN_GAP_SECONDS` (10). Unset means the default.
 
+### `?toastdebug=1` (the owner's on-phone diagnostic)
+
+Add `?toastdebug=1` to any page with `COMMUNITY_ENABLED=1` and a small chip sits
+bottom-left. It is read from the URL on every render and never stored; without
+the parameter nothing renders. It shows:
+
+* `enabled on/off` - the flag reached the browser;
+* `setting on/off` - your per-user switch;
+* `path suppressed` - you are on `/community`, where the pill replaces the bar;
+* which account the browser thinks it is (`guest`, or the first 8 characters of
+  the user id) - this is what tells two accounts apart on one phone;
+* `poll HH:MM:SS · 200/304/429/error · items N`;
+* the current cursor;
+* `no toast: <reason> · <path>` with one of `seeded`, `shown`, `path`,
+  `fullscreen`, `preroll`, `typing`, `setting`, `own item`, `throttled`,
+  `visible`, `deferred`, `none new`;
+* a **Show a sample toast** button that renders a fake item through the real
+  toast component, so the visual part can be checked in one tap.
+
+### How to test the toast in 2 minutes
+
+1. Phone A: open the home page signed in, with `?toastdebug=1` if you want the
+   chip. Leave it there.
+2. Phone B (or a private window on another account): post in Community.
+3. Within 45 s phone A shows "Ada posted" at the top. The chip's `poll` line
+   advances every 30 s; the reason after a successful toast reads `shown`.
+4. Post from phone A's own account: no toast, and the chip says `own item`.
+5. Open `/community` on phone A: no toast there by design; the "N new posts"
+   pill counts instead, and the chip says `path suppressed`.
+
+If nothing appears, the chip's reason names the cause: `setting` (the switch is
+off), `guest` next to `enabled on` (the browser has no session), `none new`
+(the poll is not reaching a server with the post), `429` (rate limited),
+`error` (the request failed).
+
 ### When the bar stays quiet
 
 No toast for your own posts, on `/community` (there you get the "N new posts"
@@ -341,7 +390,41 @@ polling loop in `app/components/CommunityToast/` - replace its `setInterval` and
 `fetch` with a channel subscription that calls the same `nextToast` state
 machine. Nothing else in the app would change.
 
-## 11. Phase 4: writing announcements (Markdown)
+## 11. Announcement previews (everything except the announcement itself)
+
+An announcement body is Markdown. Until this change, every surface outside the
+announcement's own page printed the raw source: `# Service Update`,
+`**bold**` and `https://...` appeared literally, in one paragraph with no
+clamp, so a long body pushed the feed card off the screen.
+
+There is now one renderer with two variants, in `app/lib/community/markdown.tsx`:
+
+* `variant="full"` - the announcement page and the admin composer preview.
+  Headings, lists, quotes, code and images all render.
+* `variant="preview"` - every feed card, rail item, index excerpt and bell
+  notification. Same safe rules (no raw HTML anywhere, no `rehype-raw`, links
+  limited to `https:`, `http:`, `mailto:`), but the block structure is flattened
+  for a card: headings become bold paragraphs, lists become compact lines,
+  blockquotes are inlined, images/rules/code blocks are dropped, and links stay
+  clickable while never nesting an anchor inside the card's own link.
+
+The preview cuts the SOURCE, not the DOM: `preparePreview` keeps the first
+~320 characters and at most 6 lines at a word boundary, then repairs the cut
+(an unclosed `[label](url)` keeps its label, an unclosed `**` is dropped, a bare
+URL that was cut is removed) and only then renders. Truncation therefore can
+never leave a half-parsed tag. The rendered box is clamped in CSS
+(`-webkit-line-clamp: 4` on phones, 5 from 768 px) and "Read more" appears
+exactly when the source was cut.
+
+| Surface | File | Before | After |
+| --- | --- | --- | --- |
+| Feed card | `app/community/components/AnnouncementCard.tsx` | one unclamped `<p>` of raw Markdown | preview + clamp + "Read more" |
+| Right rail "Latest announcements" | `app/community/components/rails.tsx` | raw body, unbounded | title + date + 2 clamped plain lines |
+| `/community/announcements` index | `app/community/announcements/AnnouncementList.tsx` | raw body text | preview + clamp + "Read more" |
+| Bell dropdown | `app/layout/header/components/Notifications/index.tsx` | excerpt built from raw source, could show `**` | `plainSnippet` of the rendered-safe text |
+| OG / meta description | `app/community/announcements/[id]/page.tsx` | already plain text | unchanged (verified plain) |
+
+## 12. Phase 4: writing announcements (Markdown)
 
 Announcements are written from the site now, not in the Supabase Table Editor.
 The table keeps its shape apart from three columns (`updated_at`,

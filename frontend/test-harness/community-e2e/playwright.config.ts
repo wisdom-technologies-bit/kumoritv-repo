@@ -25,7 +25,13 @@ const baseEnv = {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["community.spec.ts", "phase4.spec.ts"],
+  testMatch: [
+    "community.spec.ts",
+    "phase4.spec.ts",
+    "toast-repro.spec.ts",
+    "announcement-preview.spec.ts",
+    "clips.spec.ts",
+  ],
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -56,7 +62,16 @@ export default defineConfig({
       timeout: 120_000,
       // COMMUNITY_POLL_SECONDS=2 keeps the bar testable: the real default is 30,
       // too long for a spec that measures a 5 s toast.
-      env: { ...baseEnv, PORT: String(PORT), COMMUNITY_ENABLED: "1", COMMUNITY_POLL_SECONDS: "2" },
+      // Phase 5: the public clip list is a flag of its own, so it is on here and
+      // off on the second server: a deploy that turns it on must not need a
+      // rebuild, and one that leaves it off must 404 the API.
+      env: {
+        ...baseEnv,
+        PORT: String(PORT),
+        COMMUNITY_ENABLED: "1",
+        COMMUNITY_POLL_SECONDS: "2",
+        CLIPS_PUBLIC_ENABLED: "1",
+      },
     },
     {
       command: `node_modules/.bin/next start -p ${OFF_PORT}`,
@@ -64,7 +79,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${OFF_PORT}/`,
       reuseExistingServer: false,
       timeout: 120_000,
-      env: { ...baseEnv, PORT: String(OFF_PORT), COMMUNITY_ENABLED: "" },
+      env: { ...baseEnv, PORT: String(OFF_PORT), COMMUNITY_ENABLED: "", CLIPS_PUBLIC_ENABLED: "0" },
     },
   ],
 });

@@ -24,6 +24,7 @@ import React, {
 } from "react";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
+import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import {
   TOAST_FADE_MS,
   TOAST_VISIBLE_MS,
@@ -39,6 +40,8 @@ import { useCommunityToastSetting } from "@/app/lib/community/use-toast-setting"
 import { backoffDelay } from "@/app/lib/community/latest";
 import { isToastBlocked, subscribeToastOwner } from "@/app/lib/toast/coordinator";
 import CommunityToastView from "./view";
+import ToastDebugChip, { type ToastDiagnostics } from "./ToastDebugChip";
+import { readToastDebug, type ToastDecisionReason } from "./debug";
 import styles from "./component.module.css";
 
 export type CommunityLatestConfig = {
@@ -86,6 +89,16 @@ function isTypingTarget(): boolean {
 
 type VisibleToast = { items: LatestItem[]; leaving: boolean };
 
+const EMPTY_DIAGNOSTICS: ToastDiagnostics = {
+  lastPollAt: null,
+  lastStatus: "none",
+  cursor: null,
+  itemsSeen: 0,
+  reason: "none new",
+  suppressedPath: false,
+  viewer: null,
+};
+
 export default function CommunityLatestProvider({
   enabled,
   config = DEFAULT_LATEST_CONFIG,
@@ -101,6 +114,8 @@ export default function CommunityLatestProvider({
 
   const [newCount, setNewCount] = useState(0);
   const [toast, setToast] = useState<VisibleToast | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ToastDiagnostics>(EMPTY_DIAGNOSTICS);
+  const [debugVisible, setDebugVisible] = useState(false);
 
   const stateRef = useRef<ToastState>(initialToastState());
   const etagRef = useRef<string | null>(null);
@@ -113,6 +128,28 @@ export default function CommunityLatestProvider({
 
   const pathRef = useRef<string | null>(pathname);
   const viewerRef = useRef<string | null>(user?.id ?? null);
+
+  // The author's own items must never toast. AuthProvider resolves the user
+  // through getUser(), a NETWORK call: until it answers (or if it fails) the
+  // viewer looks like a guest, and the first poll can toast the viewer's own
+  // post. getSession() reads the SAME session locally from the cookie, so the
+  // id is known before the first poll ever fires.
+  useEffect(() => {
+    if (viewerRef.current) return;
+    const client = createBrowserSupabaseClient();
+    if (!client) return;
+    let active = true;
+    void client.auth
+      .getSession()
+      .then(({ data }) => {
+        const id = data.session?.user?.id ?? null;
+        if (active && id) viewerRef.current = id;
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
   const settingRef = useRef<boolean>(settingOn);
   const configRef = useRef<CommunityLatestConfig>(config);
   const toastRef = useRef<VisibleToast | null>(toast);
@@ -195,29 +232,39 @@ export default function CommunityLatestProvider({
 
   /* -------------------------------- polling -------------------------------- */
 
-  /** The suppressors that must be true at the moment of showing. */
-  function suppressedNow(): boolean {
-    if (isCommunityPath(pathRef.current)) return true;
-    if (typeof document === "undefined") return false;
-    if (document.fullscreenElement) return true;
+  /** Which suppressor is active right now, if any (also feeds ?toastdebug=1). */
+  function blockReason(): "path" | "fullscreen" | "preroll" | "typing" | null {
+    if (isCommunityPath(pathRef.current)) return "path";
+    if (typeof document === "undefined") return null;
+    if (document.fullscreenElement) return "fullscreen";
     // A pre-roll owns the player: never cover it with a status bar.
-    if (document.querySelector('[data-preroll="pending"]')) return true;
+    if (document.querySelector('[data-preroll="pending"]')) return "preroll";
     // Never appear over a field the viewer is typing in (phone keyboards).
-    if (isTypingTarget()) return true;
-    return false;
+    if (isTypingTarget()) return "typing";
+    return null;
   }
 
-  function handleItems(items: LatestItem[]): void {
+  /** The suppressors that must be true at the moment of showing. */
+  function suppressedNow(): boolean {
+    return blockReason() !== null;
+  }
+
+  function handleItems(items: LatestItem[], serverCursor: string | null): void {
     const before = stateRef.current.cursor;
-    const suppressed = suppressedNow();
+    const block = blockReason();
+    const suppressed = block !== null;
     const defer = isToastBlocked("community");
     // A4: read at poll time, so flipping the switch applies on the next poll.
     const toastOff = !settingRef.current;
+    const now = Date.now();
 
-    const decision = nextToast(stateRef.current, Date.now(), items, {
+    const decision = nextToast(stateRef.current, now, items, {
       viewerId: viewerRef.current,
       suppressed: suppressed || toastOff,
       defer,
+      // The seed comes from the SERVER, never from the newest item in a page
+      // that may legitimately be empty.
+      serverCursor,
       visibleMs: configRef.current.visibleMs,
       minGapMs: configRef.current.minGapMs,
     });
@@ -226,14 +273,45 @@ export default function CommunityLatestProvider({
     // The pill's count: only where the toast is suppressed, and never the
     // viewer's own items. The first response is a seed, never a backlog.
     if (suppressed && before !== null && isCommunityPath(pathRef.current)) {
-      const fresh = items.filter(
-        (item) => item.createdAt > before && (!viewerRef.current || item.authorId !== viewerRef.current),
-      ).length;
-      if (fresh > 0) setNewCount((count) => count + fresh);
+      if (decision.fresh.length > 0) setNewCount((count) => count + decision.fresh.length);
     }
 
     if (decision.show) present(decision.show);
     else if (defer) scheduleFlush(1500);
+
+    // ?toastdebug=1 only: the one line that answers "why is nothing appearing".
+    let reason: ToastDecisionReason;
+    if (before === null) reason = "seeded";
+    else if (decision.show) reason = "shown";
+    else if (toastOff) reason = "setting";
+    else if (block) reason = block;
+    else if (defer) reason = "deferred";
+    else if (decision.ownSkipped > 0 && !decision.fresh.length) {
+      // The only new rows were the viewer's own. That IS the answer to "why is
+      // nothing appearing" for the owner testing with one account.
+      reason = "own item";
+    } else if (!decision.fresh.length) {
+      reason = "none new";
+    } else if (stateRef.current.visibleUntil !== null && now < stateRef.current.visibleUntil) {
+      reason = "visible";
+    } else if (
+      stateRef.current.lastShownAt !== null &&
+      now < stateRef.current.lastShownAt + configRef.current.minGapMs
+    ) {
+      reason = "throttled";
+    } else {
+      reason = "none new";
+    }
+
+    setDiagnostics((current) => ({
+      lastPollAt: now,
+      lastStatus: current.lastStatus,
+      cursor: stateRef.current.cursor,
+      itemsSeen: items.length,
+      reason,
+      suppressedPath: block === "path",
+      viewer: viewerRef.current,
+    }));
   }
 
   async function pollOnce(): Promise<void> {
@@ -263,11 +341,13 @@ export default function CommunityLatestProvider({
       // Nothing new: the steady state. No body, no re-render, next poll on time.
       if (response.status === 304) {
         failuresRef.current = 0;
+        setDiagnostics((current) => ({ ...current, lastPollAt: Date.now(), lastStatus: "304" }));
         schedule(configRef.current.pollMs);
         return;
       }
       if (response.status === 429) {
         const retryAfter = Number(response.headers.get("retry-after"));
+        setDiagnostics((current) => ({ ...current, lastPollAt: Date.now(), lastStatus: "429" }));
         failuresRef.current += 1;
         const fromHeader = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 0;
         schedule(backoffDelay(failuresRef.current, configRef.current.pollMs, fromHeader));
@@ -276,14 +356,19 @@ export default function CommunityLatestProvider({
       if (!response.ok) throw new Error(`latest ${response.status}`);
 
       etagRef.current = response.headers.get("etag");
-      const payload = (await response.json()) as { items?: LatestItem[] };
+      const payload = (await response.json()) as { items?: LatestItem[]; cursor?: string | null };
       if (controller.signal.aborted) return;
       failuresRef.current = 0;
-      handleItems(Array.isArray(payload.items) ? payload.items : []);
+      setDiagnostics((current) => ({ ...current, lastPollAt: Date.now(), lastStatus: "200" }));
+      handleItems(
+        Array.isArray(payload.items) ? payload.items : [],
+        typeof payload.cursor === "string" ? payload.cursor : null,
+      );
       schedule(configRef.current.pollMs);
     } catch {
       if (controller.signal.aborted) return;
       failuresRef.current += 1;
+      setDiagnostics((current) => ({ ...current, lastPollAt: Date.now(), lastStatus: "error" }));
       schedule(backoffDelay(failuresRef.current, configRef.current.pollMs));
     }
   }
@@ -342,6 +427,31 @@ export default function CommunityLatestProvider({
 
   const resetNewCount = useCallback(() => setNewCount(0), []);
 
+  // ?toastdebug=1 on ANY page: a tiny chip that says why the bar is silent, and
+  // one button that renders a fake item through the REAL toast component. The
+  // parameter is read from the URL only, never stored, never rendered without it.
+  useEffect(() => {
+    setDebugVisible(readToastDebug());
+  }, [pathname]);
+
+  function showSampleToast(): void {
+    present([
+      {
+        id: "toast-debug-sample",
+        kind: "announcement",
+        authorId: null,
+        authorName: "KumoriTV",
+        authorAvatar: null,
+        text: "This is a sample toast. Real new posts appear here.",
+        hasClip: false,
+        clipThumb: null,
+        adult: false,
+        href: "/community",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+  }
+
   /* ------------------------------- pause / dismiss ------------------------- */
 
   function pause(): void {
@@ -386,6 +496,16 @@ export default function CommunityLatestProvider({
   return (
     <CommunityLatestContext.Provider value={contextValue}>
       {children}
+
+      {debugVisible ? (
+        <ToastDebugChip
+          enabled={enabled}
+          settingOn={settingOn}
+          pathname={pathname}
+          diagnostics={diagnostics}
+          onSample={showSampleToast}
+        />
+      ) : null}
 
       <div
         className={styles.host}

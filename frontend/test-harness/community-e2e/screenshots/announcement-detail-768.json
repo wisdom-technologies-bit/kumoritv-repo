@@ -1,0 +1,8 @@
+{
+  "name": "announcement-detail-768",
+  "url": "http://127.0.0.1:3100/community/announcements/10000000-0000-4000-8000-000000000090",
+  "viewport": {
+    "width": 768,
+    "height": 1000
+  }
+}

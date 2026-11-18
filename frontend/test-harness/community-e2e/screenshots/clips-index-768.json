@@ -1,0 +1,8 @@
+{
+  "name": "clips-index-768",
+  "url": "http://127.0.0.1:3100/clips",
+  "viewport": {
+    "width": 768,
+    "height": 900
+  }
+}

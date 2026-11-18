@@ -79,6 +79,7 @@ async function loadFirstPage(): Promise<{ items: AnnouncementListItem[]; nextBef
     const items: AnnouncementListItem[] = page.map((row) => ({
       id: row.id,
       title: row.title,
+      body: row.body,
       excerpt: plainSnippet(row.body, ANNOUNCEMENT_EXCERPT_MAX),
       image: row.image,
       createdAt: row.created_at,

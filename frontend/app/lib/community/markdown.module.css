@@ -138,3 +138,57 @@
 .body del {
   color: var(--white-50);
 }
+
+/* --------------------------------------------------------------- preview -- */
+/* Part B: the flattened feed teaser. Every block was mapped to an inline span,
+   so ONE -webkit-line-clamp owns the whole box: 4 lines on a phone, 5 on a
+   desktop, and a long URL can never push the card sideways. */
+.preview {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.86);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (min-width: 768px) {
+  .preview {
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+  }
+}
+
+.preview_block {
+  display: inline;
+}
+
+.preview_item {
+  display: inline;
+}
+
+.preview_item + .preview_item::before {
+  content: " · ";
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.preview_block + .preview_block::before {
+  content: " ";
+}
+
+.preview_code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.94em;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0 3px;
+  overflow-wrap: anywhere;
+}
+
+.preview_cell + .preview_cell::after {
+  content: " ";
+}

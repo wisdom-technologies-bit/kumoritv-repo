@@ -1,4 +1,5 @@
 // POST /api/clips - create a link-based clip.
+// GET  /api/clips - Phase 5: the public browse list.
 //
 // Nothing is cut or uploaded: the row is a pointer to a time range. A guest is
 // identified by the owner cookie (the table only stores its hash); a signed-in
@@ -9,12 +10,17 @@ import { cookies } from "next/headers";
 import { CLIP_MAX_SECONDS_GUEST, CLIP_MAX_SECONDS_USER, CLIP_OWNER_COOKIE, CLIP_OWNER_COOKIE_MAX_AGE, CLIP_RATE_GUEST, CLIP_RATE_USER, clipPath } from "@/app/lib/clips/constants";
 import { validateCreateClipBody } from "@/app/lib/clips/body";
 import { createOwnerToken, hashOwnerToken, ownerTokenSecret } from "@/app/lib/clips/owner-token";
-import { clipCreationLimiter, rateLimitKey } from "@/app/lib/clips/rate-limit";
+import { clipCreationLimiter, createRateLimiter, rateLimitKey } from "@/app/lib/clips/rate-limit";
 import { createClipRecord, toPublicClip } from "@/app/lib/clips/server";
 import { clientIp, readClipViewer, readOwnerCookie } from "@/app/lib/clips/request";
+import { handleBrowse } from "@/app/lib/clips/browse-handler";
+import { loadBrowsePage } from "@/app/lib/clips/browse-server";
+import { isClipsPublicEnabled } from "@/app/lib/clips/public-flag";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const browseLimiter = createRateLimiter({ windowMs: 60_000 });
 
 const STATUS: Record<string, number> = {
   unknown_anime: 400,
@@ -95,4 +101,24 @@ export async function POST(request: Request) {
     },
     { status: 201, headers: { "cache-control": "no-store" } },
   );
+}
+
+/**
+ * GET /api/clips?sort=latest|views|week&anime=<id>&q=&cursor=&limit=24
+ *
+ * Public browse over live clips, newest first by default. The response is the
+ * same for every viewer (the adult rule strips adult rows server side), which
+ * is what makes the shared cache safe: a CDN can serve one body to everyone.
+ * 404 with the flag off, so an owner who has not checked the public list yet is
+ * not advertising an endpoint that shows every clip on the site.
+ *
+ * The decisions live in app/lib/clips/browse-handler.ts; this file is wiring.
+ */
+export async function GET(request: Request) {
+  return handleBrowse(request, {
+    enabled: isClipsPublicEnabled,
+    load: (query) => loadBrowsePage(query),
+    limiter: browseLimiter,
+    ip: clientIp(request),
+  });
 }
