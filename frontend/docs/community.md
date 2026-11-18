@@ -1,5 +1,10 @@
 # Community: enabling it and running the SQL
 
+> Phase 6 added the moderation surface. Its handbook - roles, actions, blocks,
+> rate limits, the SQL run order, env vars and the screenshots - is
+> [community-moderation.md](community-moderation.md). This file stays the
+> Phase 1-5 setup guide.
+
 Two things are separate and both are needed: the flag in the app, and the SQL in
 the database. **Deploy the code first.** `app/lib/users/search.ts` reads other
 users through `public_profiles`; the older code reads `profiles` directly, so

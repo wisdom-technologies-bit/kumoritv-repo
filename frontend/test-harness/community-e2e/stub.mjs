@@ -689,6 +689,31 @@ const server = createServer(async (req, res) => {
   if (pathname === "/rest/v1/rpc/is_admin" && method === "POST") {
     return json(res, 200, isSignedIn(req));
   }
+  if (pathname === "/rest/v1/rpc/is_staff" && method === "POST") {
+    return json(res, 200, isSignedIn(req));
+  }
+
+  /* ---- Phase 6: the moderation surface --------------------------------- */
+  if (pathname === "/rest/v1/rpc/community_moderation_stats" && method === "POST") {
+    return json(res, 200, [
+      { open_reports: 7, stale_reports: 2, actions_7d: 11, hidden_items: 3, removed_items: 2, open_clip_reports: 1 },
+    ]);
+  }
+  if (pathname === "/rest/v1/rpc/community_report_groups" && method === "POST") {
+    return json(res, 200, REPORT_GROUPS);
+  }
+  if (pathname === "/rest/v1/rpc/community_clip_report_groups" && method === "POST") {
+    return json(res, 200, CLIP_REPORT_GROUPS);
+  }
+  if (pathname === "/rest/v1/rpc/community_moderation_queue" && method === "POST") {
+    return json(res, 200, QUEUE);
+  }
+  if (pathname === "/rest/v1/rpc/community_moderate" && method === "POST") {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (process.env.STUB_DEBUG) console.log("[stub] community_moderate", JSON.stringify(body));
+    MODERATE_CALLS.push(body);
+    return json(res, 200, { ok: true, status: "published", changed: true, reports_actioned: 1 });
+  }
 
   /* ---- Phase 4: the admin composer writes ------------------------------ */
   if (pathname === "/rest/v1/announcements" && (method === "POST" || method === "PATCH")) {
@@ -938,10 +963,176 @@ function tableRows(table) {
   if (table === "anime") return ANIME;
   if (table === "community_reactions") return [];
   if (table === "clips") return CLIPS;
+  if (table === "community_reports") return REPORTS;
+  if (table === "clip_reports") {
+    return [
+      {
+        id: `${uid(71)}`,
+        reporter_hash: "a1b2c3d4",
+        reason: "copyright",
+        details: null,
+        status: "open",
+        created_at: iso(30),
+      },
+    ];
+  }
+  if (table === "community_moderation_log") return MODERATION_LOG;
   if (table === "notifications" || table === "user_notifications") return [];
   if (table === "profiles") return [{ id: `${uid(101)}`, display_name: "Adaeze", username: "adaeze", avatar_url: null }];
   return [];
 }
+
+/* ---- Phase 6 fixtures: one row per shape the admin pages read ------------- */
+
+const REPORT_GROUPS = [
+  {
+    target_kind: "post",
+    target_id: `${uid(1)}`,
+    report_count: 4,
+    reporter_count: 3,
+    reasons: ["harassment", "spam"],
+    first_report_at: iso(180),
+    latest_report_at: iso(12),
+    open_count: 4,
+    author_id: `${uid(101)}`,
+    author_name: "Adaeze",
+    preview:
+      "Started Frieren again with my sister and she cried at episode 12. Reliable, honestly. The way the show lets a scene breathe for six whole seconds before anyone speaks is still the best thing airing.",
+    target_status: "published",
+    is_gone: false,
+  },
+  {
+    target_kind: "comment",
+    target_id: `${uid(2)}`,
+    report_count: 2,
+    reporter_count: 2,
+    reasons: ["spoiler"],
+    first_report_at: iso(300),
+    latest_report_at: iso(40),
+    open_count: 2,
+    author_id: `${uid(102)}`,
+    author_name: "Tunde",
+    preview: "That final fight. I was not ready. Watched it twice and the second time I noticed the background art.",
+    target_status: "hidden",
+    is_gone: false,
+  },
+  {
+    target_kind: "announcement",
+    target_id: `${uid(3)}`,
+    report_count: 1,
+    reporter_count: 1,
+    reasons: ["other"],
+    first_report_at: iso(600),
+    latest_report_at: iso(600),
+    open_count: 1,
+    author_id: null,
+    author_name: null,
+    preview: "Scheduled maintenance on Sunday, 02:00 to 04:00 WAT.",
+    target_status: "removed",
+    is_gone: false,
+  },
+];
+
+const CLIP_REPORT_GROUPS = [
+  {
+    clip_id: "20000000-0000-4000-8000-000000000001",
+    code: "k7m2pq9",
+    title: "Frieren, episode 12, the quiet scene",
+    report_count: 3,
+    reasons: ["copyright", "broken"],
+    first_report_at: iso(240),
+    latest_report_at: iso(30),
+    open_count: 3,
+    owner_id: `${uid(101)}`,
+    clip_state: "published",
+    is_gone: false,
+  },
+];
+
+const QUEUE = [
+  {
+    kind: "post",
+    id: `${uid(1)}`,
+    author_id: `${uid(101)}`,
+    author_name: "Adaeze",
+    preview: "Started Frieren again with my sister and she cried at episode 12.",
+    status: "published",
+    reason: null,
+    moderated_at: null,
+    moderated_by: null,
+    reports: 4,
+  },
+  {
+    kind: "comment",
+    id: `${uid(2)}`,
+    author_id: `${uid(102)}`,
+    author_name: "Tunde",
+    preview: "That final fight. I was not ready.",
+    status: "hidden",
+    reason: "Spoiler without the flag",
+    moderated_at: iso(50),
+    moderated_by: "Moderator",
+    reports: 2,
+  },
+];
+
+const MODERATION_LOG = [
+  {
+    id: 3,
+    actor_id: `${uid(101)}`,
+    actor_name: "Adaeze",
+    action: "restore",
+    target_kind: "post",
+    target_id: `${uid(2)}`,
+    reason: null,
+    created_at: iso(20),
+  },
+  {
+    id: 2,
+    actor_id: `${uid(101)}`,
+    actor_name: "Adaeze",
+    action: "hide",
+    target_kind: "comment",
+    target_id: `${uid(2)}`,
+    reason: "Spoiler without the flag",
+    created_at: iso(50),
+  },
+  {
+    id: 1,
+    actor_id: `${uid(101)}`,
+    actor_name: "Adaeze",
+    action: "remove",
+    target_kind: "announcement",
+    target_id: `${uid(3)}`,
+    reason: "Not our announcement",
+    created_at: iso(600),
+  },
+];
+
+const REPORTS = [
+  {
+    id: `${uid(61)}`,
+    reporter_id: `${uid(102)}`,
+    reporter_hash: null,
+    reason: "harassment",
+    details: "Third time this week.",
+    status: "open",
+    created_at: iso(12),
+    resolved_at: null,
+  },
+  {
+    id: `${uid(62)}`,
+    reporter_id: `${uid(103)}`,
+    reporter_hash: null,
+    reason: "spam",
+    details: null,
+    status: "open",
+    created_at: iso(180),
+    resolved_at: null,
+  },
+];
+
+const MODERATE_CALLS = [];
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`community stub on ${ORIGIN}`);
