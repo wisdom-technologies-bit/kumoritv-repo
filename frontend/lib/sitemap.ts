@@ -2,6 +2,7 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 import type { SitemapPayload } from "@/lib/sitemap-cache";
 import { fetchAiringWindow } from "@/app/lib/discovery/anilist";
 import { isCommunityEnabled } from "@/app/lib/community/flag";
+import { isClipsPublicEnabled } from "@/app/lib/clips/public-flag";
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://kumoritv.top").replace(/\/$/, "");
 export const CHUNK_SIZE = 10000;
@@ -535,15 +536,33 @@ export const COMMUNITY_SITEMAP_PAGES: Array<{ path: string; changefreq: string; 
   { path: "/community/announcements", changefreq: "daily", priority: "0.6" },
 ];
 
-export function staticSitemapPages(enabled = isCommunityEnabled()): Array<{
+/**
+ * Phase 5: /clips is a public page only while CLIPS_PUBLIC_ENABLED is on, for
+ * the same reason as the community: with the flag off the page is "My clips",
+ * a signed-in list, and advertising it would send crawlers to a sign-in wall.
+ * Individual /clip/{code} pages are deliberately absent: a thin, viewer-created
+ * page stays noindex, so only the list belongs here.
+ */
+export const CLIPS_SITEMAP_PAGES: Array<{ path: string; changefreq: string; priority: string }> = [
+  { path: "/clips", changefreq: "daily", priority: "0.7" },
+];
+
+export function staticSitemapPages(
+  enabled = isCommunityEnabled(),
+  clipsEnabled = isClipsPublicEnabled(),
+): Array<{
   path: string;
   changefreq: string;
   priority: string;
 }> {
-  return enabled ? [...STATIC_SITEMAP_PAGES, ...COMMUNITY_SITEMAP_PAGES] : [...STATIC_SITEMAP_PAGES];
+  return [
+    ...STATIC_SITEMAP_PAGES,
+    ...(enabled ? COMMUNITY_SITEMAP_PAGES : []),
+    ...(clipsEnabled ? CLIPS_SITEMAP_PAGES : []),
+  ];
 }
 
-export function buildStaticSitemap(pages = STATIC_SITEMAP_PAGES): string {
+export function buildStaticSitemap(pages: Array<{ path: string; changefreq: string; priority: string }> = staticSitemapPages()): string {
   return sitemapDoc(pages.map((page) => sitemapUrl(`${SITE_URL}${page.path}`, null, page.changefreq, page.priority)));
 }
 

@@ -21,6 +21,11 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const uid = (n) => `10000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 const now = Date.now();
+// Phase 5 fixture codes must be codes the app accepts: 7 characters from the
+// real alphabet, which has no 0/o/1/i/l (a code is read off a screen and typed
+// by hand). Anything else 404s before the database is asked.
+const PUBLIC_CODE_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
+
 const iso = (minutesAgo) => new Date(now - minutesAgo * 60_000).toISOString();
 
 const POSTS = [
@@ -397,6 +402,47 @@ const CLIPS = [
     created_at: iso(20),
     deleted_at: null,
   },
+  // Phase 5: the public list needs more than one page. These rows are guests
+  // (`user_id` and `owner_token_hash` both null), so neither "My clips" query
+  // can see them - the Phase 38F picker counts stay exactly as they were - but
+  // /api/clips lists them, which is what a public page is.
+  ...Array.from({ length: 30 }, (_, index) => {
+    const anilistId = [21, 22, 23][index % 3];
+    const code = publicCode(index);
+    return {
+      id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      code,
+      user_id: null,
+      owner_token_hash: null,
+      anilist_id: anilistId,
+      episode_number: (index % 9) + 1,
+      start_seconds: 30 + index,
+      end_seconds: 45 + index,
+      title: null,
+      source_audio: "sub",
+      views: index * 137,
+      // Older than every Phase 38F row, and strictly ordered so a keyset page
+      // can be asserted without depending on the clock.
+      created_at: iso(200 + index),
+      deleted_at: null,
+    };
+  }),
+  {
+    id: "20000000-0000-4000-8000-000000000010",
+    code: "gone123",
+    user_id: null,
+    owner_token_hash: null,
+    anilist_id: 21,
+    episode_number: 2,
+    start_seconds: 1,
+    end_seconds: 4,
+    title: "Deleted clip",
+    source_audio: "sub",
+    views: 0,
+    created_at: iso(5),
+    // Soft deleted: the public list must never show it.
+    deleted_at: iso(4),
+  },
 ];
 
 // Prompt 38F: the browser talks to this stand-in directly once a page is
@@ -702,15 +748,54 @@ const server = createServer(async (req, res) => {
     // PostgREST filters. `id` was the only one Phase 1/2 needed; the clip
     // queries also filter on code, user_id and owner_token_hash, and ask for
     // deleted_at=is.null, so equality on any column is honoured here.
+    // Phase 5 adds the shapes the public clip list uses: gte, in, or (the
+    // keyset pair), order and limit. Only these forms are understood - the
+    // stub is a stand-in for the PostgREST subset this app actually sends.
+    const order = url.searchParams.get("order");
+    const limit = url.searchParams.get("limit");
+
     for (const [column, raw] of url.searchParams.entries()) {
-      if (!raw) continue;
-      if (raw.startsWith("eq.")) {
+      if (!raw || column === "order" || column === "limit" || column === "select") continue;
+      if (column === "or") {
+        rows = rows.filter((row) => matchesOr(row, raw));
+      } else if (raw.startsWith("eq.")) {
         const wanted = raw.slice(3);
         rows = rows.filter((row) => String(row[column] ?? "") === wanted);
+      } else if (raw.startsWith("gte.")) {
+        const floor = raw.slice(4);
+        rows = rows.filter((row) => String(row[column] ?? "") >= floor);
+      } else if (raw.startsWith("lt.")) {
+        const ceiling = raw.slice(3);
+        rows = rows.filter((row) => String(row[column] ?? "") < ceiling);
+      } else if (raw.startsWith("in.(")) {
+        const list = raw
+          .slice(4, -1)
+          .split(",")
+          .map((item) => item.replace(/^"|"$/g, ""));
+        rows = rows.filter((row) => list.includes(String(row[column] ?? "")));
       } else if (raw === "is.null") {
         rows = rows.filter((row) => row[column] === null || row[column] === undefined);
       }
     }
+
+    if (order) {
+      const clauses = order.split(",").map((clause) => {
+        const [field, direction] = clause.split(".");
+        return { field, descending: direction === "desc" };
+      });
+      rows = [...rows].sort((left, right) => {
+        for (const { field, descending } of clauses) {
+          const a = left[field];
+          const b = right[field];
+          if (a === b) continue;
+          const result = a > b ? 1 : -1;
+          return descending ? -result : result;
+        }
+        return 0;
+      });
+    }
+
+    if (limit) rows = rows.slice(0, Number(limit));
 
     // .maybeSingle()/.single() ask for a bare object, not an array.
     const wantsObject = (req.headers.accept ?? "").includes("pgrst.object");
@@ -732,6 +817,84 @@ function readBody(req) {
     });
     req.on("end", () => resolve(data));
   });
+}
+
+/**
+ * PostgREST `or=(a.lt.1,and(a.eq.1,id.lt.2))` - the keyset pair the public clip
+ * list sends. Values may be double-quoted timestamps with escaped quotes, so the
+ * splitter respects quoting.
+ */
+function matchesOr(row, raw) {
+  const expression = raw.replace(/^\(/, "").replace(/\)$/, "");
+  return splitTopLevel(expression).some((clause) => {
+    if (clause.startsWith("and(")) {
+      const inner = clause.slice(4, -1);
+      return splitTopLevel(inner).every((part) => matchesOr(row, part));
+    }
+    // `is` (is.null, is.true, ...): the app asks for "never expires" this way,
+    // and an unmatched clause would silently hide every row.
+    const isMatch = /^([a-z_]+)\.is\.(.+)$/i.exec(clause);
+    if (isMatch) {
+      const [, column, rawFlag] = isMatch;
+      const flag = rawFlag.replace(/^"|"$/g, "").toLowerCase();
+      const actual = row[column];
+      if (flag === "null") return actual === null || actual === undefined;
+      if (flag === "true") return actual === true;
+      if (flag === "false") return actual === false;
+      return false;
+    }
+    const match = /^([a-z_]+)\.(eq|lt|gt|gte|lte|ilike)\.(.+)$/i.exec(clause);
+    if (!match) return false;
+    const [, column, operator, rawValue] = match;
+    const value = rawValue.replace(/^"|"$/g, "").replace(/\\"/g, '"');
+    const actual = row[column];
+    if (operator === "ilike") {
+      // PostgREST accepts `*` and `%` as wildcards; both mean "any characters".
+      const pattern = value
+        .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*|%/g, ".*");
+      return new RegExp(`^${pattern}$`, "i").test(String(actual ?? ""));
+    }
+    if (operator === "eq") return String(actual ?? "") === value;
+    if (operator === "lt") return String(actual ?? "") < value;
+    if (operator === "gt") return String(actual ?? "") > value;
+    if (operator === "gte") return String(actual ?? "") >= value;
+    return String(actual ?? "") <= value;
+  });
+}
+
+/** Splits on commas that are not inside parentheses or quotes. */
+function splitTopLevel(raw) {
+  const parts = [];
+  let depth = 0;
+  let quoted = false;
+  let current = "";
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (char === '"' && raw[index - 1] !== "\\") quoted = !quoted;
+    if (!quoted && char === "(") depth += 1;
+    if (!quoted && char === ")") depth -= 1;
+    if (!quoted && depth === 0 && char === ",") {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+/** 30 stable public fixture codes: pub223, pub224, ... (alphabet-safe). */
+function publicCode(index) {
+  let value = index + 1;
+  let suffix = "";
+  while (value > 0) {
+    suffix = PUBLIC_CODE_ALPHABET[value % PUBLIC_CODE_ALPHABET.length] + suffix;
+    value = Math.floor(value / PUBLIC_CODE_ALPHABET.length);
+  }
+  // 3 letters + 4 characters = the 7-character code the app validates.
+  return `pub${suffix.padStart(4, PUBLIC_CODE_ALPHABET[0])}`;
 }
 
 function tableRows(table) {

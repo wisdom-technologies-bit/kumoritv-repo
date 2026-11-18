@@ -445,3 +445,21 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Phase 5: back to the list, with the filters the reader came from. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  min-height: 44px;
+  margin-bottom: 8px;
+
+  color: var(--white-50);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--white-100);
+}

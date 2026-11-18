@@ -1,0 +1,8 @@
+{
+  "name": "clips-sort-views-1280",
+  "url": "http://127.0.0.1:3100/clips?sort=views",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  }
+}

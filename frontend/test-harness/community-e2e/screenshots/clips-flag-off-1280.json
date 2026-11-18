@@ -1,0 +1,8 @@
+{
+  "name": "clips-flag-off-1280",
+  "url": "http://127.0.0.1:3101/clips",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "clips-load-more-1280",
+  "url": "http://127.0.0.1:3100/clips",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  }
+}
