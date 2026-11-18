@@ -1756,3 +1756,38 @@
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+
+/* Phase 6: a hidden/removed item's state. Only ever rendered for staff and for
+   the author (the server never sends a moderated row to anyone else). */
+.moderated_badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid rgba(255, 95, 162, 0.45);
+  background: rgba(255, 95, 162, 0.12);
+  color: #ffb3cf;
+}
+
+/* The staff-only Moderation link (community header). The flag is decided on the
+   server, so a normal visitor never receives this markup. */
+.moderation_link {
+  margin-left: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--white-80);
+  font-size: 0.82rem;
+  text-decoration: none;
+  background: none;
+  cursor: pointer;
+}
+
+.moderation_link:hover,
+.moderation_link:focus-visible {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}

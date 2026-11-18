@@ -4,6 +4,7 @@ import styles from "../page.module.css";
 import type { FeedItem } from "@/app/lib/community/queries";
 import { Avatar, TimeStamp } from "./shared";
 import PostActions from "./PostActions";
+import StaffRestoreButton from "./StaffRestoreButton";
 
 export type PostCardProps = {
   item: FeedItem;
@@ -38,6 +39,13 @@ export default function PostCard({
         <Avatar url={item.author_avatar} name={displayName} />
         <div className={styles.identity}>
           <span className={styles.author_name}>{displayName}</span>
+          {item.status && item.status !== "published" && (
+            <span className={styles.moderated_badge}>
+              {item.status === "removed"
+                ? `Removed${item.moderation_reason ? `: ${item.moderation_reason}` : ""}`
+                : "Hidden"}
+            </span>
+          )}
           <span className={styles.author_meta}>
             <TimeStamp iso={item.created_at} />
             {item.is_spoiler && (
@@ -64,6 +72,9 @@ export default function PostCard({
         item.body && <p className={styles.post_body}>{item.body}</p>
       )}
 
+      {item.status && item.status !== "published" && (
+        <StaffRestoreButton kind="post" id={item.feed_key.split(":")[1] ?? ""} />
+      )}
       <PostActions
         item={item}
         myReaction={myReaction}

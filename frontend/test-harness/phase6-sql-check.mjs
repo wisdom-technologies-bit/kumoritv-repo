@@ -164,6 +164,16 @@ create table public.announcements (
   push_sent_at timestamptz
 );
 
+-- Prompt 35's clip reports (docs/sql/clips.sql creates it for real).
+create table public.clip_reports (
+  id uuid primary key default gen_random_uuid(),
+  clip_id uuid not null references public.clips (id) on delete cascade,
+  reason text not null check (reason in ('copyright','broken','inappropriate','spam','other')),
+  details text,
+  reporter_hash text,
+  created_at timestamptz not null default now()
+);
+
 -- The bell and the push queue: the moderation function deletes rows here.
 create table public.user_notifications (
   id bigserial primary key,
@@ -393,7 +403,56 @@ async function main() {
   assert.equal((await db.query(`select public.is_admin() as a`)).rows[0].a, true);
   console.log("ok  roles: moderator is staff but not admin");
 
+  // ---- 10b. the report inbox (part B) ------------------------------------
+  await db.exec(`
+    insert into public.community_reports (reporter_id, target_kind, target_id, reason) values
+      ('${REPORTER}', 'announcement', '${ANNOUNCEMENT}', 'spam'),
+      ('${VIEWER}', 'announcement', '${ANNOUNCEMENT}', 'inappropriate');
+  `);
+
+  await as(db, VIEWER);
+  await assert.rejects(() => db.query(`select * from public.community_report_groups()`), /not_staff/);
+  await as(db, ADMIN);
+
+  const groups = (
+    await db.query(`select * from public.community_report_groups('open', null, null, 25, null, null, null)`)
+  ).rows;
+  assert.equal(groups.length, 1, "one row per content item, not per report");
+  assert.equal(Number(groups[0].report_count), 2);
+  assert.equal(Number(groups[0].reporter_count), 2, "two distinct reporters");
+  assert.equal(groups[0].target_status, "hidden");
+  assert.equal(groups[0].is_gone, false);
+
+  const page2 = (
+    await db.query(
+      `select * from public.community_report_groups('open', null, null, 25, ${Number(groups[0].report_count)}, '${groups[0].latest_report_at.toISOString()}', '${ANNOUNCEMENT}')`,
+    )
+  ).rows;
+  assert.equal(page2.length, 0, "the keyset cursor does not repeat the group");
+  console.log("ok  report groups: grouped, counted, keyset paginated");
+
+  // clip reports: the same decision, through community_moderate
+  await db.exec(`insert into public.clip_reports (clip_id, reason) values ('${CLIP}', 'copyright');`);
+  await db.query(`select public.community_moderate('clip', '${CLIP}', 'remove', 'Copyright claim')`);
+  assert.equal(
+    await count("public.clip_reports", `clip_id = '${CLIP}' and status = 'actioned' and resolved_by is not null`),
+    1,
+    "removing the clip answers its clip reports",
+  );
+  const clipGroups = (
+    await db.query(`select * from public.community_clip_report_groups(null, 25, null, null, null)`)
+  ).rows;
+  assert.equal(Number(clipGroups[0].report_count), 1);
+  assert.equal(clipGroups[0].clip_state, "removed");
+  console.log("ok  clip reports: grouped and actioned by the same function");
+
+  const stats = (await db.query(`select * from public.community_moderation_stats()`)).rows[0];
+  assert.ok(Number(stats.actions_7d) > 0, "the dashboard sees the actions");
+  assert.equal(Number(stats.removed_items) > 0, true);
+  console.log("ok  stats: counters answer for staff");
+
   // ---- 11. the log survives the actor leaving ----------------------------
+  const moderatorRows = await count("public.community_moderation_log", `actor_id = '${MOD}'`);
   await db.exec(`delete from auth.users where id = '${MOD}';`);
   const totalLogRows = await count("public.community_moderation_log");
   assert.ok(totalLogRows > 3, "there are several moderator actions by now");
@@ -402,11 +461,13 @@ async function main() {
     0,
     "no log row still points at the deleted moderator",
   );
+  assert.ok(moderatorRows > 0, "the moderator logged several actions");
   assert.equal(
     await count("public.community_moderation_log", `actor_id is null`),
-    totalLogRows,
+    moderatorRows,
     "every action the moderator took now reads actor_id null and the rows survive",
   );
+  assert.ok(totalLogRows >= moderatorRows);
   console.log("ok  log: a deleted moderator's actions survive with actor_id null");
 
   // ---- 12. the rollback restores Phase 5 --------------------------------
@@ -425,6 +486,7 @@ async function main() {
   await db.query(`select public.community_moderate('comment', '${COMMENT_WITH_REPLY}', 'restore', null)`);
   await db.query(`select public.community_moderate('comment', '${COMMENT_NO_REPLY}', 'restore', null)`);
   await db.query(`select public.community_moderate('announcement', '${ANNOUNCEMENT}', 'unhide', null)`);
+  await db.query(`select public.community_moderate('clip', '${CLIP}', 'restore', null)`);
   await db.exec(PHASE6_ROLLBACK);
   const afterRollback = await db.query(
     `select column_name from information_schema.columns

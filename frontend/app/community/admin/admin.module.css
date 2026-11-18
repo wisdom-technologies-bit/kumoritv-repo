@@ -383,3 +383,105 @@
     display: none;
   }
 }
+
+/* Phase 6, part B: the inbox. */
+.card_title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--white-90);
+}
+
+.list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.body_text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--white-85);
+  margin: 0 0 10px;
+}
+
+.actions,
+.actions_compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.actions_compact {
+  margin-top: 4px;
+}
+
+.confirm_row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm_block {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* At 360 px a table is unreadable, so the same rows become cards. The header row
+   is hidden visually (not removed from the accessibility tree via display:none
+   on the table itself) and each cell is labelled by its column. */
+@media (max-width: 899px) {
+  .table_wrap {
+    overflow: visible;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .table tr {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .table td {
+    border: 0;
+    padding: 3px 0;
+  }
+
+  .table td::before {
+    content: attr(data-label) ": ";
+    color: var(--white-50);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}

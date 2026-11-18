@@ -507,3 +507,18 @@ alter table public.community_reports drop constraint if exists community_reports
 alter table public.community_reports drop column if exists resolution_note;
 
 commit;
+
+-- =====================================================================
+-- 12. part B: the report inbox
+-- =====================================================================
+drop function if exists public.community_report_groups(text, text, text, int, bigint, timestamptz, uuid);
+drop function if exists public.community_clip_report_groups(text, int, bigint, timestamptz, uuid);
+drop function if exists public.community_moderation_stats();
+drop function if exists public.community_moderation_queue(text, int, timestamptz, uuid);
+drop function if exists public.community_resolve_clip_reports(uuid[], text);
+
+alter table public.clip_reports drop constraint if exists clip_reports_status_chk;
+drop index if exists public.clip_reports_open_idx;
+alter table public.clip_reports drop column if exists resolved_by;
+alter table public.clip_reports drop column if exists resolved_at;
+alter table public.clip_reports drop column if exists status;

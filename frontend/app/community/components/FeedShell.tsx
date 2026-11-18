@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import styles from "../page.module.css";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
@@ -31,6 +32,8 @@ export type FeedShellProps = {
   initialFailed: boolean;
   /** True when the viewer's adult setting is on. Display preference only. */
   initialShowAdult?: boolean;
+  /** Server-decided: true only for a signed-in moderator or admin. */
+  isStaff?: boolean;
   /** /community?anime=<id>: one title's comments. */
   initialAnimeId?: number | null;
   /** Server-rendered right rail (announcements + airing this week). */
@@ -70,6 +73,7 @@ export default function FeedShell({
   initialCursor,
   initialFailed,
   initialShowAdult = false,
+  isStaff = false,
   initialAnimeId = null,
   rightRail,
 }: FeedShellProps) {
@@ -347,6 +351,11 @@ export default function FeedShell({
           <div>
             <p className={styles.eyebrow}>KumoriTV</p>
             <h1 className={styles.title}>Community</h1>
+            {isStaff && (
+              <Link className={styles.moderation_link} href="/community/admin">
+                Moderation
+              </Link>
+            )}
             <p className={styles.subtitle}>
               Talk about what you are watching, spoiler-tag the big moments, and hear from the team.
             </p>

@@ -298,15 +298,25 @@ begin
           case when v_next = 'removed' then v_reason else null end)
   returning id into v_log_id;
 
-  -- Hide and remove answer the reports that pointed at this content.
-  if p_kind <> 'clip' and p_action in ('hide','remove') then
-    update public.community_reports r
-       set status = 'actioned',
-           resolved_at = now(),
-           resolved_by = v_uid
-     where r.target_kind = p_kind
-       and r.target_id = p_id
-       and r.status = 'open';
+  -- Hide and remove answer the reports that pointed at this content. Clip
+  -- reports live in their own table (Prompt 35), so they are answered here too.
+  if p_action in ('hide','remove') then
+    if p_kind = 'clip' then
+      update public.clip_reports r
+         set status = 'actioned',
+             resolved_at = now(),
+             resolved_by = v_uid
+       where r.clip_id = p_id
+         and r.status = 'open';
+    else
+      update public.community_reports r
+         set status = 'actioned',
+             resolved_at = now(),
+             resolved_by = v_uid
+       where r.target_kind = p_kind
+         and r.target_id = p_id
+         and r.status = 'open';
+    end if;
     get diagnostics v_actioned = row_count;
   end if;
 
@@ -910,3 +920,368 @@ create index if not exists community_reports_target_idx
   on public.community_reports (target_kind, target_id, created_at desc);
 
 commit;
+
+-- =====================================================================
+-- 12. The report inbox (part B)
+-- =====================================================================
+-- clip_reports was write-only (reason + a salted hash). A moderator needs to
+-- decide a clip report like any other, so it gains the same three states. The
+-- existing rows default to 'open', which is what they are.
+alter table public.clip_reports
+  add column if not exists status text not null default 'open';
+alter table public.clip_reports drop constraint if exists clip_reports_status_chk;
+alter table public.clip_reports
+  add constraint clip_reports_status_chk check (status in ('open','actioned','dismissed'));
+alter table public.clip_reports add column if not exists resolved_at timestamptz;
+alter table public.clip_reports
+  add column if not exists resolved_by uuid references auth.users (id) on delete set null;
+create index if not exists clip_reports_open_idx
+  on public.clip_reports (created_at desc) where status = 'open';
+
+comment on column public.clip_reports.status is
+  'open | actioned (the clip was hidden or removed) | dismissed (no rule broken).';
+
+-- ---------------------------------------------------------------------
+-- 12.1 grouped reports: one row per content item, keyset paginated
+-- ---------------------------------------------------------------------
+-- Grouping in SQL, not in the browser: the inbox sorts by "most reported, then
+-- newest report", which cannot be paged correctly over raw report rows. The
+-- cursor is (report_count, latest_report_at, target_id) - all three are in the
+-- ORDER BY, so pages never repeat or skip a group.
+create or replace function public.community_report_groups(
+  p_status text default 'open',
+  p_kind text default null,
+  p_reason text default null,
+  p_limit int default 25,
+  p_after_count bigint default null,
+  p_after_latest timestamptz default null,
+  p_after_id uuid default null
+) returns table (
+  target_kind text,
+  target_id uuid,
+  report_count bigint,
+  reporter_count bigint,
+  reasons text[],
+  first_report_at timestamptz,
+  latest_report_at timestamptz,
+  open_count bigint,
+  author_id uuid,
+  author_name text,
+  preview text,
+  target_status text,
+  is_gone boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_limit int := least(greatest(coalesce(p_limit, 25), 1), 100);
+begin
+  if not public.is_staff() then
+    raise exception 'community_report_groups:not_staff' using errcode = '42501';
+  end if;
+  if p_status is not null and p_status not in ('open','actioned','dismissed') then
+    raise exception 'community_report_groups:bad_status' using errcode = '22023';
+  end if;
+  if p_kind is not null and p_kind not in ('post','comment','announcement') then
+    raise exception 'community_report_groups:bad_kind' using errcode = '22023';
+  end if;
+
+  return query
+  with filtered as (
+    select r.target_kind, r.target_id, r.reporter_id, r.reporter_hash,
+           r.reason, r.status, r.created_at
+      from public.community_reports r
+     where (p_status is null or r.status = p_status)
+       and (p_kind is null or r.target_kind = p_kind)
+       and (p_reason is null or r.reason = p_reason)
+  ), grouped as (
+    select f.target_kind,
+           f.target_id,
+           count(*) as report_count,
+           count(distinct coalesce(f.reporter_id::text, f.reporter_hash)) as reporter_count,
+           array_agg(distinct f.reason order by f.reason) as reasons,
+           min(f.created_at) as first_report_at,
+           max(f.created_at) as latest_report_at,
+           count(*) filter (where f.status = 'open') as open_count
+      from filtered f
+     group by f.target_kind, f.target_id
+  )
+  select g.target_kind,
+         g.target_id,
+         g.report_count,
+         g.reporter_count,
+         g.reasons,
+         g.first_report_at,
+         g.latest_report_at,
+         g.open_count,
+         t.author_id,
+         coalesce(t.author_name, 'member'),
+         left(coalesce(t.body, ''), 140),
+         t.target_status,
+         coalesce(t.is_gone, true)
+    from grouped g
+    left join lateral (
+      select x.id, x.author_id, x.body, x.status as target_status, x.is_gone,
+             coalesce(pp.display_name, pp.username) as author_name
+        from (
+          select p.id, p.author_id, p.body,
+                 case when p.deleted_at is not null then 'removed' else p.status end as status,
+                 false as is_gone
+            from public.community_posts p
+           where g.target_kind = 'post' and p.id = g.target_id
+          union all
+          select c.id, c.user_id, c.body,
+                 case when c.deleted_at is not null then 'removed' else c.status end,
+                 false
+            from public.comments c
+           where g.target_kind = 'comment' and c.id = g.target_id
+          union all
+          select an.id, an.created_by, an.body, an.status, false
+            from public.announcements an
+           where g.target_kind = 'announcement' and an.id = g.target_id
+        ) x
+        left join public.public_profiles pp on pp.id = x.author_id
+    ) t on true
+   where p_after_count is null
+      or g.report_count < p_after_count
+      or (g.report_count = p_after_count
+          and (g.latest_report_at < p_after_latest
+               or (g.latest_report_at = p_after_latest and g.target_id < p_after_id)))
+   order by g.report_count desc, g.latest_report_at desc, g.target_id desc
+   limit v_limit;
+end $$;
+
+revoke execute on function public.community_report_groups(text, text, text, int, bigint, timestamptz, uuid) from public;
+grant execute on function public.community_report_groups(text, text, text, int, bigint, timestamptz, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 12.2 clip reports, grouped the same way
+-- ---------------------------------------------------------------------
+create or replace function public.community_clip_report_groups(
+  p_status text default 'open',
+  p_limit int default 25,
+  p_after_count bigint default null,
+  p_after_latest timestamptz default null,
+  p_after_id uuid default null
+) returns table (
+  clip_id uuid,
+  code text,
+  title text,
+  report_count bigint,
+  reasons text[],
+  first_report_at timestamptz,
+  latest_report_at timestamptz,
+  open_count bigint,
+  owner_id uuid,
+  clip_state text,
+  is_gone boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_limit int := least(greatest(coalesce(p_limit, 25), 1), 100);
+begin
+  if not public.is_staff() then
+    raise exception 'community_clip_report_groups:not_staff' using errcode = '42501';
+  end if;
+
+  return query
+  with grouped as (
+    select r.clip_id,
+           count(*) as report_count,
+           array_agg(distinct r.reason order by r.reason) as reasons,
+           min(r.created_at) as first_report_at,
+           max(r.created_at) as latest_report_at,
+           count(*) filter (where r.status = 'open') as open_count
+      from public.clip_reports r
+     where (p_status is null or r.status = p_status)
+     group by r.clip_id
+  )
+  select g.clip_id,
+         cl.code,
+         cl.title,
+         g.report_count,
+         g.reasons,
+         g.first_report_at,
+         g.latest_report_at,
+         g.open_count,
+         cl.user_id,
+         case
+           when cl.id is null then 'gone'
+           when cl.deleted_at is not null then 'removed'
+           when cl.hidden_at is not null then 'hidden'
+           else 'published'
+         end,
+         cl.id is null
+    from grouped g
+    left join public.clips cl on cl.id = g.clip_id
+   where p_after_count is null
+      or g.report_count < p_after_count
+      or (g.report_count = p_after_count
+          and (g.latest_report_at < p_after_latest
+               or (g.latest_report_at = p_after_latest and g.clip_id < p_after_id)))
+   order by g.report_count desc, g.latest_report_at desc, g.clip_id desc
+   limit v_limit;
+end $$;
+
+revoke execute on function public.community_clip_report_groups(text, int, bigint, timestamptz, uuid) from public;
+grant execute on function public.community_clip_report_groups(text, int, bigint, timestamptz, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 12.3 the dashboard counters
+-- ---------------------------------------------------------------------
+create or replace function public.community_moderation_stats()
+returns table (
+  open_reports bigint,
+  stale_reports bigint,
+  actions_7d bigint,
+  hidden_items bigint,
+  removed_items bigint,
+  open_clip_reports bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_staff() then
+    raise exception 'community_moderation_stats:not_staff' using errcode = '42501';
+  end if;
+
+  return query
+  select
+    (select count(*) from public.community_reports where status = 'open'),
+    (select count(*) from public.community_reports
+      where status = 'open' and created_at < now() - interval '24 hours'),
+    (select count(*) from public.community_moderation_log
+      where created_at >= now() - interval '7 days'),
+    (select count(*) from public.community_posts where status = 'hidden' and deleted_at is null)
+      + (select count(*) from public.comments where status = 'hidden' and deleted_at is null)
+      + (select count(*) from public.announcements where status = 'hidden')
+      + (select count(*) from public.clips where hidden_at is not null and deleted_at is null),
+    (select count(*) from public.community_posts where status = 'removed')
+      + (select count(*) from public.comments where status = 'removed')
+      + (select count(*) from public.announcements where status = 'removed')
+      + (select count(*) from public.clips where deleted_at is not null),
+    (select count(*) from public.clip_reports where status = 'open');
+end $$;
+
+revoke execute on function public.community_moderation_stats() from public;
+grant execute on function public.community_moderation_stats() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 12.4 hidden/removed queue, keyset paginated
+-- ---------------------------------------------------------------------
+create or replace function public.community_moderation_queue(
+  p_kind text default null,
+  p_limit int default 50,
+  p_before timestamptz default null,
+  p_before_id uuid default null
+) returns table (
+  kind text,
+  id uuid,
+  author_id uuid,
+  author_name text,
+  preview text,
+  status text,
+  reason text,
+  moderated_at timestamptz,
+  moderated_by uuid,
+  reports bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_limit int := least(greatest(coalesce(p_limit, 50), 1), 100);
+begin
+  if not public.is_staff() then
+    raise exception 'community_moderation_queue:not_staff' using errcode = '42501';
+  end if;
+
+  return query
+  with items as (
+    select 'post'::text as kind, p.id, p.author_id, p.body,
+           p.status, p.removed_reason as reason, p.moderated_at, p.moderated_by
+      from public.community_posts p
+     where p.status <> 'published'
+    union all
+    select 'comment'::text, c.id, c.user_id, c.body,
+           c.status, c.removed_reason, c.moderated_at, c.moderated_by
+      from public.comments c
+     where c.status <> 'published'
+    union all
+    select 'announcement'::text, an.id, an.created_by, an.body,
+           an.status, an.removed_reason, an.moderated_at, an.moderated_by
+      from public.announcements an
+     where an.status <> 'published'
+    union all
+    select 'clip'::text, cl.id, cl.user_id, cl.title,
+           case when cl.deleted_at is not null then 'removed' else 'hidden' end,
+           null, cl.moderated_at, cl.moderated_by
+      from public.clips cl
+     where cl.deleted_at is not null or cl.hidden_at is not null
+  )
+  select i.kind, i.id, i.author_id,
+         coalesce(pp.display_name, pp.username, 'member'),
+         left(coalesce(i.body, ''), 140),
+         i.status, i.reason, i.moderated_at, i.moderated_by,
+         (select count(*) from public.community_reports r
+           where r.target_kind = i.kind and r.target_id = i.id and r.status = 'open')
+    from items i
+    left join public.public_profiles pp on pp.id = i.author_id
+   where (p_kind is null or i.kind = p_kind)
+     and (p_before is null
+          or coalesce(i.moderated_at, now()) < p_before
+          or (coalesce(i.moderated_at, now()) = p_before and i.id < p_before_id))
+   order by coalesce(i.moderated_at, now()) desc, i.id desc
+   limit v_limit;
+end $$;
+
+revoke execute on function public.community_moderation_queue(text, int, timestamptz, uuid) from public;
+grant execute on function public.community_moderation_queue(text, int, timestamptz, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 12.5 resolving clip reports
+-- ---------------------------------------------------------------------
+create or replace function public.community_resolve_clip_reports(
+  p_ids uuid[],
+  p_status text
+) returns table (changed int, status text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_n int := 0;
+begin
+  if not public.is_staff() then
+    raise exception 'community_resolve_clip_reports:not_staff' using errcode = '42501';
+  end if;
+  if p_status is null or p_status not in ('actioned','dismissed') then
+    raise exception 'community_resolve_clip_reports:bad_status' using errcode = '22023';
+  end if;
+  if p_ids is null or array_length(p_ids, 1) is null or array_length(p_ids, 1) > 50 then
+    raise exception 'community_resolve_clip_reports:too_many' using errcode = '22023';
+  end if;
+
+  update public.clip_reports r
+     set status = p_status, resolved_at = now(), resolved_by = v_uid
+   where r.id = any(p_ids) and r.status = 'open';
+  get diagnostics v_n = row_count;
+
+  return query select v_n, p_status;
+end $$;
+
+revoke execute on function public.community_resolve_clip_reports(uuid[], text) from public;
+grant execute on function public.community_resolve_clip_reports(uuid[], text) to authenticated;

@@ -11,6 +11,7 @@ import { isCommunityEnabled } from "@/app/lib/community/flag";
 import { readFeedFilter } from "@/app/lib/community/filters";
 import { FEED_PAGE_SIZE, type FeedItem } from "@/app/lib/community/queries";
 import { createClient } from "@/app/lib/supabase/server";
+import { readCommunityStaff } from "@/app/lib/community/staff";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,8 @@ export default async function CommunityPage({
   const initialAnimeId = Number.isFinite(animeParam) && animeParam > 0 ? animeParam : null;
   // The same switch the site already honours. Guests get false.
   const initialShowAdult = await readShowAdultContent();
+  // Server-side, per request: the Moderation link exists only for staff.
+  const staff = await readCommunityStaff();
 
   let initialItems: FeedItem[] = [];
   let initialCursor: { createdAt: string; key: string } | null = null;
@@ -88,6 +91,7 @@ export default async function CommunityPage({
       // has their session. The error card only appears if that also fails.
       initialFailed={false}
       initialShowAdult={initialShowAdult}
+      isStaff={Boolean(staff)}
       initialAnimeId={initialAnimeId}
       rightRail={<CommunityRails />}
     />

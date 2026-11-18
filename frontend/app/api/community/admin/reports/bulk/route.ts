@@ -1,6 +1,8 @@
 // POST /api/community/admin/reports/bulk - dismiss many reports at once.
 //
-// Body: { ids: string[], note?: string }  (1..50 ids)
+// Body: { ids: string[], note?: string }  (1..50 community_reports ids)
+//    or { clipIds: string[], note?: string } (1..50 clips: every open clip report
+//    on those clips is dismissed).
 //
 // Bulk dismiss only: actioning a report is a decision about one piece of
 // content, and content actions have their own route (/admin/moderate), so a
@@ -51,13 +53,20 @@ export async function POST(request: Request, _context?: unknown, deps: BulkDeps 
   const raw = await request.json().catch(() => null);
   const body = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const rawIds = Array.isArray(body.ids) ? body.ids : [];
+  const rawClipIds = Array.isArray(body.clipIds) ? body.clipIds : [];
   const ids = [...new Set(rawIds.filter((value): value is string => typeof value === "string" && UUID.test(value)))];
+  const clipIds = [
+    ...new Set(rawClipIds.filter((value): value is string => typeof value === "string" && UUID.test(value))),
+  ];
 
-  if (ids.length === 0) {
+  if (ids.length === 0 && clipIds.length === 0) {
     return noStore({ error: "invalid_selection", message: "Select at least one report." }, 400);
   }
-  if (ids.length > BULK_MAX) {
+  if (ids.length > BULK_MAX || clipIds.length > BULK_MAX) {
     return noStore({ error: "invalid_selection", message: `Select at most ${BULK_MAX} reports.` }, 400);
+  }
+  if (ids.length > 0 && clipIds.length > 0) {
+    return noStore({ error: "invalid_selection", message: "Send report ids or clip ids, not both." }, 400);
   }
 
   const note = typeof body.note === "string" ? body.note.trim() : "";
@@ -69,10 +78,10 @@ export async function POST(request: Request, _context?: unknown, deps: BulkDeps 
   let data: unknown;
   let error: { message?: string } | null;
   try {
-    const result = await client.rpc("community_dismiss_reports", {
-      p_ids: ids,
-      p_note: note || null,
-    });
+    const result =
+      clipIds.length > 0
+        ? await client.rpc("community_resolve_clip_reports", { p_ids: clipIds, p_status: "dismissed" })
+        : await client.rpc("community_dismiss_reports", { p_ids: ids, p_note: note || null });
     data = result.data;
     error = result.error;
   } catch (thrown) {
