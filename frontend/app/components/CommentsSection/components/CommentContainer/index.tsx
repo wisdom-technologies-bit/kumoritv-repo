@@ -15,6 +15,7 @@ import WriteCommentForm, {
 import { formatTimeAgo } from "@/app/lib/comments/timeAgo";
 import type { CommentFeedRow, ReactionValue } from "@/app/lib/comments/queries";
 import { splitMentions } from "@/app/lib/comments/mentions";
+import { hiddenBannerText, removedBannerText } from "@/app/lib/community/moderation";
 
 export type CommentContainerTypes = {
   comment: CommentFeedRow;
@@ -97,6 +98,11 @@ export default function CommentContainer({
   const isLikeActive = myReaction === 1;
   const isDislikeActive = myReaction === -1;
   const isHidden = comment.is_spoiler && !isSpoilerRevealed;
+  // Phase 6: a hidden/removed comment. `body` is null for everyone but the
+  // author and staff (the view masks it), and a comment that still has replies
+  // is kept as a placeholder so the thread keeps its shape.
+  const isModerated = Boolean(comment.moderation_status) && comment.moderation_status !== "published";
+  const isPlaceholder = isModerated && !comment.body;
 
   function handleReplyButton() {
     if (!isSignedIn) {
@@ -144,11 +150,22 @@ export default function CommentContainer({
           </span>
           {comment.episode_number !== null &&
             comment.episode_number !== undefined && (
-              <span className={styles.episode_pill}>EP {comment.episode_number}</span>
-            )}
+            <span className={styles.episode_pill}>EP {comment.episode_number}</span>
+          )}
+          {isModerated && comment.body && (
+            <span className={styles.moderated_badge} data-testid={`moderated-${comment.id}`}>
+              {comment.moderation_status === "removed"
+                ? removedBannerText(comment.moderation_reason)
+                : hiddenBannerText()}
+            </span>
+          )}
         </div>
 
-        {isHidden ? (
+        {isPlaceholder ? (
+          <p className={styles.moderated_note} data-testid={`removed-${comment.id}`}>
+            This comment was removed by a moderator.
+          </p>
+        ) : isHidden ? (
           <button
             type="button"
             className={styles.spoiler_bar}
@@ -173,65 +190,68 @@ export default function CommentContainer({
           </p>
         )}
 
-        <div className={styles.actions_row}>
-          <button
-            type="button"
-            className={styles.reaction_button}
-            data-testid={`like-${comment.id}`}
-            data-active={isLikeActive ? "true" : "false"}
-            aria-pressed={isLikeActive}
-            aria-label={isLikeActive ? "Remove like" : "Like this comment"}
-            onClick={() => onReact(comment, 1)}
-          >
-            {isLikeActive ? (
-              <SvgThumbUpFill width={16} height={16} alt="" />
-            ) : (
-              <SvgThumbUp width={16} height={16} alt="" />
-            )}
-            <span>{comment.likes > 0 ? comment.likes : ""}</span>
-          </button>
-
-          <button
-            type="button"
-            className={styles.reaction_button}
-            data-testid={`dislike-${comment.id}`}
-            data-active={isDislikeActive ? "true" : "false"}
-            aria-pressed={isDislikeActive}
-            aria-label={isDislikeActive ? "Remove dislike" : "Dislike this comment"}
-            onClick={() => onReact(comment, -1)}
-          >
-            {isDislikeActive ? (
-              <SvgThumbDownFill width={16} height={16} alt="" />
-            ) : (
-              <SvgThumbDown width={16} height={16} alt="" />
-            )}
-            <span>{comment.dislikes > 0 ? comment.dislikes : ""}</span>
-          </button>
-
-          {(
+        {!isPlaceholder && (
+          <div className={styles.actions_row}>
             <button
               type="button"
-              className={styles.reply_button}
-              data-testid={`reply-${comment.id}`}
-              onClick={handleReplyButton}
-              aria-expanded={isReplying}
+              className={styles.reaction_button}
+              data-testid={`like-${comment.id}`}
+              data-active={isLikeActive ? "true" : "false"}
+              aria-pressed={isLikeActive}
+              aria-label={isLikeActive ? "Remove like" : "Like this comment"}
+              onClick={() => onReact(comment, 1)}
             >
-              Reply
+              {isLikeActive ? (
+                <SvgThumbUpFill width={16} height={16} alt="" />
+              ) : (
+                <SvgThumbUp width={16} height={16} alt="" />
+              )}
+              <span>{comment.likes > 0 ? comment.likes : ""}</span>
             </button>
-          )}
 
-          {canDelete && (
             <button
               type="button"
-              className={styles.delete_button}
-              data-testid={`delete-${comment.id}`}
-              onClick={() => onDelete(comment)}
-              aria-label="Delete your comment"
+              className={styles.reaction_button}
+              data-testid={`dislike-${comment.id}`}
+              data-active={isDislikeActive ? "true" : "false"}
+              aria-pressed={isDislikeActive}
+              aria-label={isDislikeActive ? "Remove dislike" : "Dislike this comment"}
+              onClick={() => onReact(comment, -1)}
             >
-              <SvgTrash width={15} height={15} alt="" />
+              {isDislikeActive ? (
+                <SvgThumbDownFill width={16} height={16} alt="" />
+              ) : (
+                <SvgThumbDown width={16} height={16} alt="" />
+              )}
+              <span>{comment.dislikes > 0 ? comment.dislikes : ""}</span>
             </button>
-          )}
-        </div>
+
+            {(
+              <button
+                type="button"
+                className={styles.reply_button}
+                data-testid={`reply-${comment.id}`}
+                onClick={handleReplyButton}
+                aria-expanded={isReplying}
+              >
+                Reply
+              </button>
+            )}
+
+            {canDelete && (
+              <button
+                type="button"
+                className={styles.delete_button}
+                data-testid={`delete-${comment.id}`}
+                onClick={() => onDelete(comment)}
+                aria-label="Delete your comment"
+              >
+                <SvgTrash width={15} height={15} alt="" />
+              </button>
+            )}
+          </div>
+
+        )}
 
         {isReplying && (
           <div className={styles.inline_reply_form}>
@@ -262,8 +282,8 @@ export default function CommentContainer({
             {isRepliesOpen
               ? "Hide replies"
               : `${isRepliesLoading ? "Loading" : "▾"} ${replyCount} ${
-                  replyCount === 1 ? "reply" : "replies"
-                }`}
+                replyCount === 1 ? "reply" : "replies"
+              }`}
           </button>
         )}
 

@@ -88,6 +88,9 @@ export async function getClipById(id: string): Promise<ClipRow | null> {
       .select(SELECT)
       .eq("id", id)
       .is("deleted_at", null)
+      // Phase 6: a clip hidden by a moderator is gone from every public
+      // surface. The owner still sees it in My clips (listUserClips below).
+      .is("hidden_at", null)
       .maybeSingle();
     return (data as ClipRow | null) ?? null;
   } catch {
@@ -104,6 +107,7 @@ export async function getClipByCode(code: string): Promise<ClipRow | null> {
       .select(SELECT)
       .eq("code", code)
       .is("deleted_at", null)
+      .is("hidden_at", null)
       .maybeSingle();
     return (data as ClipRow | null) ?? null;
   } catch {

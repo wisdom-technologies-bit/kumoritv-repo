@@ -50,6 +50,11 @@ export type FeedItem = {
   /** From community_feed_page as of Phase 3. Absent on rows from an older
    *  function, which is why it is optional. */
   clip_state?: ClipState | null;
+  /** Phase 6: published | hidden | removed, from community_feed_page. Optional
+   *  for the same reason: a client talking to the Phase 5 function must not
+   *  break, it simply has no badge data. */
+  status?: "published" | "hidden" | "removed" | null;
+  moderation_reason?: string | null;
 };
 
 export type FeedFilter = "all" | "post" | "comment" | "announcement" | "clips";

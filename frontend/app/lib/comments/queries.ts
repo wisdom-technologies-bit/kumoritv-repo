@@ -14,7 +14,12 @@ import type { Database } from "@/app/lib/supabase/database.types";
 export type CommentsClient = { from(table: string): any };
 export type SupabaseCommentsClient = CommentsClient;
 
-export type CommentFeedRow = Database["public"]["Views"]["comment_feed"]["Row"];
+// Phase 6 appends moderation_status / moderation_reason to the view; the
+// generated types do not know them yet, so they are an optional intersection.
+export type CommentFeedRow = Database["public"]["Views"]["comment_feed"]["Row"] & {
+  moderation_status?: "published" | "hidden" | "removed" | null;
+  moderation_reason?: string | null;
+};
 export type CommentRow = Database["public"]["Tables"]["comments"]["Row"];
 export type CommentReactionRow = Database["public"]["Tables"]["comment_reactions"]["Row"];
 

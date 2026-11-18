@@ -31,3 +31,10 @@ export const LATEST_PER_MINUTE = 60;
  */
 export const adminWriteLimiter = createRateLimiter({ windowMs: 60_000 });
 export const ADMIN_WRITES_PER_MINUTE = 10;
+
+/**
+ * Phase 6: moderation writes. 60 a minute per staff member - far above any
+ * human reviewing a queue, far below a loop. Keyed on the staff user id.
+ */
+export const moderationLimiter = createRateLimiter({ windowMs: 60_000 });
+export const MODERATION_PER_MINUTE = 60;
