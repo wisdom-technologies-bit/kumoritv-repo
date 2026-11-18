@@ -1,0 +1,8 @@
+{
+  "name": "repro-e-route-change",
+  "url": "http://127.0.0.1:3100/privacy",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  }
+}

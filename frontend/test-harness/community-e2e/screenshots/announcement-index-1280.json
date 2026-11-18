@@ -1,0 +1,8 @@
+{
+  "name": "announcement-index-1280",
+  "url": "http://127.0.0.1:3100/community/announcements",
+  "viewport": {
+    "width": 1280,
+    "height": 1000
+  }
+}

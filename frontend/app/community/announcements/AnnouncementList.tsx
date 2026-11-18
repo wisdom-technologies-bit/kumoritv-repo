@@ -6,10 +6,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import styles from "./page.module.css";
+import AnnouncementMarkdown from "@/app/lib/community/markdown";
 
 export type AnnouncementListItem = {
   id: string;
   title: string;
+  /** Part B: the source, so the card can render the same marked-up preview. */
+  body?: string | null;
   excerpt: string;
   image: string | null;
   createdAt: string;
@@ -72,7 +75,19 @@ export default function AnnouncementList({
                   year: "numeric",
                 })}
               </time>
-              {item.excerpt ? <p className={styles.excerpt}>{item.excerpt}</p> : null}
+              {item.body ? (
+                <div className={styles.excerpt}>
+                  <AnnouncementMarkdown
+                    body={item.body}
+                    variant="preview"
+                    maxChars={240}
+                    maxLines={4}
+                    links={false}
+                  />
+                </div>
+              ) : item.excerpt ? (
+                <p className={styles.excerpt}>{item.excerpt}</p>
+              ) : null}
               <Link className={styles.read_more} href={`/community/announcements/${item.id}`}>
                 Read more
               </Link>

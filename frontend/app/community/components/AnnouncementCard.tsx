@@ -4,10 +4,16 @@ import styles from "../page.module.css";
 import type { FeedItem } from "@/app/lib/community/queries";
 import { TimeStamp } from "./shared";
 import { CommentIcon, MegaphoneIcon } from "./icons";
+import AnnouncementMarkdown from "@/app/lib/community/markdown";
+import { preparePreview } from "@/app/lib/community/preview";
 
 /** Announcements stay in their own table; the feed only reads them. */
 export default function AnnouncementCard({ item }: { item: FeedItem }) {
   const hasExternal = Boolean(item.link_url);
+  // Part B: the body is Markdown, so it is RENDERED (safe rules, no raw HTML),
+  // flattened for a card and cut at ~320 chars / 6 lines. The cut happens on the
+  // source, before parsing, so a half-written tag can never reach the DOM.
+  const preview = preparePreview(item.body);
 
   return (
     <article className={`${styles.card} ${styles.announcement_card}`} data-feed-key={item.feed_key}>
@@ -22,7 +28,21 @@ export default function AnnouncementCard({ item }: { item: FeedItem }) {
         </Link>
       </h3>
 
-      {item.body && <p className={styles.announcement_body}>{item.body}</p>}
+      {preview.text ? (
+        <div className={styles.announcement_body}>
+          <AnnouncementMarkdown
+            body={item.body ?? ""}
+            variant="preview"
+            links
+            className={styles.announcement_preview}
+          />
+          {preview.cut ? (
+            <Link className={styles.read_more} href={item.target_url}>
+              Read more
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       {item.image_url && (
         <div className={styles.announcement_media}>

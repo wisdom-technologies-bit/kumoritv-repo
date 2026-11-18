@@ -7,8 +7,9 @@ import { createClient } from "@/app/lib/supabase/server";
 import { formatTimeAgo } from "@/app/lib/comments/timeAgo";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
 import AiringRail, { AiringRailSkeleton } from "./AiringRail";
+import { plainSnippet } from "@/app/lib/community/latest";
 
-type Announcement = { id: string; title: string; created_at: string };
+type Announcement = { id: string; title: string; body: string | null; created_at: string };
 
 async function LatestAnnouncements() {
   let announcements: Announcement[] = [];
@@ -17,7 +18,7 @@ async function LatestAnnouncements() {
     if (client) {
       const { data } = await (client as any)
         .from("announcements")
-        .select("id, title, created_at")
+        .select("id, title, body, created_at")
         .order("created_at", { ascending: false })
         .limit(4);
       announcements = (data ?? []) as Announcement[];
@@ -40,6 +41,11 @@ async function LatestAnnouncements() {
               <Link className={styles.rail_item} href={`/community/announcements/${announcement.id}`}>
                 <span className={styles.rail_item_title}>{announcement.title}</span>
                 <span className={styles.rail_item_meta}>{formatTimeAgo(announcement.created_at)}</span>
+                {/* Part B: two clamped PLAIN lines. The rail is inside a link, so
+                    no renderer and no anchors here: a snippet cannot nest one. */}
+                {announcement.body ? (
+                  <span className={styles.rail_item_body}>{plainSnippet(announcement.body, 160)}</span>
+                ) : null}
               </Link>
             </li>
           ))}

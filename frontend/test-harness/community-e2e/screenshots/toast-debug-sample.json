@@ -1,0 +1,8 @@
+{
+  "name": "toast-debug-sample",
+  "url": "http://127.0.0.1:3100/terms?toastdebug=1",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  }
+}

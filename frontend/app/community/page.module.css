@@ -1707,3 +1707,52 @@
     font-size: 12px;
   }
 }
+
+/* Part B: the announcement teaser. The renderer already cuts the source at
+   ~320 characters / 6 lines; the clamp is the second half of the guarantee, so
+   a card never grows past ~320 px on a phone because of text. */
+.announcement_title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.announcement_body {
+  white-space: normal;
+}
+
+.announcement_preview {
+  margin: 0;
+}
+
+.read_more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 2px;
+  color: var(--kumori-accent, #a78bfa);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.read_more:hover {
+  text-decoration: underline;
+}
+
+/* Part B: the rail's announcement teaser: two clamped plain lines, never raw
+   Markdown and never an anchor (the whole rail row is already a link). */
+.rail_item_body {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--white-50);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

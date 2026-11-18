@@ -390,7 +390,41 @@ polling loop in `app/components/CommunityToast/` - replace its `setInterval` and
 `fetch` with a channel subscription that calls the same `nextToast` state
 machine. Nothing else in the app would change.
 
-## 11. Phase 4: writing announcements (Markdown)
+## 11. Announcement previews (everything except the announcement itself)
+
+An announcement body is Markdown. Until this change, every surface outside the
+announcement's own page printed the raw source: `# Service Update`,
+`**bold**` and `https://...` appeared literally, in one paragraph with no
+clamp, so a long body pushed the feed card off the screen.
+
+There is now one renderer with two variants, in `app/lib/community/markdown.tsx`:
+
+* `variant="full"` - the announcement page and the admin composer preview.
+  Headings, lists, quotes, code and images all render.
+* `variant="preview"` - every feed card, rail item, index excerpt and bell
+  notification. Same safe rules (no raw HTML anywhere, no `rehype-raw`, links
+  limited to `https:`, `http:`, `mailto:`), but the block structure is flattened
+  for a card: headings become bold paragraphs, lists become compact lines,
+  blockquotes are inlined, images/rules/code blocks are dropped, and links stay
+  clickable while never nesting an anchor inside the card's own link.
+
+The preview cuts the SOURCE, not the DOM: `preparePreview` keeps the first
+~320 characters and at most 6 lines at a word boundary, then repairs the cut
+(an unclosed `[label](url)` keeps its label, an unclosed `**` is dropped, a bare
+URL that was cut is removed) and only then renders. Truncation therefore can
+never leave a half-parsed tag. The rendered box is clamped in CSS
+(`-webkit-line-clamp: 4` on phones, 5 from 768 px) and "Read more" appears
+exactly when the source was cut.
+
+| Surface | File | Before | After |
+| --- | --- | --- | --- |
+| Feed card | `app/community/components/AnnouncementCard.tsx` | one unclamped `<p>` of raw Markdown | preview + clamp + "Read more" |
+| Right rail "Latest announcements" | `app/community/components/rails.tsx` | raw body, unbounded | title + date + 2 clamped plain lines |
+| `/community/announcements` index | `app/community/announcements/AnnouncementList.tsx` | raw body text | preview + clamp + "Read more" |
+| Bell dropdown | `app/layout/header/components/Notifications/index.tsx` | excerpt built from raw source, could show `**` | `plainSnippet` of the rendered-safe text |
+| OG / meta description | `app/community/announcements/[id]/page.tsx` | already plain text | unchanged (verified plain) |
+
+## 12. Phase 4: writing announcements (Markdown)
 
 Announcements are written from the site now, not in the Supabase Table Editor.
 The table keeps its shape apart from three columns (`updated_at`,

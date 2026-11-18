@@ -18,6 +18,8 @@ const MAX_LIMIT = 20;
 export type PublicAnnouncement = {
   id: string;
   title: string;
+  /** The Markdown source: the card renders it with the preview variant. */
+  body?: string | null;
   excerpt: string;
   image: string | null;
   createdAt: string;
@@ -80,6 +82,9 @@ export async function GET(request: Request): Promise<Response> {
   const items: PublicAnnouncement[] = page.map((row) => ({
     id: row.id,
     title: row.title,
+    // Part B: the card renders the source through the preview variant. Bodies
+    // are public announcement text, so this exposes nothing new.
+    body: row.body,
     excerpt: plainSnippet(row.body, ANNOUNCEMENT_EXCERPT_MAX),
     image: row.image,
     createdAt: row.created_at,

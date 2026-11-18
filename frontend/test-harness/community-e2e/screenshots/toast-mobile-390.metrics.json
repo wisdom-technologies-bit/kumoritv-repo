@@ -1,14 +1,14 @@
 {
   "name": "toast-mobile-390.metrics",
-  "at": "2026-11-17T17:38:30.609Z",
+  "at": "2026-11-18T02:36:32.238Z",
   "width": 390,
   "scrollWidth": 827,
   "clientWidth": 286,
   "lines": 17,
   "icon": {
     "x": 319,
-    "y": 78.4375,
+    "y": 75.1633071899414,
     "width": 14,
-    "height": 14
+    "height": 14.000007629394531
   }
 }

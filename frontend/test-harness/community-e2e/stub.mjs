@@ -171,7 +171,10 @@ function feedRows(kind = "all") {
     dislikes: post.id === `${uid(2)}` ? 2 : 0,
   }));
 
-  const announcementRows = ANNOUNCEMENTS.map((row) => ({
+  const fixtureAnnouncement = announcementFixture
+    ? [{ id: `${uid(90)}`, ...ANNOUNCEMENT_FIXTURES[announcementFixture], image: null, url: null, created_at: iso(0), expires_at: null }]
+    : [];
+  const announcementRows = [...fixtureAnnouncement, ...ANNOUNCEMENTS].map((row) => ({
     feed_key: `announcement:${row.id}`,
     kind: "announcement",
     created_at: row.created_at,
@@ -480,6 +483,52 @@ function isSignedIn(req) {
 }
 
 /** Fixture state: the feed can be told there are no announcements at all. */
+
+/** Part B: one announcement per body shape the preview must survive. */
+const ANNOUNCEMENT_FIXTURES = {
+  sample: {
+    title: "Service Update: KumoriTV Is Back Online!",
+    body: [
+      "# Service Update: KumoriTV Is Back Online!",
+      "",
+      "We are pleased to announce that **KumoriTV is fully accessible again!**",
+      "",
+      "The temporary service disruption has been resolved, and our website is back up and running.",
+      "",
+      "- Search works",
+      "- The watch page plays",
+      "- Clips upload",
+      "",
+      "> Thank you for staying with us.",
+      "",
+      "Read the details at [the status page](https://kumoritv.top/status) or just keep watching.",
+      "",
+      "**We're back. Happy watching!**",
+      "",
+      "*The KumoriTV Team*",
+    ].join("\n"),
+  },
+  long: {
+    title: "A very long announcement",
+    body: Array.from({ length: 90 }, (_, i) => `Paragraph ${i + 1}: ${"the quick brown fox jumps over the lazy dog ".repeat(1)}`).join("\n\n"),
+  },
+  script: {
+    title: "A body with payloads",
+    body: '<script>alert("xss")</script> Plain words. [click me](javascript:alert(1)) and <img src=x onerror=alert(1)>',
+  },
+  unterminated: {
+    title: "Unfinished emphasis",
+    body: "**This opening marker is never closed, and the sentence keeps going past the cut point so the preview has to repair it instead of printing raw stars in the card.",
+  },
+  urlonly: {
+    title: "Only a link",
+    body: `https://kumoritv.top/${"x".repeat(600)}`,
+  },
+  empty: { title: "No body at all", body: "" },
+};
+
+let announcementFixture = null;
+
 let fixtureAnnouncements = true;
 let fixtureEmpty = false;
 
@@ -544,6 +593,10 @@ const server = createServer(async (req, res) => {
   if (pathname === "/__fixture") {
     const flag = url.searchParams.get("announcements");
     if (flag === "0" || flag === "1") fixtureAnnouncements = flag === "1";
+    const fixture = url.searchParams.get("announcementFixture");
+    if (fixture !== null) {
+      announcementFixture = ANNOUNCEMENT_FIXTURES[fixture] ? fixture : null;
+    }
     const empty = url.searchParams.get("empty");
     if (empty === "0" || empty === "1") fixtureEmpty = empty === "1";
     // Phase 4: "someone just posted", for the bar. `clip=1` gives it a thumbnail,
@@ -566,7 +619,7 @@ const server = createServer(async (req, res) => {
       });
       return json(res, 200, { id });
     }
-    return json(res, 200, { announcements: fixtureAnnouncements, empty: fixtureEmpty });
+    return json(res, 200, { announcements: fixtureAnnouncements, empty: fixtureEmpty, announcementFixture });
   }
 
 
@@ -682,7 +735,12 @@ function readBody(req) {
 }
 
 function tableRows(table) {
-  if (table === "announcements") return ANNOUNCEMENTS;
+  if (table === "announcements") {
+    const extra = announcementFixture
+      ? [{ id: `${uid(90)}`, ...ANNOUNCEMENT_FIXTURES[announcementFixture], image: null, url: null, created_at: iso(0), expires_at: null }]
+      : [];
+    return [...extra, ...ANNOUNCEMENTS];
+  }
   if (table === "community_posts") {
     // Prompt 38F: the post page reads community_posts directly and resolves
     // the clip itself, so the three clip posts live here as well.

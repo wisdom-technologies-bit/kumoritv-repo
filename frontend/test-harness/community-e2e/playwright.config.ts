@@ -25,7 +25,7 @@ const baseEnv = {
 
 export default defineConfig({
   testDir: ".",
-  testMatch: ["community.spec.ts", "phase4.spec.ts"],
+  testMatch: ["community.spec.ts", "phase4.spec.ts", "toast-repro.spec.ts", "announcement-preview.spec.ts"],
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
