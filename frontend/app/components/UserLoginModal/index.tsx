@@ -14,7 +14,6 @@ import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import { useUser } from "@/app/lib/supabase/AuthProvider";
 import { sanitizeNextPath } from "@/app/lib/supabase/auth";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
-import { anilistAuthorizeUrl } from "@/app/lib/user/anilistLogin";
 
 type ModalTypes = { onClick?: MouseEventHandler<HTMLDivElement>; auth?: unknown; nextPath?: string };
 const framerMotionDropIn = { hidden: { x: "-100vw", opacity: 0 }, visible: { x: "0", opacity: 1, transition: { duration: 0.2, damping: 25, type: "spring", stiffness: 500 } }, exit: { x: "100vw", opacity: 0 } };
@@ -49,14 +48,15 @@ export default function UserModal({ onClick, nextPath }: ModalTypes) {
     if (error) setLoginError({ code: error.code || "google", message: friendlyAuthError(error) });
     setIsLoading(false);
   };
+  // One link for both grants: /auth/anilist/start decides from ANILIST_AUTH_FLOW
+  // whether to send the visitor through the implicit redirect or the code flow.
   const signWithAnilist = () => {
-    const url = anilistAuthorizeUrl(process.env.NEXT_PUBLIC_ANILIST_CLIENT_ID);
-    if (!url) {
+    if (!process.env.NEXT_PUBLIC_ANILIST_CLIENT_ID) {
       console.error("[anilist] NEXT_PUBLIC_ANILIST_CLIENT_ID is not configured");
       setLoginError({ code: "anilist", message: "AniList login is not configured." });
       return;
     }
-    window.location.href = url;
+    window.location.href = "/auth/anilist/start";
   };
   const signAnonymously = async () => {
     if (!client) return;

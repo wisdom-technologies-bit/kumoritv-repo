@@ -6,48 +6,89 @@ import {
   syncAnilistSession,
   type AnilistSessionAdmin,
   type AnilistSessionServer,
-  type AnilistViewer,
 } from "@/app/lib/user/anilistSession";
+import { fetchAnilistViewer } from "@/app/lib/anilist/viewer";
+import { anilistErrorMessage, logAnilistFailure } from "@/app/lib/anilist/errors";
+import { clientIp, consume } from "@/app/lib/anilist/rateLimit";
+import { anilistCookieMaxAge } from "@/app/lib/user/anilistLogin";
+import {
+  TOKEN_COOKIE_NAME,
+  readAnilistToken,
+  serializeToken,
+  type AnilistToken,
+} from "@/app/lib/anilist/tokenCookie";
+import { TITLE_LANGUAGE_COOKIE, TITLE_LANGUAGE_MAX_AGE } from "@/app/lib/titles/language";
 
-const attempts = new Map<string, { count: number; expiresAt: number }>();
+export const dynamic = "force-dynamic";
 
-async function fetchAnilistViewer(accessToken: string): Promise<AnilistViewer | null> {
-  const apiUrl = process.env.NEXT_PUBLIC_ANILIST_API_URL || "https://graphql.anilist.co";
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({ query: "query { Viewer { id name avatar { large medium } } }" }),
-  });
+const RATE_LIMIT = { limit: 10, windowMs: 60_000 };
 
-  return (await response.json())?.data?.Viewer ?? null;
+// ResponseCookies.set takes the cookie options flattened, not nested under
+// `options`; a nested object silently drops HttpOnly/Secure.
+function cookieEntries(token: AnilistToken, seededTitleLanguage?: string) {
+  const entries: {
+    name: string;
+    value: string;
+    httpOnly?: boolean;
+    sameSite: "lax";
+    secure: boolean;
+    path: string;
+    maxAge: number;
+  }[] = [
+    {
+      name: TOKEN_COOKIE_NAME,
+      value: serializeToken(token, "implicit"),
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: anilistCookieMaxAge(token.expiresIn),
+    },
+  ];
+
+  if (seededTitleLanguage) {
+    entries.push({
+      name: TITLE_LANGUAGE_COOKIE,
+      value: seededTitleLanguage,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: TITLE_LANGUAGE_MAX_AGE,
+    });
+  }
+
+  return entries;
 }
 
+/**
+ * Implicit grant: the browser holds the token for a moment and posts it here.
+ * The token is validated once against AniList, the Supabase account is linked or
+ * created, and the viewer the UI needs comes back in the same response. The
+ * browser never calls AniList itself, and Firestore is not involved.
+ */
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const now = Date.now();
-  const current = attempts.get(ip);
+  if (!consume(`anilist-session:${clientIp(request.headers)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs)) {
+    logAnilistFailure("ANILIST_RATE_LIMITED", "session");
 
-  if (!current || current.expiresAt <= now) attempts.set(ip, { count: 1, expiresAt: now + 60_000 });
-  else if (current.count >= 10) {
     return NextResponse.json(
-      { ok: false, code: "rate_limited", error: "Too many attempts. Please wait a minute and try again." },
+      { ok: false, code: "ANILIST_RATE_LIMITED", error: anilistErrorMessage("ANILIST_RATE_LIMITED") },
       { status: 429 }
     );
-  } else current.count += 1;
+  }
 
-  let accessToken: string | undefined;
+  let body: { accessToken?: string; tokenType?: string; expiresIn?: string | number | null };
 
   try {
-    accessToken = ((await request.json()) as { accessToken?: string })?.accessToken;
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json(
-      { ok: false, code: "invalid_request", error: "The AniList login response was incomplete." },
+      { ok: false, code: "ANILIST_TOKEN_MISSING", error: anilistErrorMessage("ANILIST_TOKEN_MISSING") },
       { status: 400 }
     );
   }
 
   const result = await syncAnilistSession({
-    accessToken,
+    accessToken: body?.accessToken,
     clientId: process.env.NEXT_PUBLIC_ANILIST_CLIENT_ID,
     deps: {
       // The structural types in anilistSession.ts describe only what the flow
@@ -55,10 +96,62 @@ export async function POST(request: NextRequest) {
       createAdmin: () => createAdminClient() as unknown as AnilistSessionAdmin | null,
       createServerClient: async () =>
         (await createAuthServerClient()) as unknown as AnilistSessionServer | null,
-      fetchViewer: fetchAnilistViewer,
+      fetchViewer: (accessToken) => fetchAnilistViewer(accessToken),
       randomPassword: () => randomBytes(32).toString("base64url"),
     },
   });
 
-  return NextResponse.json(result.body, { status: result.status });
+  const response = NextResponse.json(result.body, { status: result.status });
+
+  if (result.body.ok && body?.accessToken) {
+    const token: AnilistToken = {
+      accessToken: body.accessToken,
+      tokenType: body.tokenType || "Bearer",
+      expiresIn:
+        body.expiresIn === null || body.expiresIn === undefined ? null : String(body.expiresIn),
+    };
+
+    for (const cookie of cookieEntries(token, result.body.seededTitleLanguage)) {
+      response.cookies.set(cookie);
+    }
+  }
+
+  return response;
+}
+
+/**
+ * Code grant: the callback route already stored the (encrypted) token in an
+ * httpOnly cookie and linked the account. This only hands the viewer to the UI,
+ * so the redux/localStorage user can be built without the token ever reaching
+ * client JavaScript.
+ */
+export async function GET(request: NextRequest) {
+  if (!consume(`anilist-viewer:${clientIp(request.headers)}`, RATE_LIMIT.limit, RATE_LIMIT.windowMs)) {
+    logAnilistFailure("ANILIST_RATE_LIMITED", "viewer");
+
+    return NextResponse.json(
+      { ok: false, code: "ANILIST_RATE_LIMITED", error: anilistErrorMessage("ANILIST_RATE_LIMITED") },
+      { status: 429 }
+    );
+  }
+
+  const token = readAnilistToken(request.cookies.get(TOKEN_COOKIE_NAME)?.value);
+
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, code: "ANILIST_TOKEN_MISSING", error: anilistErrorMessage("ANILIST_TOKEN_MISSING") },
+      { status: 401 }
+    );
+  }
+
+  const viewer = await fetchAnilistViewer(token.accessToken);
+
+  if (!viewer.ok) {
+    return NextResponse.json(
+      { ok: false, code: viewer.code, error: anilistErrorMessage(viewer.code) },
+      { status: viewer.status >= 400 && viewer.status < 600 ? viewer.status : 502 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, flow: "code", viewer: viewer.viewer });
 }

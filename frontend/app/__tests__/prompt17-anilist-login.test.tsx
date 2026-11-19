@@ -58,6 +58,37 @@ function mockAxios(handler: (call: AxiosCall) => { status?: number; data?: unkno
   return calls;
 }
 
+const DEFAULT_VIEWER = {
+  id: 7,
+  name: "meze",
+  avatar: { large: "https://example.test/large.jpg", medium: "https://example.test/medium.jpg" },
+  options: { titleLanguage: "ROMAJI", displayAdultContent: false },
+};
+
+const bridgeCalls: { url: string; body?: { accessToken?: string } }[] = [];
+
+/** The single server call the login now makes: /api/auth/anilist-session. */
+function stubBridge(overrides: { linked?: boolean; status?: number; body?: unknown; viewer?: unknown } = {}) {
+  bridgeCalls.length = 0;
+  (globalThis as Record<string, unknown>).fetch = async (url: unknown, init?: { body?: string }) => {
+    bridgeCalls.push({
+      url: String(url),
+      body: init?.body ? (JSON.parse(init.body) as { accessToken?: string }) : undefined,
+    });
+
+    const body = overrides.body ?? {
+      ok: true,
+      linked: overrides.linked ?? false,
+      viewer: overrides.viewer ?? DEFAULT_VIEWER,
+    };
+
+    return new Response(JSON.stringify(body), {
+      status: overrides.status ?? 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+}
+
 function setHash(hash: string) {
   const location = window.location as unknown as { href: string; hash: string; pathname: string; search: string };
   location.hash = hash;
@@ -190,7 +221,7 @@ test("the token is processed even when an anonymous Supabase session exists", as
     signOut: async () => {},
   };
 
-  const calls = mockAxios(() => ({ status: 201, data: {} }));
+  stubBridge({ linked: false });
 
   setHash("#access_token=abc123&token_type=Bearer&expires_in=31536000");
 
@@ -201,13 +232,13 @@ test("the token is processed even when an anonymous Supabase session exists", as
   );
 
   try {
-    const tokenPost = calls.find((call) => call.url === "/api/anilist" && call.method === "POST");
+    const bridge = bridgeCalls.find((call) => call.url === "/api/auth/anilist-session");
 
-    assert.ok(tokenPost, "the token was posted to /api/anilist despite the anonymous session");
-    assert.equal((tokenPost!.data as { accessToken: string }).accessToken, "abc123");
+    assert.ok(bridge, "the token went to the session bridge despite the anonymous session");
+    assert.equal(bridge!.body?.accessToken, "abc123");
 
     const stored = window.localStorage.getItem("anilist-user");
-    assert.ok(stored, "the viewer was stored");
+    assert.ok(stored, "the viewer from the bridge was stored");
     assert.match(stored!, /meze/);
   } finally {
     await tree.unmount();
@@ -218,7 +249,7 @@ test("the token is processed even when an anonymous Supabase session exists", as
 test("the hash is removed from the URL once the token is consumed", async () => {
   const { handleAnilistUserLoginWithRedux } = await import("@/app/lib/user/anilistUserLoginOptions");
 
-  mockAxios(() => ({ status: 201, data: {} }));
+  stubBridge();
 
   setHash("#access_token=abc123&token_type=Bearer&expires_in=31536000");
 
@@ -229,34 +260,25 @@ test("the hash is removed from the URL once the token is consumed", async () => 
   assert.equal(window.location.href.includes("access_token"), false, "the token left the address bar");
 });
 
-test("a failed bridge keeps the AniList session and shows a notice", async () => {
+test("a failed account sync shows the honest message and its code", async () => {
   const { handleAnilistUserLoginWithRedux } = await import("@/app/lib/user/anilistUserLoginOptions");
 
-  mockAxios(() => ({ status: 201, data: {} }));
+  stubBridge({ status: 503, body: { ok: false, code: "ANILIST_SYNC_FAILED" } });
 
-  (globalThis as Record<string, unknown>).fetch = async () =>
-    new Response(JSON.stringify({ ok: false }), { status: 503 });
-
-  const warnings: unknown[][] = [];
-  const originalWarn = console.warn;
-  console.warn = (...args: unknown[]) => warnings.push(args);
-
-  const notices: string[] = [];
+  const notices: { message: string; code?: string }[] = [];
   setHash("#access_token=abc123&token_type=Bearer&expires_in=31536000");
 
-  try {
-    const outcome = await handleAnilistUserLoginWithRedux({ skipReload: true, onNotice: (message) => notices.push(message) });
+  const outcome = await handleAnilistUserLoginWithRedux({
+    skipReload: true,
+    onNotice: (message, code) => notices.push({ message, code }),
+  });
 
-    assert.equal(outcome.status, "ok");
-    assert.equal(outcome.status === "ok" ? outcome.bridge : "", "failed");
-    assert.ok(window.localStorage.getItem("anilist-user"), "the AniList session still works");
-    assert.equal(warnings.length, 1, "the failure is logged");
-    assert.equal(String(warnings[0][0]), "[anilist] session bridge failed");
-    assert.equal(warnings[0][1], 503);
-    assert.match(notices.join(" "), /syncing your account failed/i);
-  } finally {
-    console.warn = originalWarn;
-  }
+  assert.equal(outcome.status, "error");
+  assert.equal(outcome.status === "error" ? outcome.code : "", "ANILIST_SYNC_FAILED");
+  assert.equal(window.localStorage.getItem("anilist-user"), null, "no half session was stored");
+  assert.equal(notices.length, 1, "one notice");
+  assert.match(notices[0].message, /saving your account failed/i);
+  assert.equal(notices[0].code, "ANILIST_SYNC_FAILED", "the code is shown so a screenshot is enough");
 });
 
 test("an AniList error is surfaced instead of ignored", async () => {
@@ -352,13 +374,15 @@ test("a returning AniList user is signed in even though createUser says already 
     deps: {
       createAdmin: () => admin as never,
       createServerClient: async () => server as never,
-      fetchViewer: async () => ({ id: 7, name: "meze" }),
+      fetchViewer: async () => ({ ok: true as const, viewer: { id: 7, name: "meze" } }),
       randomPassword: () => "pw",
     },
   });
 
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body, { ok: true, linked: false });
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.linked, false);
+  assert.deepEqual(result.body.viewer, { id: 7, name: "meze" });
   assert.equal(record.created.length, 1, "createUser was attempted");
   assert.deepEqual(record.links[0], { type: "magiclink", email: "anilist-7@anilist.invalid" });
   assert.equal(record.verified.length, 1, "the session was created through the magic link");
@@ -377,12 +401,13 @@ test("an email session is linked, not replaced", async () => {
     deps: {
       createAdmin: () => admin as never,
       createServerClient: async () => server as never,
-      fetchViewer: async () => ({ id: 7, name: "meze" }),
+      fetchViewer: async () => ({ ok: true as const, viewer: { id: 7, name: "meze" } }),
       randomPassword: () => "pw",
     },
   });
 
-  assert.deepEqual(result.body, { ok: true, linked: true });
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.linked, true);
   assert.equal(record.created.length, 0, "no second account was created");
   assert.equal(record.updated[0].id, "email-user");
   assert.equal((record.updated[0].payload.user_metadata as { anilist_id: number }).anilist_id, 7);
@@ -395,23 +420,23 @@ test("an invalid viewer or an invalid token fails with a distinct code", async (
   const deps = {
     createAdmin: () => admin as never,
     createServerClient: async () => server as never,
-    fetchViewer: async () => ({ id: 999, name: "someone-else" }),
+    fetchViewer: async () => ({ ok: true as const, viewer: { id: 999, name: "someone-else" } }),
     randomPassword: () => "pw",
   };
 
   const mismatch = await syncAnilistSession({ accessToken: tokenFor(7), clientId: "client-123", deps });
   assert.equal(mismatch.status, 401);
-  assert.equal(mismatch.body.code, "viewer_mismatch");
+  assert.equal(mismatch.body.code, "ANILIST_VIEWER_401");
 
   const wrongAudience = await syncAnilistSession({
     accessToken: tokenFor(7),
     clientId: "another-client",
     deps,
   });
-  assert.equal(wrongAudience.body.code, "invalid_token");
+  assert.equal(wrongAudience.body.code, "ANILIST_VIEWER_401");
 
   const noToken = await syncAnilistSession({ accessToken: "", clientId: "client-123", deps });
-  assert.equal(noToken.body.code, "invalid_request");
+  assert.equal(noToken.body.code, "ANILIST_TOKEN_MISSING");
 });
 
 // ------------------------------------------------------------------ login modal

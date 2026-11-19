@@ -44,7 +44,7 @@ test("the login modal offers Google, Anonymously and Anilist, plus the advice li
   await tree.unmount();
 });
 
-test("clicking Anilist goes to the AniList token endpoint with the client id", async () => {
+test("clicking Anilist goes to the server-side login entry point", async () => {
   process.env.NEXT_PUBLIC_ANILIST_CLIENT_ID = "test-client-id";
   setGuest();
   globals.__commentsTestClient = { auth: {}, from: () => ({}) };
@@ -55,10 +55,9 @@ test("clicking Anilist goes to the AniList token endpoint with the client id", a
   const tree = await render(<UserLoginModal nextPath="/media/21" />);
   await click(tree.container.querySelector('button[title="Anilist"]'));
 
-  assert.equal(
-    fakeLocation.href,
-    "https://anilist.co/api/v2/oauth/authorize?client_id=test-client-id&response_type=token",
-  );
+  // /auth/anilist/start picks implicit or code from ANILIST_AUTH_FLOW, so the
+  // button no longer builds the AniList URL in the browser.
+  assert.equal(fakeLocation.href, "/auth/anilist/start");
 
   await tree.unmount();
 });

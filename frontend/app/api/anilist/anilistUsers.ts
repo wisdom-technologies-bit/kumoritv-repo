@@ -1,108 +1,35 @@
 import Axios from "axios";
 import { cache } from "react";
-import { createNewUserDocument } from "../../lib/user/userLoginActions";
 import userSettingsActions from "../cookie/userCookieSettingsActions";
+import { ANILIST_GRAPHQL_URL } from "@/app/lib/anilist/endpoint";
 
-const ANILIST_URL = process.env.NEXT_PUBLIC_ANILIST_API_URL;
+/** Same-origin relay: the browser never holds the AniList token. */
+async function anilistBrowserRequest(payload: unknown) {
+  const response = await Axios({
+    url: "/api/anilist/proxy",
+    method: "POST",
+    data: payload,
+  });
+
+  return { data: response.data };
+}
 
 export async function getHeadersWithAuthorization({
   accessToken,
 }: {
   accessToken?: string;
 }) {
-  if (accessToken) {
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    };
-  }
+  if (!accessToken) throw new Error("AniList access token is required");
 
-  try {
-    const { data } = await Axios({
-      url: `${process.env.NEXT_PUBLIC_WEBSITE_ORIGIN_URL || ""}/api/anilist`,
-      method: "GET",
-    });
-
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${data.access_token}`,
-      Accept: "application/json",
-    };
-  } catch {
-    return {
-      "Content-Type": "application/json",
-    };
-  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
 }
 
 // eslint-disable-next-line import/no-anonymous-default-export
 export default {
-  getUserDataByID: cache(async ({ userId }: { userId: number }) => {
-    try {
-      const graphqlQuery = {
-        query: `
-                    query($id: Int) {
-                        User(id: $id){
-                            id
-                            name
-                            bannerImage
-                            createdAt
-                            avatar {
-                                large
-                                medium
-                            }
-                            favourites {
-                                anime {
-                                    nodes {
-                                        title {
-                                            romaji
-                                            english
-                                            native
-                                        }
-                                    }
-                                }
-                                manga {
-                                    nodes {
-                                        title {
-                                            romaji
-                                            english
-                                            native
-                                        }
-                                    }
-                                }
-                            }
-                            statistics {
-                                anime {
-                                    minutesWatched
-                                }
-                                manga {
-                                    chaptersRead
-                                }
-                            }
-                        }
-                    }
-                `,
-        variables: {
-          id: userId,
-        },
-      };
-
-      const { data } = await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({ accessToken: undefined }),
-        data: graphqlQuery,
-      });
-
-      return data;
-    } catch (err) {
-      console.error(err);
-
-      return err;
-    }
-  }),
-
   getCurrUserData: cache(
     async ({
       accessToken,
@@ -176,7 +103,7 @@ export default {
         };
 
         const { data } = await Axios({
-          url: `${ANILIST_URL}`,
+          url: `${ANILIST_GRAPHQL_URL}`,
           method: "POST",
           headers: await getHeadersWithAuthorization({
             accessToken: accessToken,
@@ -189,11 +116,7 @@ export default {
 
         if (getOnlyId) return userDataFromAnilist.id;
 
-        const userDocFetchedOrCreated = (await createNewUserDocument({
-          userAnilist: userDataFromAnilist,
-        })) as UserAnilist;
-
-        return userDocFetchedOrCreated || undefined;
+        return userDataFromAnilist;
       } catch (err) {
         console.error(err);
 
@@ -280,7 +203,7 @@ export default {
         };
 
         const { data } = await Axios({
-          url: `${ANILIST_URL}`,
+          url: `${ANILIST_GRAPHQL_URL}`,
           method: "POST",
           headers: await getHeadersWithAuthorization({
             accessToken: accessToken,
@@ -325,12 +248,7 @@ export default {
         },
       };
 
-      const { data } = await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
+      const { data } = await anilistBrowserRequest(graphqlQuery);
 
       return data;
     } catch (err) {
@@ -378,12 +296,7 @@ export default {
         },
       };
 
-      const { data } = await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
+      const { data } = await anilistBrowserRequest(graphqlQuery);
 
       return data;
     } catch (err) {
@@ -410,12 +323,7 @@ export default {
         },
       };
 
-      const { data } = await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
+      const { data } = await anilistBrowserRequest(graphqlQuery);
 
       return data;
     } catch (err) {
@@ -443,12 +351,7 @@ export default {
         },
       };
 
-      await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
+      await anilistBrowserRequest(graphqlQuery);
 
       return cookieSetResult;
     } catch (err) {
@@ -477,12 +380,7 @@ export default {
         },
       };
 
-      await Axios({
-        url: `${ANILIST_URL}`,
-        method: "POST",
-        headers: await getHeadersWithAuthorization({}),
-        data: graphqlQuery,
-      });
+      await anilistBrowserRequest(graphqlQuery);
 
       return cookieSetResult;
     } catch (err) {

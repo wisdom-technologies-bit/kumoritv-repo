@@ -46,14 +46,10 @@ test("comments only talk to Supabase through the new section", () => {
   assert.deepEqual(reduxAnilistChecks.map(relative), []);
 });
 
-test("firebase is still only reachable from the AniList login flow, so it was not removed", () => {
-  // Prompt 10 allows removing firebase only when nothing reaches it. The AniList
-  // login flow still does: api/anilist/anilistUsers.ts -> lib/user/userLoginActions.ts.
-  const expectedImporters = [
-    "app/api/anilist/anilistUsers.ts",
-    "app/firebaseApp.ts",
-    "app/lib/user/userLoginActions.ts",
-  ];
+test("firebase is gone: nothing reaches it and the dependency is dropped", () => {
+  // Part A moved the AniList login onto the Supabase bridge, which was the last
+  // live path to Firestore, so the package and its wrappers were removed.
+  const expectedImporters: string[] = [];
 
   const importers = appFiles
     .filter((path) =>
@@ -67,5 +63,6 @@ test("firebase is still only reachable from the AniList login flow, so it was no
   assert.deepEqual(importers, expectedImporters);
 
   const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-  assert.ok(packageJson.dependencies.firebase, "firebase stays a dependency while the login flow uses it");
+  assert.equal(packageJson.dependencies.firebase, undefined, "firebase is no longer a dependency");
+  assert.equal(packageJson.dependencies["react-firebase-hooks"], undefined, "react-firebase-hooks is gone too");
 });

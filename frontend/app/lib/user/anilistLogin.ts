@@ -1,5 +1,5 @@
-// Pure helpers for the AniList implicit-grant login: no React, no redux, no
-// network, so the flow can be unit tested and reused by the route handlers.
+// Pure helpers for the AniList login: no React, no redux, no network, so the flow
+// can be unit tested and reused by the route handlers.
 
 export type AnilistToken = {
   accessToken: string;
@@ -13,7 +13,7 @@ export type ParsedAnilistRedirect = {
   error: string | null;
 };
 
-export const ANILIST_AUTHORIZE_ENDPOINT = "https://anilist.co/api/v2/oauth/authorize";
+export { ANILIST_AUTHORIZE_ENDPOINT, ANILIST_TOKEN_ENDPOINT } from "@/app/lib/anilist/endpoint";
 
 export const DEFAULT_TOKEN_TYPE = "Bearer";
 
@@ -25,6 +25,10 @@ export const ANILIST_COOKIE_MAX_AGE_DEFAULT = 60 * 60 * 24 * 30;
 
 /** Event used to surface login notices (the toast listens for it). */
 export const ANILIST_NOTICE_EVENT = "anilist:notice";
+
+/** Query parameters the authorization-code callback redirects with. */
+export const ANILIST_CODE_PARAM = "anilist";
+export const ANILIST_CODE_ERROR_PARAM = "anilist_error";
 
 /**
  * Reads the parameters AniList redirects back with. The values arrive in the hash
@@ -53,20 +57,49 @@ export function parseAnilistRedirect(raw: string): ParsedAnilistRedirect {
   };
 }
 
+/** True for the implicit hash, an AniList error, and the code-flow query. */
 export function hasAnilistRedirect(raw: string): boolean {
   if (!raw) return false;
 
   const params = new URLSearchParams(raw.replace(/^[#?]+/, ""));
 
-  return Boolean(params.get("access_token") || params.get("error"));
+  return Boolean(
+    params.get("access_token") ||
+      params.get("error") ||
+      params.get(ANILIST_CODE_PARAM) ||
+      params.get(ANILIST_CODE_ERROR_PARAM)
+  );
 }
 
-/** The authorize URL. No redirect_uri: AniList uses the one registered on the app. */
+/** The implicit authorize URL. No redirect_uri: AniList uses the registered one. */
 export function anilistAuthorizeUrl(clientId?: string | null): string | null {
   const id = (clientId ?? "").trim();
   if (!id) return null;
 
-  return `${ANILIST_AUTHORIZE_ENDPOINT}?client_id=${encodeURIComponent(id)}&response_type=token`;
+  return `https://anilist.co/api/v2/oauth/authorize?client_id=${encodeURIComponent(id)}&response_type=token`;
+}
+
+/**
+ * The authorization-code authorize URL: same endpoint, `response_type=code`, an
+ * explicit `redirect_uri` (it must match the one registered on the AniList app)
+ * and the signed `state` that the callback verifies.
+ */
+export function anilistCodeAuthorizeUrl(
+  clientId: string | null | undefined,
+  redirectUri: string,
+  state: string
+): string | null {
+  const id = (clientId ?? "").trim();
+  if (!id || !redirectUri || !state) return null;
+
+  const params = new URLSearchParams({
+    client_id: id,
+    response_type: "code",
+    redirect_uri: redirectUri,
+    state,
+  });
+
+  return `https://anilist.co/api/v2/oauth/authorize?${params.toString()}`;
 }
 
 export function describeAnilistError(code: string | null): string {
