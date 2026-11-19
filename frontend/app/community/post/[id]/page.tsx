@@ -29,6 +29,8 @@ type PostRow = {
   is_spoiler: boolean;
   created_at: string;
   clip_id: string | null;
+  status?: "published" | "hidden" | "removed" | null;
+  removed_reason?: string | null;
 };
 
 const loadPost = cache(async function loadPost(id: string): Promise<PostRow | null> {
@@ -37,7 +39,7 @@ const loadPost = cache(async function loadPost(id: string): Promise<PostRow | nu
     if (!client) return null;
     const { data, error } = await (client as any)
       .from("community_posts")
-      .select("id, author_id, body, is_spoiler, created_at, clip_id")
+      .select("id, author_id, body, is_spoiler, created_at, clip_id, status, removed_reason")
       .eq("id", id)
       .maybeSingle();
     if (error) return null;
@@ -130,6 +132,16 @@ export default async function CommunityPostPage({ params }: { params: { id: stri
         </Link>
 
         <article className={styles.thread_card}>
+          {post.status && post.status !== "published" && (
+            // Part C: the author's own view of their content. Only the author and
+            // staff ever load a non-published post (RLS decides), so no other
+            // reader can see this.
+            <p className={styles.author_state} role="status">
+              {post.status === "removed"
+                ? `Removed by moderators${post.removed_reason ? `: ${post.removed_reason}` : ""}`
+                : "Hidden by moderators"}
+            </p>
+          )}
           <header className={styles.post_head}>
             <span className={styles.avatar} aria-hidden="true">
               {author?.avatar_url ? (

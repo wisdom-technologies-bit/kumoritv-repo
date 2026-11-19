@@ -31,3 +31,45 @@ export const LATEST_PER_MINUTE = 60;
  */
 export const adminWriteLimiter = createRateLimiter({ windowMs: 60_000 });
 export const ADMIN_WRITES_PER_MINUTE = 10;
+
+/**
+ * Phase 6, part E: comments. Ten a minute per IP+user on top of the durable
+ * SQL limits (5/minute, 40/hour). Same caveat as the others: per instance.
+ */
+export const commentCreateLimiter = createRateLimiter({ windowMs: 60_000 });
+export const COMMENT_PER_MINUTE = 10;
+
+/**
+ * Phase 6: moderation writes. 60 a minute per staff member - far above any
+ * human reviewing a queue, far below a loop. Keyed on the staff user id.
+ */
+export const moderationLimiter = createRateLimiter({ windowMs: 60_000 });
+export const MODERATION_PER_MINUTE = 60;
+
+/* ---------------------------------------------------------------------------
+ * Phase 6, part D: per-rule hit counters.
+ *
+ * The durable limits live in SQL and cannot be counted from here. What CAN be
+ * counted is how often the app refused a write, per rule, which is what the
+ * moderation dashboard shows. These are per instance and reset on deploy - the
+ * dashboard says so, because a number that silently means "this container"
+ * is worse than no number.
+ * ------------------------------------------------------------------------- */
+const ruleHits = new Map<string, number>();
+
+export type RuleHit = { rule: string; count: number };
+
+export function recordRuleHit(rule: string): void {
+  ruleHits.set(rule, (ruleHits.get(rule) ?? 0) + 1);
+}
+
+export function readRuleHits(): RuleHit[] {
+  return [...ruleHits.entries()]
+    .map(([rule, count]) => ({ rule, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/** Tests only: counters are module state, and one test must not see another's. */
+export function resetRuleHits(): void {
+  ruleHits.clear();
+}

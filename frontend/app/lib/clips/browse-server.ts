@@ -110,7 +110,9 @@ export async function listBrowseClips(query: ClipPageQuery): Promise<BrowseClipR
     let builder = client
       .from("clips")
       .select(SELECT)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      // Phase 6: hidden by a moderator = not in public browse.
+      .is("hidden_at", null);
 
     if (query.anime != null) builder = builder.eq("anilist_id", query.anime);
     if (query.animeIds !== null) builder = builder.in("anilist_id", query.animeIds);

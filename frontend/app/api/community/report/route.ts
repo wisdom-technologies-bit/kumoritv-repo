@@ -43,6 +43,11 @@ export async function POST(request: Request) {
     limiter: reportLimiter,
     insert: async (row) => {
       const { error } = await (admin as any).from("community_reports").insert(row);
+      // Part D: community_report_rate_guard raises this when a signed-in
+      // reporter has sent 10 in the last hour.
+      if (error && /rate_limit:reports_hour/.test(error.message ?? "")) {
+        return { error: { message: "rate_limited" } };
+      }
       return { error: error ?? null };
     },
   });

@@ -51,6 +51,13 @@ export default function ReportDialog({ targetKind, targetId, onClose }: ReportDi
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      if (response.status === 409) {
+        // Part C: a second report on the same item is not an error, it is already
+        // in the queue. Say so plainly and stop.
+        setMessage("You already reported this. We have it.");
+        setIsSending(false);
+        return;
+      }
       if (!response.ok) {
         setMessage(payload.message || "We could not send that report.");
         setIsSending(false);

@@ -19,6 +19,7 @@ import { clearUserScopedCaches } from "@/app/lib/user-data/merge";
 import SectionHeading from "./SectionHeading";
 import SwitchRow from "./SwitchRow";
 import NotificationsSection, { NOTIFICATIONS_SECTION_ID } from "./NotificationsSection";
+import BlockedUsersSection from "./BlockedUsersSection";
 
 type SettingsTypes = {
   onClick?:
@@ -441,6 +442,9 @@ function UserSettingsModal({
                 your username or comments.
               </div>
             )}
+
+            {/* COMMUNITY */}
+            <BlockedUsersSection className={styles.card} />
 
             {/* PROFILE */}
             <section className={styles.card}>

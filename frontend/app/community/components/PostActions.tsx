@@ -9,6 +9,7 @@ import styles from "../page.module.css";
 import type { FeedItem } from "@/app/lib/community/queries";
 import { useCopyLink } from "./shared";
 import { CommentIcon, FlagIcon, HeartIcon, ShareIcon, ThumbDownIcon, TrashIcon } from "./icons";
+import BlockButton from "./BlockButton";
 
 export type PostActionsProps = {
   item: FeedItem;
@@ -69,6 +70,12 @@ export default function PostActions({
         <ShareIcon />
         {copied ? "Copied" : "Share"}
       </button>
+
+      <BlockButton
+        userId={item.author_id ?? null}
+        name={item.author_display_name || item.author_username || "this person"}
+        isSignedIn={isSignedIn}
+      />
 
       <div className={styles.post_actions_end}>
         {canDelete ? (

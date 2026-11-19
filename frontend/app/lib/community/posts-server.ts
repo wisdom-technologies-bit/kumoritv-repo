@@ -14,6 +14,7 @@
 // it makes the API the single choke point instead of one of two.
 import { cleanPostBody, validateCreateReport, validateCreatePost } from "./body";
 import { POST_BODY_MAX } from "./constants";
+import { checkPostSpam, type AntispamConfig } from "./antispam";
 import { POST_CREATE_PER_MINUTE, REPORT_PER_HOUR } from "./rate-limit";
 import type { RateLimiter } from "@/app/lib/clips/rate-limit";
 
@@ -53,6 +54,20 @@ export function clipOnlyBody(clip: ResolvedClip | null): string {
 
 /** Maps a database guard message onto an HTTP answer. The guard is the truth. */
 export function classifyPostWriteError(message: string): HandlerResult {
+  // Part D: the durable limits raise stable codes, so the UI can say something
+  // useful without parsing prose.
+  if (/rate_limit:posts_10min/.test(message)) {
+    return {
+      status: 429,
+      body: { error: "rate_limited", message: "You're posting too quickly. Try again in a few minutes." },
+    };
+  }
+  if (/rate_limit:posts_day/.test(message)) {
+    return {
+      status: 429,
+      body: { error: "rate_limited", message: "You've reached the daily posting limit. Try again tomorrow." },
+    };
+  }
   if (/posting too fast/i.test(message)) {
     return { status: 429, body: { error: "rate_limited", message: "You're posting too quickly. Wait a moment." } };
   }
@@ -83,6 +98,16 @@ export async function handleCreatePost(deps: {
    * clips. Returning null means "this clip does not exist any more".
    */
   resolveClip?: (code: string) => Promise<ResolvedClip | null>;
+  /**
+   * Anti-spam facts, gathered by the route with the service role. Optional so
+   * the pure validator tests can leave them out.
+   */
+  spam?: {
+    accountAgeHours: number | null;
+    postsLastHour: number;
+    duplicate: boolean;
+    config?: AntispamConfig;
+  };
 }): Promise<HandlerResult> {
   const { session } = deps;
 
@@ -127,6 +152,20 @@ export async function handleCreatePost(deps: {
   // The profanity filter has already run on whatever the author typed; the
   // default text is cleaned too, because a clip title is user text as well.
   const body = parsed.value.body || cleanPostBody(clipOnlyBody(clip)).trim() || CLIP_ONLY_BODY;
+
+  if (deps.spam) {
+    const verdict = checkPostSpam({
+      body,
+      hasLinkCard: Boolean(parsed.value.linkUrl),
+      accountAgeHours: deps.spam.accountAgeHours,
+      postsLastHour: deps.spam.postsLastHour,
+      duplicate: deps.spam.duplicate,
+      config: deps.spam.config,
+    });
+    if (verdict) {
+      return { status: verdict.status, body: { error: verdict.code, message: verdict.message } };
+    }
+  }
 
   const { data, error } = await deps.insert({
     author_id: session.userId,

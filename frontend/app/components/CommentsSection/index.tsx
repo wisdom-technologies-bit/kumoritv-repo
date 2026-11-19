@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./component.module.css";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
@@ -19,7 +19,6 @@ import {
   CommentTarget,
   ReactionValue,
   SORT_OPTIONS,
-  addComment,
   clearReaction,
   countComments,
   countReplies,
@@ -28,8 +27,8 @@ import {
   listMyReactions,
   listReplies,
   setReaction,
-  softDeleteComment,
 } from "@/app/lib/comments/queries";
+import { postComment, deleteComment as deleteCommentRequest } from "@/app/lib/comments/write-client";
 
 /** Only what the section needs, so both pages can pass a serialisable slice. */
 export type CommentsMediaInfo = { id: number } & Partial<Pick<MediaData, "title" | "format">>;
@@ -371,7 +370,7 @@ export default function CommentsSection({
       if (!client || !userId || comment.user_id !== userId) return;
 
       setActionError(null);
-      const result = await softDeleteComment(client, { commentId: comment.id, userId });
+      const result = await deleteCommentRequest(comment.id);
 
       if (result.error) {
         setActionError("Could not delete your comment. Please try again.");
@@ -447,10 +446,10 @@ export default function CommentsSection({
           null
         : null;
 
-      const result = await addComment(client, {
+      const result = await postComment({
+        targetKind: target ? target.kind : "anime",
+        targetId: target ? target.id : undefined,
         anilistId: mediaId ?? undefined,
-        target,
-        userId,
         body: submission.body,
         isSpoiler: submission.isSpoiler,
         // A reply belongs to its parent's episode; a new comment to the picker.
@@ -459,6 +458,7 @@ export default function CommentsSection({
       });
 
       if (result.error) return { error: result.error };
+      if (!result.data) return { error: { message: "That did not save. Try again.", code: null } };
 
       const created: CommentFeedRow = {
         id: result.data.id,
@@ -469,7 +469,7 @@ export default function CommentsSection({
         body: result.data.body,
         is_spoiler: result.data.is_spoiler,
         created_at: result.data.created_at,
-        target_type: result.data.target_type,
+        target_type: result.data.target_type ?? (target ? target.kind : "anime"),
         post_id: result.data.post_id ?? null,
         announcement_id: result.data.announcement_id ?? null,
         username: profile?.username ?? null,
@@ -567,12 +567,12 @@ export default function CommentsSection({
         <div id={styles.body}>
           <div className={styles.controls} data-single={isCommunityThread ? "true" : "false"}>
             {!isCommunityThread && (
-            <Dropdown
-              ariaLabel="Filter comments by episode"
-              value={episodeChoice}
-              options={episodeOptions}
-              onChange={setEpisodeChoice}
-            />
+              <Dropdown
+                ariaLabel="Filter comments by episode"
+                value={episodeChoice}
+                options={episodeOptions}
+                onChange={setEpisodeChoice}
+              />
             )}
 
             <Dropdown
