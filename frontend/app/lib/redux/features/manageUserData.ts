@@ -1,6 +1,5 @@
 "use client";
 import { createSlice } from "@reduxjs/toolkit";
-import { removeCookies } from "../../user/anilistUserLoginOptions";
 
 const initialState: { value: UserAnilist | null } = {
   value:
@@ -21,7 +20,12 @@ export const userInfo = createSlice({
 
       state.value = null;
 
-      removeCookies();
+      // Loaded lazily on purpose: a static import here made a cycle
+      // (login options -> store -> this slice -> login options), and whichever
+      // module the bundle evaluated first got `undefined` for this reducer, so
+      // the store came up WITHOUT the UserInfo key and every selector crashed
+      // with "Cannot read properties of undefined (reading 'value')".
+      void import("../../user/anilistUserLoginOptions").then((module) => module.removeCookies());
     },
   },
 });

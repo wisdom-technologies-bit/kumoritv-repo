@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publicOrigin } from "@/app/lib/http/origin";
 import { anilistAuthorizeUrl, anilistCodeAuthorizeUrl } from "@/app/lib/user/anilistLogin";
-import { ANILIST_AUTH_FLOW, isCodeFlow } from "@/app/lib/anilist/flow";
+import { isCodeFlow } from "@/app/lib/anilist/flow";
 import { encryptionKeyFromEnv } from "@/app/lib/anilist/tokenCookie";
 import { STATE_COOKIE_NAME, STATE_TTL_MS, createState, deriveStateKey } from "@/app/lib/anilist/state";
 import { logAnilistFailure } from "@/app/lib/anilist/errors";
@@ -61,4 +61,3 @@ export async function GET(request: NextRequest) {
   return response;
 }
 
-export { ANILIST_AUTH_FLOW };
