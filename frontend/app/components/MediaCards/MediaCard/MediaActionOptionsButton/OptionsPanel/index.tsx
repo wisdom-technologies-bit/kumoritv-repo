@@ -16,6 +16,7 @@ import { motion } from "framer-motion";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
 import { displayTitle } from "@/app/lib/titles";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 const framerMotionOpenPanelTransition = {
   initial: {
@@ -179,7 +180,7 @@ export default function OptionsPanel({
         className={styles.options_panel}
       >
         <div className={styles.panel_heading}>
-          <h5>{displayTitle(mediaTitle)}</h5>
+          <h5><AnimeTitle titles={mediaTitle} /></h5>
 
           <motion.button
             onClick={() => setIsPanelOpen(!isPanelOpen)}

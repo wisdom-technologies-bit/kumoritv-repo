@@ -222,8 +222,11 @@ test("the root layout renders the tag and no other third-party ad script", () =>
   assert.match(layout, /<AdcashTag/);
   assert.match(layout, /readAdcashConfig\(\(name\) => process\.env\[name\]\)/);
   assert.ok(!/al5sm|acscdn\/(?!script)/.test(layout), "no ad URL is hard-coded in the layout");
-  // the only dangerouslySetInnerHTML left in the app is our JSON-LD
-  assert.ok(!layout.includes("dangerouslySetInnerHTML"));
+  // The layout's only inline script is the title-language attribute setter (it
+  // must run before paint); no ad script may be inlined here.
+  const inlineScripts = layout.match(/dangerouslySetInnerHTML/g) ?? [];
+  assert.equal(inlineScripts.length, 1, "one inline script: the title language setter");
+  assert.match(layout, /media_title_language/, "and it is the title-language one");
 });
 
 // ------------------------------------------------- the retired provider is gone

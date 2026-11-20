@@ -7,7 +7,7 @@ import MediaTypeIconSpan from "./MediaTypeIconSpan";
 import MediaActionOptionsButton from "./MediaActionOptionsButton";
 import { KeepWatchingMediaData } from "@/app/ts/interfaces/firestoreData";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
-import { displayTitle } from "@/app/lib/titles";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 type ComponentTypes = {
   children: React.ReactNode;
@@ -44,8 +44,7 @@ export function MediaInfo({ mediaInfo }: { mediaInfo: MediaData }) {
 
       <h4>
         <Link href={`/media/${mediaInfo.id}`}>
-          {mediaInfo.title &&
-            displayTitle(mediaInfo.title)}
+          <AnimeTitle titles={mediaInfo.title} />
         </Link>
       </h4>
 

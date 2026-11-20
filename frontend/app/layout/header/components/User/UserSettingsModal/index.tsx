@@ -20,6 +20,8 @@ import SectionHeading from "./SectionHeading";
 import SwitchRow from "./SwitchRow";
 import NotificationsSection, { NOTIFICATIONS_SECTION_ID } from "./NotificationsSection";
 import BlockedUsersSection from "./BlockedUsersSection";
+import { applyTitleLanguage } from "@/app/lib/titles/useTitlePreference";
+import { TITLE_LANGUAGES, coerceTitleLanguage, type TitleLanguage } from "@/app/lib/titles/language";
 
 type SettingsTypes = {
   onClick?:
@@ -44,6 +46,7 @@ type SettingsForm = {
   username: string;
   avatarUrl: string | null;
   subtitleLanguage: string;
+  titleLanguage: TitleLanguage;
   preferredAudio: AudioPreference;
   autoSkip: boolean;
   autoNext: boolean;
@@ -180,6 +183,7 @@ function UserSettingsModal({
           "",
         avatarUrl: profile?.avatar_url || null,
         subtitleLanguage: prefs.subtitle_language || "English",
+        titleLanguage: coerceTitleLanguage(prefs.title_language),
         preferredAudio: prefs.dubEpisodes ? "dub" : "sub",
         autoSkip: Boolean(prefs.autoSkip),
         autoNext: Boolean(prefs.autoNext),
@@ -314,6 +318,7 @@ function UserSettingsModal({
 
       // Playback preferences: profiles table when signed in, localStorage for guests.
       await setPref("subtitle_language", form.subtitleLanguage);
+      await setPref("title_language", form.titleLanguage);
       await setPref("autoSkip", form.autoSkip);
       await setPref("autoNext", form.autoNext);
       await setPref("dubEpisodes", form.preferredAudio === "dub");
@@ -335,6 +340,10 @@ function UserSettingsModal({
           lang: form.subtitleLanguage,
         });
       }
+
+      // The visible titles switch immediately; the cookie is what the server and
+      // the inline script read on the next page.
+      applyTitleLanguage(form.titleLanguage);
 
       router.refresh();
 
@@ -547,6 +556,53 @@ function UserSettingsModal({
                   )}
                 </div>
               )}
+            </section>
+
+            {/* DISPLAY - theme and size controls will join this section. */}
+            <section className={styles.card} id="settings-display">
+              <SectionHeading
+                title="Display"
+                description="How titles and the interface look for you."
+              />
+
+              <div className={styles.field}>
+                <span className={styles.field_label}>Title language</span>
+                <div
+                  className={styles.segmented}
+                  role="group"
+                  aria-label="Title language"
+                >
+                  {TITLE_LANGUAGES.map((language) => (
+                    <button
+                      key={language}
+                      type="button"
+                      data-title-language={language}
+                      data-active={form?.titleLanguage === language}
+                      aria-pressed={form?.titleLanguage === language}
+                      onClick={() => update("titleLanguage", language)}
+                    >
+                      {language === "romaji" ? "Romaji" : language === "english" ? "English" : "Native"}
+                    </button>
+                  ))}
+                </div>
+                <span className={styles.helper}>
+                  Anime names everywhere: cards, pages, search and lists.
+                </span>
+
+                {/* One real title, in all three forms, so the choice is obvious. */}
+                <div className={styles.title_preview} data-title-preview="">
+                  <span className={styles.title_preview_label}>Preview</span>
+                  <span className={styles.title_preview_row} data-active={form?.titleLanguage === "romaji"}>
+                    <b>Romaji</b> Shingeki no Kyojin
+                  </span>
+                  <span className={styles.title_preview_row} data-active={form?.titleLanguage === "english"}>
+                    <b>English</b> Attack on Titan
+                  </span>
+                  <span className={styles.title_preview_row} data-active={form?.titleLanguage === "native"}>
+                    <b>Native</b> <span lang="ja">進撃の巨人</span>
+                  </span>
+                </div>
+              </div>
             </section>
 
             {/* PLAYBACK */}

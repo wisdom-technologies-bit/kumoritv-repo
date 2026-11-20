@@ -75,6 +75,8 @@ export type UserPrefs = {
   autoNext: boolean;
   dubEpisodes: boolean;
   subtitle_language: string;
+  /** romaji | english | native (see app/lib/titles/language.ts). */
+  title_language: string;
 };
 
 export type ProfilePrefsRow = {
@@ -82,6 +84,8 @@ export type ProfilePrefsRow = {
   auto_next: boolean | null;
   preferred_audio: string | null;
   subtitle_language: string | null;
+  title_language?: string | null;
+  title_language_source?: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -3,6 +3,7 @@ import Image from "next/image";
 import styles from "./component.module.css";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import { AnimatePresence, motion } from "framer-motion";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 import { displayTitle } from "@/app/lib/titles";
 
 function ListItemHeroCarousel({
@@ -31,7 +32,7 @@ function ListItemHeroCarousel({
             exit={{ height: 0 }}
           >
             <span className={styles.title}>
-              {displayTitle(animeInfo.title)}
+              <AnimeTitle titles={animeInfo.title} />
             </span>
           </motion.span>
         </AnimatePresence>

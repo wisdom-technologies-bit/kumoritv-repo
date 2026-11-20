@@ -750,3 +750,42 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* Display > Title language preview: one real title in its three forms, with the
+   chosen one marked so the difference is obvious before saving. */
+.title_preview {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    margin-top: 4px;
+    padding: 10px 12px;
+
+    background-color: var(--white-5, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--white-10, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+}
+
+.title_preview_label {
+    font-size: var(--font-size--small-3, 11px);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.6;
+}
+
+.title_preview_row {
+    font-size: var(--font-size--small-2);
+    opacity: 0.7;
+}
+
+.title_preview_row[data-active="true"] {
+    opacity: 1;
+    font-weight: 600;
+}
+
+.title_preview_row b {
+    display: inline-block;
+    min-width: 64px;
+    font-weight: 500;
+    opacity: 0.75;
+}

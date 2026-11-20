@@ -137,14 +137,12 @@ function PlaylistItemsResults({
                         hideOptionsButton
                         mediaInfo={media as MediaData}
                         mediaId={media.id}
-                        title={displayTitle(media.title)}
-                        formatOrType={media.format}
+                        title={displayTitle(media.title)}formatOrType={media.format}
                         url={media.coverImage.extraLarge}
                       />
 
                       <MediaCard.LinkTitle
-                        title={displayTitle(media.title)}
-                        id={media.id}
+                        title={displayTitle(media.title)}id={media.id}
                       />
                     </MediaCard.Container>
                   </li>
@@ -156,14 +154,12 @@ function PlaylistItemsResults({
                       hideOptionsButton
                       mediaInfo={media as MediaData}
                       mediaId={media.id}
-                      title={displayTitle(media.title)}
-                      formatOrType={media.format}
+                      title={displayTitle(media.title)}formatOrType={media.format}
                       url={media.coverImage.extraLarge}
                     />
 
                     <MediaCard.LinkTitle
-                      title={displayTitle(media.title)}
-                      id={media.id}
+                      title={displayTitle(media.title)}id={media.id}
                     />
                   </MediaCard.Container>
                 </li>

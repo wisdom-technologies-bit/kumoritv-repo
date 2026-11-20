@@ -81,6 +81,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Title language: set before paint so the three-span titles reveal the
+            right one with no flash. Cards and rails live on pages Next or
+            Cloudflare may cache, so the choice cannot be baked into the HTML. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var m=document.cookie.match(/(?:^|; )media_title_language=(romaji|english|native)/);var l=m?m[1]:localStorage.getItem('media_title_language');if(l!=='romaji'&&l!=='english'&&l!=='native')l='english';document.documentElement.setAttribute('data-title-lang',l);}catch(e){document.documentElement.setAttribute('data-title-lang','english');}})()",
+          }}
+        />
         {/* The site's only ad tag: Adcash Autotag, see docs/ads-adcash.md */}
         <AdcashTag
           enabled={adcash.enabled}

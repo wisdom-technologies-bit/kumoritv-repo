@@ -531,3 +531,34 @@ li[id^="comment-"] {
   background: rgba(139, 92, 246, 0.08);
   border-radius: 6px;
 }
+
+/* ---------------------------------------------------------------- titles
+   A title is rendered as three spans (romaji, english, native). The inline
+   script in the root layout sets data-title-lang on <html> before paint, and
+   these rules reveal exactly one. Everything else stays display:none, so a
+   screen reader never reads three names for the same show. */
+[data-anime-title] > [data-title-lang]:not([data-anime-title-secondary]) {
+    display: none;
+}
+
+html[data-title-lang="romaji"] [data-anime-title] > [data-title-lang="romaji"]:not([data-anime-title-secondary]),
+html[data-title-lang="english"] [data-anime-title] > [data-title-lang="english"]:not([data-anime-title-secondary]),
+html[data-title-lang="native"] [data-anime-title] > [data-title-lang="native"]:not([data-anime-title-secondary]) {
+    display: inline;
+}
+
+/* No attribute (script blocked, very old browser): English, else the first span
+   that has text. */
+html:not([data-title-lang]) [data-anime-title] > [data-title-lang="english"]:not([data-anime-title-secondary]) {
+    display: inline;
+}
+
+[data-anime-title-secondary] {
+    display: none;
+}
+
+html[data-title-lang="romaji"] [data-anime-title-secondary][data-title-lang="native"],
+html[data-title-lang="english"] [data-anime-title-secondary][data-title-lang="native"],
+html[data-title-lang="native"] [data-anime-title-secondary][data-title-lang="romaji"] {
+    display: block;
+}

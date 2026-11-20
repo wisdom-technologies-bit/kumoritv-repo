@@ -150,7 +150,7 @@ test("429 is rate limited, 400 is its own code", async () => {
 // ------------------------------------------------------------- token cookie
 
 test("the token cookie round-trips through AES-256-GCM and rejects tampering", async () => {
-  const { encryptToken, decryptToken, parseEncryptionKey, serializeToken, readAnilistToken } =
+  const { encryptToken, decryptToken, parseEncryptionKey, readAnilistToken } =
     await import("@/app/lib/anilist/tokenCookie");
 
   const key = parseEncryptionKey("a".repeat(64));

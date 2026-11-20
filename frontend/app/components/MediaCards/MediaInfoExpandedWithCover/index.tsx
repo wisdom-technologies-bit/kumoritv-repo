@@ -4,8 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
-import { displayTitle } from "@/app/lib/titles";
 import ClampedDescription from "@/app/components/ClampedDescription";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
+import { displayTitle } from "@/app/lib/titles";
 
 const AddToPlaylistButton = dynamic(
   () => import("../../Buttons/AddToFavourites").then((module) => module.Button),
@@ -39,7 +40,7 @@ export function Container({
 
         <h4>
           <Link href={`/media/${mediaInfo.id}`}>
-            {displayTitle(mediaInfo.title)}
+            <AnimeTitle titles={mediaInfo.title} />
           </Link>
         </h4>
 

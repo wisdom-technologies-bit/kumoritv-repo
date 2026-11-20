@@ -5,13 +5,14 @@
 import { plainSnippet } from "@/app/lib/community/latest";
 import { attempt, isSignedIn, resolveContext, unwrap, type UserDataContextInput } from "./context";
 import { normaliseSnapshot } from "./normalise";
-import { displayTitle } from "@/app/lib/titles";
+import { normaliseTitle } from "@/app/lib/user-data/normalise";
 import type { FavouriteSnapshot, NotificationRow } from "./types";
 
 export type NotificationView = {
   id: string;
   mediaId: string;
-  title: { romaji: string; native: string; userPreferred: string };
+  /** The same shape normaliseTitle produces: all three names plus userPreferred. */
+  title: ReturnType<typeof normaliseTitle>;
   coverImage: { large: string; extraLarge: string };
   episodes: { number: number; releaseDate: number | null; wasReleased: boolean }[];
   nextReleaseDate: number | null;
@@ -52,12 +53,14 @@ export function groupNotifications(rows: NotificationRow[]): NotificationView[] 
     const latest = [...group].sort(
       (a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0),
     )[0];
-    const title = latest.title || "";
+    // Rows may carry a plain string (older fanout) or a title object with all
+    // three names (newer fanout); normaliseTitle keeps both renderable.
+    const title = normaliseTitle(latest.title);
 
     views.push({
       id: latest.id,
       mediaId: `${anilistId}`,
-      title: { romaji: title, native: title, userPreferred: displayTitle(title) },
+      title,
       coverImage: { large: latest.cover_url || "", extraLarge: latest.cover_url || "" },
       episodes: ordered.map((row) => ({
         number: Number(row.episode),

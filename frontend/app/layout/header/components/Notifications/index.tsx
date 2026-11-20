@@ -22,7 +22,8 @@ import {
   type NotificationView,
   type UserNotificationView,
 } from "@/app/lib/user-data/notifications";
-import { displayTitle } from "@/app/lib/titles";
+import { displayTitle, pickTitle } from "@/app/lib/titles";
+import { useTitlePreference } from "@/app/lib/titles/useTitlePreference";
 
 // Below this width the panel is a sheet pinned under the header instead of a
 // dropdown hanging off the bell. Kept in one place so the stylesheet and the
@@ -73,7 +74,8 @@ function releaseLine(notification: NotificationView) {
 function NotificationItem({ notification }: { notification: NotificationView }) {
   const episode = notification.episodes[notification.episodes.length - 1];
   const episodeNumber = episode?.number ?? 1;
-  const title = displayTitle(notification.title);
+  const titleLanguage = useTitlePreference();
+  const title = pickTitle(notification.title, titleLanguage);
   const cover = notification.coverImage?.large || notification.coverImage?.extraLarge || "";
   const isFinale = notification.status != "RELEASING";
   // The cover is never an empty box: a skeleton while it loads, then either the

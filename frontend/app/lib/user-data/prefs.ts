@@ -6,6 +6,8 @@ import { attempt, isSignedIn, resolveContext, type UserDataContextInput } from "
 import { writeJson } from "./storage";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
 import type { ProfilePrefsRow, UserPrefs } from "./types";
+import { applyTitleLanguage } from "@/app/lib/titles/useTitlePreference";
+import { coerceTitleLanguage, DEFAULT_TITLE_LANGUAGE } from "@/app/lib/titles/language";
 
 export type LocalPrefs = UserPrefs;
 
@@ -14,6 +16,7 @@ const defaults: LocalPrefs = {
   autoNext: true,
   dubEpisodes: false,
   subtitle_language: "English",
+  title_language: DEFAULT_TITLE_LANGUAGE,
 };
 
 export const PREFS_CACHE_PREFIX = "kumori_prefs_cache_";
@@ -25,7 +28,7 @@ function get(key: keyof LocalPrefs) {
   try {
     const v = localStorage.getItem(key);
     if (v === null) return defaults[key];
-    return key === "subtitle_language" ? v : v === "true";
+    return key === "subtitle_language" || key === "title_language" ? v : v === "true";
   } catch {
     return defaults[key];
   }
@@ -38,6 +41,7 @@ export function readPrefs(): LocalPrefs {
     autoNext: get("autoNext") as boolean,
     dubEpisodes: get("dubEpisodes") as boolean,
     subtitle_language: get("subtitle_language") as string,
+    title_language: coerceTitleLanguage(get("title_language")),
   };
 }
 
@@ -70,6 +74,7 @@ export function profileToPrefs(row: Partial<ProfilePrefsRow> | null | undefined)
     autoNext: row.auto_next === null || row.auto_next === undefined ? true : Boolean(row.auto_next),
     dubEpisodes: row.preferred_audio === "dub",
     subtitle_language: row.subtitle_language || "English",
+    title_language: coerceTitleLanguage(row.title_language),
   };
 }
 
@@ -83,6 +88,10 @@ export function prefsToProfilePatch(key: keyof LocalPrefs, value: boolean | stri
       return { preferred_audio: value ? "dub" : "sub" };
     case "subtitle_language":
       return { subtitle_language: String(value) };
+    case "title_language":
+      // `source` marks this as the user's own choice, so the AniList login never
+      // seeds over it.
+      return { title_language: coerceTitleLanguage(value), title_language_source: "user" };
     default:
       return {};
   }
@@ -95,7 +104,7 @@ export async function getPrefs(input?: UserDataContextInput): Promise<LocalPrefs
 
   const result = await attempt("prefs.get", async () => {
     const { data, error } = await ctx.client!.from("profiles")
-      .select("auto_skip, auto_next, preferred_audio, subtitle_language, created_at, updated_at")
+      .select("auto_skip, auto_next, preferred_audio, subtitle_language, title_language, created_at, updated_at")
       .eq("id", ctx.userId)
       .maybeSingle();
     if (error) throw error;
@@ -106,6 +115,14 @@ export async function getPrefs(input?: UserDataContextInput): Promise<LocalPrefs
 
   writeJson(ctx.storage, prefsCacheKey(ctx.userId!), result.data);
   return result.data;
+}
+
+async function setTitleCookie(value: string) {
+  try {
+    await userSettingsActions.setMediaTitleLanguageCookie({ lang: value });
+  } catch {
+    /* cookies are best effort */
+  }
 }
 
 async function setSubtitleCookie(value: string) {
@@ -124,6 +141,13 @@ export async function setPref<K extends keyof LocalPrefs>(
   setLocalPref(key, value);
 
   if (key === "subtitle_language") void setSubtitleCookie(String(value));
+
+  if (key === "title_language") {
+    const language = coerceTitleLanguage(value);
+
+    applyTitleLanguage(language);
+    void setTitleCookie(language);
+  }
 
   const ctx = await resolveContext(input);
   if (!isSignedIn(ctx)) return true;

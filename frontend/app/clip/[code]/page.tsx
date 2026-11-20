@@ -21,7 +21,6 @@ import { ogImageUrl } from "@/app/lib/seo/og-image";
 import { animeName } from "@/app/lib/seo/titles";
 import { absoluteUrl } from "@/app/lib/seo/text";
 import { readShowAdultContent } from "@/app/lib/anilist/adult-content";
-import { displayTitle } from "@/app/lib/titles";
 
 type Params = { params: { code: string }; searchParams?: Record<string, string | string[] | undefined> };
 

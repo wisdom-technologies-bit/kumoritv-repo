@@ -25,6 +25,7 @@ import {
   youtubeTrailerId,
 } from "@/app/lib/youtube";
 import { useYoutubeTrailerGuard } from "../../Trailer/useYoutubeTrailerGuard";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 const framerMotionVariants = {
   enter: (direction: number) => {
@@ -259,10 +260,7 @@ function HeroCarousel({
                                 : undefined
                             }
                             src={currentTitleLogo.url}
-                            alt={displayTitle(
-                              animesList[currMediaOnScreenIndex]?.title
-                            )}
-                            unoptimized
+                            alt={displayTitle(animesList[currMediaOnScreenIndex]?.title)}unoptimized
                             width={720}
                             height={Math.max(
                               1,
@@ -282,9 +280,7 @@ function HeroCarousel({
                             }
                           />
                           <span className={styles.title_text_hidden}>
-                            {displayTitle(
-                              animesList[currMediaOnScreenIndex]?.title
-                            )}
+                            <AnimeTitle titles={animesList[currMediaOnScreenIndex]?.title} />
                           </span>
                         </>
                       ) : (

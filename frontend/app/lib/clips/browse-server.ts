@@ -72,7 +72,7 @@ export async function findAnimeIdsByTitle(q: string): Promise<number[]> {
   const client = db();
   if (!client || !q) return [];
   const pattern = quoted(likePattern(q));
-  const or = ["title", "title_english", "title_romaji"]
+  const or = ["title", "title_english", "title_romaji", "title_native"]
     .map((column) => `${column}.ilike.${pattern}`)
     .join(",");
   try {
