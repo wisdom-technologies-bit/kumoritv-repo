@@ -81,7 +81,14 @@ export default function MediasContainer({
         mediaId: entry.id,
         status: toAnilistStatus(entry.status),
         progress: entry.progress,
-        media: { title: { romaji: entry.snapshot.title.romaji } },
+        // Keep all three so the card can honour the viewer's title language.
+        media: {
+          title: {
+            romaji: entry.snapshot.title.romaji,
+            english: entry.snapshot.title.english,
+            native: entry.snapshot.title.native,
+          },
+        },
       },
       coverImage: {
         extraLarge: entry.snapshot.coverImage.extraLarge,
@@ -168,14 +175,12 @@ function KeepWatchingListSection({
                     hideOptionsButton
                     mediaInfo={media}
                     mediaId={media.id}
-                    title={displayTitle(media.title)}
-                    formatOrType={media.format}
+                    title={displayTitle(media.title)}formatOrType={media.format}
                     url={media.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={displayTitle(media.title)}
-                    id={media.id}
+                    title={displayTitle(media.title)}id={media.id}
                   />
                 </MediaCard.Container>
               </li>
@@ -211,14 +216,12 @@ function MediasListOnUserDoc({
                     hideOptionsButton
                     mediaInfo={entrie as MediaData}
                     mediaId={entrie.id}
-                    title={displayTitle(entrie.title)}
-                    formatOrType={entrie.format}
+                    title={displayTitle(entrie.title)}formatOrType={entrie.format}
                     url={entrie.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={displayTitle(entrie.title)}
-                    id={entrie.id}
+                    title={displayTitle(entrie.title)}id={entrie.id}
                   />
                 </MediaCard.Container>
               </li>
@@ -270,14 +273,12 @@ function MediasListOnAnilist({
                   <MediaCard.MediaImgLink
                     mediaInfo={entrie.media as MediaData}
                     mediaId={entrie.media.id}
-                    title={displayTitle(entrie.media.title)}
-                    formatOrType={entrie.media.format}
+                    title={displayTitle(entrie.media.title)}formatOrType={entrie.media.format}
                     url={entrie.media.coverImage.extraLarge}
                   />
 
                   <MediaCard.LinkTitle
-                    title={displayTitle(entrie.media.title)}
-                    id={entrie.media.id}
+                    title={displayTitle(entrie.media.title)}id={entrie.media.id}
                   />
                 </MediaCard.Container>
               </li>

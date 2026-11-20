@@ -1,19 +1,30 @@
-import anilistUsers from "@/app/api/anilist/anilistUsers";
+"use client";
+// The AniList login, from the browser side.
+//
+// The viewer now comes from ONE server call (/api/auth/anilist-session), which
+// validates the token against AniList, links or creates the Supabase account and
+// returns the fields the UI needs. There is no Firestore step and no second
+// browser call to AniList.
 import axios from "axios";
-import {
-  addUserInfo,
-  removeUserInfo,
-} from "@/app/lib/redux/features/manageUserData";
+import { addUserInfo, removeUserInfo } from "@/app/lib/redux/features/manageUserData";
 import { makeStore } from "../redux/store";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import {
+  ANILIST_CODE_ERROR_PARAM,
+  ANILIST_CODE_PARAM,
   ANILIST_NOTICE_EVENT,
-  BRIDGE_FAILURE_NOTICE,
   describeAnilistError,
   hasAnilistRedirect,
   parseAnilistRedirect,
 } from "./anilistLogin";
+import {
+  ANILIST_ERROR_CODES,
+  anilistErrorMessage,
+  type AnilistErrorCode,
+} from "@/app/lib/anilist/errors";
+import type { AnilistViewer } from "@/app/lib/anilist/viewer";
+import { normaliseTitleLanguage, TITLE_LANGUAGE_COOKIE } from "@/app/lib/titles/language";
 
 export const userCustomStore = makeStore();
 
@@ -21,36 +32,43 @@ export const ANILIST_USER_STORAGE_KEY = "anilist-user";
 
 export type AnilistLoginOutcome =
   | { status: "none" }
-  | { status: "error"; message: string }
-  | { status: "ok"; bridge: "synced" | "linked" | "failed" };
+  | { status: "error"; message: string; code?: AnilistErrorCode }
+  | { status: "ok"; bridge: "synced" | "linked" };
 
 type AnilistLoginOptions = {
   /** Skip the hard reload that picks up the new Supabase session (used by tests). */
   skipReload?: boolean;
   /** Where notices go; defaults to a DOM event the header listens to. */
-  onNotice?: (message: string) => void;
+  onNotice?: (message: string, code?: AnilistErrorCode) => void;
 };
 
-function notice(message: string, options: AnilistLoginOptions = {}) {
+function notice(message: string, options: AnilistLoginOptions = {}, code?: AnilistErrorCode) {
   if (options.onNotice) {
-    options.onNotice(message);
+    options.onNotice(message, code);
 
     return;
   }
 
   try {
-    window.dispatchEvent(new window.CustomEvent(ANILIST_NOTICE_EVENT, { detail: message }));
+    window.dispatchEvent(new window.CustomEvent(ANILIST_NOTICE_EVENT, { detail: { message, code } }));
   } catch {
     /* no DOM (server render): nothing to show */
   }
 }
 
-/** Drops `#access_token=...` from the address bar so a refresh (or the history
+/** Drops the login parameters from the address bar so a refresh (or the history
  *  entry) never replays the token. */
 export function stripAnilistRedirectFromUrl() {
   try {
-    const { pathname, search, origin } = window.location;
-    window.history.replaceState(null, "", `${pathname}${search}` || origin || "/");
+    const { pathname, search } = window.location;
+    const params = new URLSearchParams(search);
+
+    params.delete(ANILIST_CODE_PARAM);
+    params.delete(ANILIST_CODE_ERROR_PARAM);
+
+    const query = params.toString();
+
+    window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}` || "/");
   } catch {
     /* jsdom-less environments */
   }
@@ -67,17 +85,117 @@ export function currentAnilistRedirect() {
   return "";
 }
 
+function asErrorCode(value: string | null): AnilistErrorCode | undefined {
+  return value && (ANILIST_ERROR_CODES as readonly string[]).includes(value)
+    ? (value as AnilistErrorCode)
+    : undefined;
+}
+
+/** The redux/localStorage shape the rest of the app reads. */
+export function viewerToUser(viewer: AnilistViewer): UserAnilist {
+  return {
+    isUserFromAnilist: true,
+    id: viewer.id,
+    name: viewer.name ?? "",
+    createdAt: 0,
+    avatar: {
+      large: viewer.avatar?.large ?? "",
+      medium: viewer.avatar?.medium ?? "",
+    },
+    favourites: { anime: { nodes: [] }, manga: { nodes: [] } },
+    options: {
+      displayAdultContent: Boolean(viewer.options?.displayAdultContent),
+      titleLanguage: viewer.options?.titleLanguage ?? "ROMAJI",
+    },
+  };
+}
+
+/** Stores the user and, on a first link only, mirrors the seeded title language. */
+function storeUser(viewer: AnilistViewer, seededTitleLanguage?: string) {
+  const user = viewerToUser(viewer);
+
+  localStorage.setItem(ANILIST_USER_STORAGE_KEY, JSON.stringify(user));
+  userCustomStore.dispatch(addUserInfo(user));
+
+  const seeded = normaliseTitleLanguage(seededTitleLanguage);
+
+  if (!seeded) return;
+
+  try {
+    // Never overwrite a choice this browser already holds.
+    if (!localStorage.getItem(TITLE_LANGUAGE_COOKIE)) {
+      localStorage.setItem(TITLE_LANGUAGE_COOKIE, seeded);
+    }
+  } catch {
+    /* storage can be unavailable */
+  }
+}
+
+function fail(code: AnilistErrorCode, options: AnilistLoginOptions): AnilistLoginOutcome {
+  const message = anilistErrorMessage(code);
+
+  notice(message, options, code);
+  console.warn(`[anilist] code=${code}`);
+
+  return { status: "error", message, code };
+}
+
 /**
- * Consumes the AniList redirect, stores the token cookie, loads the viewer into
- * the redux store + localStorage and bridges the session to Supabase.
- *
- * Runs whatever the current Supabase state is: a visitor who already holds an
- * anonymous (or email) session still gets their AniList identity applied.
+ * Code grant: the callback already stored the token and linked the account. This
+ * only asks the server for the viewer, so the UI has a user object.
+ */
+async function completeCodeLogin(options: AnilistLoginOptions): Promise<AnilistLoginOutcome> {
+  let response: Response;
+
+  try {
+    response = await fetch("/api/auth/anilist-session", { cache: "no-store" });
+  } catch {
+    return fail("ANILIST_VIEWER_UNREACHABLE", options);
+  }
+
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; code?: string; viewer?: AnilistViewer }
+    | null;
+
+  if (!response.ok || !data?.ok || !data.viewer) {
+    return fail(asErrorCode(data?.code ?? null) ?? "ANILIST_SYNC_FAILED", options);
+  }
+
+  storeUser(data.viewer);
+
+  if (!options.skipReload) {
+    const client = createBrowserSupabaseClient();
+
+    await client?.auth.getSession().catch(() => undefined);
+    window.location.replace(window.location.pathname + window.location.search);
+  }
+
+  return { status: "ok", bridge: "synced" };
+}
+
+/**
+ * Consumes the AniList redirect (implicit hash or code-flow query), asks the
+ * server to validate the login, then loads the viewer into redux + localStorage.
  */
 export async function handleAnilistUserLoginWithRedux(
   options: AnilistLoginOptions = {}
 ): Promise<AnilistLoginOutcome> {
   if (typeof window === "undefined") return { status: "none" };
+
+  const search = new URLSearchParams(window.location.search);
+  const codeError = search.get(ANILIST_CODE_ERROR_PARAM);
+
+  if (codeError) {
+    stripAnilistRedirectFromUrl();
+
+    return fail(asErrorCode(codeError) ?? "ANILIST_SYNC_FAILED", options);
+  }
+
+  if (search.get(ANILIST_CODE_PARAM)) {
+    stripAnilistRedirectFromUrl();
+
+    return completeCodeLogin(options);
+  }
 
   const raw = currentAnilistRedirect();
 
@@ -102,62 +220,38 @@ export async function handleAnilistUserLoginWithRedux(
   // The token leaves the address bar before the first request.
   stripAnilistRedirectFromUrl();
 
-  try {
-    await axios.post("/api/anilist", { accessToken, tokenType, expiresIn });
-  } catch (error) {
-    console.warn("[anilist] token cookie was not stored", error);
-  }
-
-  const userData = await anilistUsers.getCurrUserData({ accessToken });
-
-  if (!userData) {
-    const message = "AniList login failed. Please try again.";
-
-    notice(message, options);
-
-    return { status: "error", message };
-  }
-
-  localStorage.setItem(ANILIST_USER_STORAGE_KEY, JSON.stringify(userData));
-  userCustomStore.dispatch(addUserInfo(userData));
-
-  let bridge: "synced" | "linked" | "failed" = "failed";
+  let response: Response;
 
   try {
-    const response = await fetch("/api/auth/anilist-session", {
+    response = await fetch("/api/auth/anilist-session", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accessToken }),
+      body: JSON.stringify({ accessToken, tokenType, expiresIn }),
     });
-
-    if (response.ok) {
-      const data = await response.json().catch(() => null);
-
-      bridge = data?.linked ? "linked" : "synced";
-    } else {
-      console.warn("[anilist] session bridge failed", response.status);
-    }
-  } catch (error) {
-    console.warn("[anilist] session bridge failed", error);
+  } catch {
+    return fail("ANILIST_VIEWER_UNREACHABLE", options);
   }
 
-  if (bridge === "failed") {
-    notice(BRIDGE_FAILURE_NOTICE, options);
+  const data = (await response.json().catch(() => null)) as
+    | { ok?: boolean; code?: string; linked?: boolean; viewer?: AnilistViewer; seededTitleLanguage?: string }
+    | null;
 
-    return { status: "ok", bridge };
+  if (!response.ok || !data?.ok || !data.viewer) {
+    return fail(asErrorCode(data?.code ?? null) ?? "ANILIST_SYNC_FAILED", options);
   }
 
-  if (bridge === "synced" && !options.skipReload) {
+  storeUser(data.viewer, data.seededTitleLanguage);
+
+  if (data.linked === false && !options.skipReload) {
     // The bridge replaced the session cookie. The browser client keeps the old
     // session in memory, so the page has to boot again to pick the new one up.
-    // This is not a manual reload: the login finishes on its own.
     const client = createBrowserSupabaseClient();
 
     await client?.auth.getSession().catch(() => undefined);
     window.location.replace(window.location.pathname + window.location.search);
   }
 
-  return { status: "ok", bridge };
+  return { status: "ok", bridge: data.linked ? "linked" : "synced" };
 }
 
 export async function checkAccessTokenStillValid() {
@@ -182,17 +276,9 @@ export async function addUserCookies({
   playWrongMedia: string;
 }) {
   try {
-    await userSettingsActions.setMediaTitleLanguageCookie({
-      lang: titleLanguage,
-    });
-
-    await userSettingsActions.setSubtitleLanguageCookie({
-      lang: subtitleLanguage,
-    });
-
-    await userSettingsActions.setPlayWrongMediaCookie({
-      playWrongMedia: playWrongMedia,
-    });
+    await userSettingsActions.setMediaTitleLanguageCookie({ lang: titleLanguage });
+    await userSettingsActions.setSubtitleLanguageCookie({ lang: subtitleLanguage });
+    await userSettingsActions.setPlayWrongMediaCookie({ playWrongMedia });
   } catch (err) {
     console.log(err);
 

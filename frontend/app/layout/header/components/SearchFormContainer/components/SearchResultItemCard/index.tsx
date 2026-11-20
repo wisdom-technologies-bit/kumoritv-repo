@@ -5,7 +5,8 @@ import Image from "next/image";
 import { MediaData } from "@/app/ts/interfaces/anilistMediaData";
 import Link from "next/link";
 import { MediaOnJSONFile } from "@/app/ts/interfaces/jsonMediaData";
-import { displayTitle } from "@/app/lib/titles";
+import { displayTitle, pickTitle } from "@/app/lib/titles";
+import { useTitlePreference } from "@/app/lib/titles/useTitlePreference";
 
 type SearchResultsTypes = {
   handleChoseResult?: () => void;
@@ -45,6 +46,7 @@ function SearchResultItemCard({
   onArrowUp,
 }: SearchResultsTypes) {
   const [coverFailed, setCoverFailed] = useState(false);
+  const titleLanguage = useTitlePreference();
 
   const imgSource =
     mediaFromAnilist?.coverImage?.large ||
@@ -52,9 +54,11 @@ function SearchResultItemCard({
     mediaFromOfflineDB?.picture ||
     mediaFromOfflineDB?.thumbnail;
 
+  // Search suggestions follow the viewer's language; the query itself matched
+  // every title, so an English preference still finds the romaji name.
   const mediaTitle = mediaFromAnilist?.title
-    ? displayTitle(mediaFromAnilist.title)
-    : displayTitle(mediaFromOfflineDB?.title);
+    ? pickTitle(mediaFromAnilist.title, titleLanguage)
+    : pickTitle(mediaFromOfflineDB?.title, titleLanguage);
 
   const mediaType = (
     mediaFromAnilist?.type ||

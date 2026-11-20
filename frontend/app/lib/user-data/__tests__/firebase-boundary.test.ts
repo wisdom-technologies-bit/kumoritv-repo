@@ -7,10 +7,9 @@ const frontendRoot = resolve(process.cwd());
 const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const skipped = new Set(["node_modules", ".next", ".git", "test-harness"]);
 
-const allowed = [
-  "app/firebaseApp.ts",
-  "app/lib/user/userLoginActions.ts",
-];
+// Part A removed the last live Firebase path (the AniList login), so the list of
+// files allowed to import it is empty and nothing may bring it back.
+const allowed: string[] = [];
 
 function collect(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -24,7 +23,7 @@ function collect(directory: string): string[] {
 
 const forbidden = /from\s+["'](firebase[^"']*|react-firebase-hooks[^"']*|@\/app\/firebaseApp)["']|require\(["'](firebase[^"']*|@\/app\/firebaseApp)["']\)/;
 
-test("only firebaseApp and the AniList login flow import Firebase", () => {
+test("nothing in app or lib imports Firebase", () => {
   const files = [
     ...collect(join(frontendRoot, "app")),
     ...collect(join(frontendRoot, "lib")),

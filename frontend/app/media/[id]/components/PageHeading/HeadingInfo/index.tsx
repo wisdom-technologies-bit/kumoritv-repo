@@ -15,8 +15,8 @@ import FavouriteSvg from "@/public/assets/heart.svg";
 import FavouriteFillSvg from "@/public/assets/heart-fill.svg";
 import PlusSvg from "@/public/assets/plus-lg.svg";
 import PlayBtn from "../../WatchPlayBtn";
-import { displayTitle } from "@/app/lib/titles";
 import type { TitleLogo } from "./MediaTitleOrLogo";
+import { displayTitle } from "@/app/lib/titles";
 
 export default function HeadingInfo({
   mediaInfo,
@@ -99,8 +99,7 @@ export default function HeadingInfo({
           <ul id={styles.watch_action}>
             <PlayBtn
               mediaId={mediaInfo.id}
-              mediaTitle={displayTitle(mediaInfo.title)}
-              mediaFormat={mediaInfo.format}
+              mediaTitle={displayTitle(mediaInfo.title)}mediaFormat={mediaInfo.format}
               anilistLastEpisodeWatched={
                 mediaInfo.mediaListEntry?.status != "COMPLETED"
                   ? mediaInfo.mediaListEntry?.progress

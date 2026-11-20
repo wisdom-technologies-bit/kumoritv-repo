@@ -43,6 +43,7 @@ import { displayTitle } from "@/app/lib/titles";
 import { nextEpisodeNumber } from "@/app/lib/episodes/items";
 import ClipBridge from "./components/ClipBridge";
 import { parseWatchRange } from "@/app/lib/clips/url";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 const plain = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -295,11 +296,13 @@ export default async function WatchPage({
 
               <div className={styles.card_body}>
                 <h2 className={styles.card_title}>
-                  <Link href={`/media/${id}`}>{displayTitle(media.title)}</Link>
+                  <Link href={`/media/${id}`}><AnimeTitle titles={media.title} /></Link>
                 </h2>
 
                 {media.title?.native ? (
-                  <p className={styles.card_native}>{media.title.native}</p>
+                  <p className={styles.card_native}>
+                    <AnimeTitle titles={media.title} secondary />
+                  </p>
                 ) : null}
 
                 <div className={styles.card_chips}>

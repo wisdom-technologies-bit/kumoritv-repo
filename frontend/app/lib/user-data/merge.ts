@@ -60,6 +60,7 @@ function guestPrefs(storage: StorageLike | null): UserPrefs {
     autoNext: bool("autoNext", true),
     dubEpisodes: bool("dubEpisodes", false),
     subtitle_language: read("subtitle_language") || "English",
+    title_language: read("title_language") || "",
   };
 }
 
@@ -290,11 +291,27 @@ export async function mergeGuestDataIntoAccount(
         auto_next: prefs.autoNext,
         preferred_audio: prefs.dubEpisodes ? "dub" : "sub",
         subtitle_language: prefs.subtitle_language,
+        ...(prefs.title_language ? { title_language: prefs.title_language, title_language_source: "user" } : {}),
         updated_at: new Date().toISOString(),
       };
       const { error } = await ctx.client!.from("profiles").update(patch).eq("id", userId);
       if (error) throw error;
       result.prefs = true;
+    }
+
+    // The title language is decided per key: a guest who chose one keeps it even
+    // when the account was edited elsewhere. An account value wins only when the
+    // guest never chose (empty string = never set on this device).
+    if (!result.prefs && prefs.title_language) {
+      const { error } = await ctx.client!.from("profiles")
+        .update({
+          title_language: prefs.title_language,
+          title_language_source: "user",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (!error) result.prefs = true;
     }
 
     // Success: the guest favourites/lists keys are no longer needed on this device.

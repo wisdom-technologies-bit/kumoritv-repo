@@ -22,6 +22,7 @@ import { displayTitle } from "@/app/lib/titles";
 import { isYoutubeTrailer } from "@/app/lib/youtube";
 import { originFromHeaders } from "@/app/lib/siteOrigin";
 import YoutubeTrailerFrame from "./components/Trailer/YoutubeTrailerFrame";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 export const metadata: Metadata = {
   title: { absolute: "KumoriTV - Watch Anime Online" },
@@ -192,7 +193,7 @@ export default async function Home() {
                 <Link
                   href={`/media/${bannerMedia.id}`}
                 >
-                  {displayTitle(bannerMedia.title)}
+                  <AnimeTitle titles={bannerMedia.title} />
                 </Link>
               </h3>
             )}

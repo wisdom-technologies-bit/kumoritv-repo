@@ -6,6 +6,7 @@ import { cookies, headers } from "next/headers";
 import anilistUsers from "../api/anilist/anilistUsers";
 import { MediaData } from "../ts/interfaces/anilistMediaData";
 import { checkDeviceIsMobile } from "../lib/checkMobileOrDesktop";
+import { TOKEN_COOKIE_NAME, readAnilistToken } from "../lib/anilist/tokenCookie";
 
 export async function generateMetadata() {
   return {
@@ -41,11 +42,10 @@ async function MyListsPage({
     type: "manga" | "tv" | "movie";
   };
 }) {
-  const accessTokenCookie = cookies().get("access_token")?.value;
-
-  const userAuthorization = accessTokenCookie
-    ? JSON.parse(accessTokenCookie).accessToken
-    : undefined;
+  // The cookie is JSON in the implicit flow and AES-GCM encrypted in the code
+  // flow; `readAnilistToken` accepts both and never throws on a bad value.
+  const userAuthorization =
+    readAnilistToken(cookies().get(TOKEN_COOKIE_NAME)?.value)?.accessToken ?? undefined;
 
   const isOnMobile = checkDeviceIsMobile(headers());
 

@@ -42,8 +42,7 @@ function MediaRelatedContainer({
               hideOptionsButton
               mediaId={media.id}
               mediaInfo={media}
-              title={displayTitle(media.title)}
-              formatOrType={media.format}
+              title={displayTitle(media.title)}formatOrType={media.format}
               url={media.coverImage.large}
             />
 
@@ -53,8 +52,7 @@ function MediaRelatedContainer({
             />
 
             <MediaCard.LinkTitle
-              title={displayTitle(media.title)}
-              id={media.id}
+              title={displayTitle(media.title)}id={media.id}
             />
           </MediaCard.Container>
         </SwiperSlide>

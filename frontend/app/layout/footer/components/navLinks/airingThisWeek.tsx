@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import * as anilistMedias from "@/app/lib/anilist/medias.server";
 import styles from "../../footerComponent.module.css";
 import Link from "next/link";
-import { displayTitle } from "@/app/lib/titles";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 async function AiringThisWeek() {
   const accessTokenCookie = cookies().get("access_token")?.value;
@@ -26,7 +26,7 @@ async function AiringThisWeek() {
           animesReleasingList.slice(0, 10).map((media, key) => (
             <li key={key}>
               <Link href={`/media/${media.id}`}>
-                {displayTitle(media.title)}
+                <AnimeTitle titles={media.title} />
               </Link>
             </li>
           ))

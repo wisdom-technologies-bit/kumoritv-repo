@@ -378,10 +378,7 @@ export default async function MediaPage({
                           <MediaCard.MediaImgLink
                             mediaInfo={media.node.mediaRecommendation}
                             mediaId={media.node.mediaRecommendation?.id}
-                            title={displayTitle(
-                              media.node.mediaRecommendation?.title
-                            )}
-                            formatOrType={
+                            title={displayTitle(media.node.mediaRecommendation?.title)}formatOrType={
                               media.node.mediaRecommendation?.format
                             }
                             url={
@@ -397,10 +394,7 @@ export default async function MediaPage({
                           />
 
                           <MediaCard.LinkTitle
-                            title={displayTitle(
-                              media.node.mediaRecommendation?.title
-                            )}
-                            id={media.node.mediaRecommendation?.id}
+                            title={displayTitle(media.node.mediaRecommendation?.title)}id={media.node.mediaRecommendation?.id}
                           />
                         </MediaCard.Container>
                       </li>

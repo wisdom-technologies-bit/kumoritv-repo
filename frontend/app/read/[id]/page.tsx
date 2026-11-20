@@ -9,6 +9,7 @@ import ChaptersListContainer from "./components/ChaptersListContainer";
 import { getMediaInfo } from "@/app/lib/anilist/medias.server";
 import { getChaptersByAniListId, getChapterPages } from "@/app/lib/manga/mangadex";
 import { displayTitle } from "@/app/lib/titles";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 export const revalidate = 1800; // revalidate cached data every 30 minutes
 
@@ -144,7 +145,7 @@ async function ReadChapter({
     <main id={styles.container}>
       <div id={styles.heading_container}>
         <h1>
-          <span>{displayTitle(mediaInfo.title)}: </span>
+          <span><AnimeTitle titles={mediaInfo.title} />: </span>
           {currChapterInfo.title == currChapterInfo.chapterNumber
             ? `Chapter ${currChapterInfo.chapterNumber}`
             : currChapterInfo.title}

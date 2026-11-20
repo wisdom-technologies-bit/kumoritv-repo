@@ -99,11 +99,9 @@ test("the hero renders the logo and keeps the text title in the DOM", async () =
     );
     assert.equal(logo?.getAttribute("alt"), EXPECTED, "alt carries the title");
 
-    assert.equal(
-      heading?.textContent,
-      EXPECTED,
-      "the real title is still the heading text",
-    );
+    // Part B: the heading carries all three titles and CSS shows the chosen one.
+    assert.ok(heading?.textContent?.includes(EXPECTED), "the real title is still the heading text");
+    assert.equal(heading?.querySelectorAll("[data-title-lang]").length, 3, "three title spans");
 
     const hidden = heading?.querySelector("span");
     assert.ok(hidden, "the title text sits in a hidden span, not display: none");

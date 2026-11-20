@@ -1,8 +1,11 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { anilistCookieMaxAge } from "@/app/lib/user/anilistLogin";
+import { TOKEN_COOKIE_NAME, readAnilistToken } from "@/app/lib/anilist/tokenCookie";
 
-// HANDLES ACCESS TOKEN FOR ANILIST USERS
+// Kept for an older bundle that still posts the implicit token here; the login
+// helper now lets /api/auth/anilist-session store the cookie in the same call that
+// validates the token, so this is a compatibility path, not the main one.
 export async function POST(request: NextRequest) {
   try {
     const anilistTokenData: {
@@ -11,7 +14,7 @@ export async function POST(request: NextRequest) {
       expiresIn: string;
     } = await request.json();
 
-    if (!anilistTokenData)
+    if (!anilistTokenData?.accessToken)
       return NextResponse.json(
         {
           message: "No Token Received",
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
     // `expiresIn` is a number of SECONDS. The old code fed it to `expires`
     // (milliseconds) so the cookie died after ~8h instead of the token's lifetime.
     cookies().set({
-      name: "access_token",
+      name: TOKEN_COOKIE_NAME,
       value: JSON.stringify(anilistTokenData) || "",
       httpOnly: true,
       sameSite: "lax",
@@ -53,32 +56,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Status only: the access token is never handed to browser JavaScript. This is
+// what `checkAccessTokenStillValid` asks, and nothing else may read the cookie.
 export async function GET(request: NextRequest) {
   try {
-    const anilistAccessTokenData = request.cookies.get("access_token")
-      ? JSON.parse(request.cookies.get("access_token")!.value).accessToken
-      : null;
+    const token = readAnilistToken(request.cookies.get(TOKEN_COOKIE_NAME)?.value);
 
-    if (anilistAccessTokenData) {
-      return NextResponse.json(
-        {
-          message: "Success",
-          access_token: anilistAccessTokenData,
-        },
-        {
-          status: 200,
-        }
-      );
+    if (token) {
+      return NextResponse.json({ message: "Success" }, { status: 200 });
     }
 
-    return NextResponse.json(
-      {
-        message: "No Cookie Found",
-      },
-      {
-        status: 404,
-      }
-    );
+    return NextResponse.json({ message: "No Cookie Found" }, { status: 404 });
   } catch (err) {
     return NextResponse.json(
       {
@@ -93,7 +81,7 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE() {
   try {
-    cookies().delete("access_token");
+    cookies().delete(TOKEN_COOKIE_NAME);
 
     return NextResponse.json(
       {

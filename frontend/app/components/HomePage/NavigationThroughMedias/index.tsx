@@ -24,6 +24,7 @@ import { SwiperSlide } from "swiper/react";
 import { convertToUnix } from "@/app/lib/formatDateUnix";
 import { displayTitle } from "@/app/lib/titles";
 import YoutubeTrailerFrame from "@/app/components/Trailer/YoutubeTrailerFrame";
+import AnimeTitle from "@/app/lib/titles/AnimeTitle";
 
 export const revalidate = 1800; // revalidate cached data every 30 min
 
@@ -233,8 +234,7 @@ function NavigationThroughMedias({
                   <MediaCard.MediaImg
                     hideOptionsButton
                     mediaInfo={media}
-                    title={displayTitle(media.title)}
-                    formatOrType={media.format}
+                    title={displayTitle(media.title)}formatOrType={media.format}
                     url={media.coverImage.large}
                   />
 
@@ -244,8 +244,7 @@ function NavigationThroughMedias({
                   />
 
                   <MediaCard.TitleLink
-                    title={displayTitle(media.title)}
-                    id={media.id}
+                    title={displayTitle(media.title)}id={media.id}
                   />
                 </MediaCardClientSide.FramerMotionContainer>
               </SwiperSlide>
@@ -301,15 +300,14 @@ function NavigationThroughMedias({
                 <motion.div className={styles.img_container}>
                   <Image
                     src={mediaSelect.coverImage.large}
-                    alt={displayTitle(mediaSelect.title)}
-                    fill
+                    alt={displayTitle(mediaSelect.title)}fill
                     sizes="(max-width: 430px) 45vw, (max-width: 620px) 33vw, (max-width: 876px) 15vw, 10vw"
                   />
                 </motion.div>
 
                 <motion.div className={styles.info_container}>
                   <motion.h5>
-                    {displayTitle(mediaSelect.title)}
+                    <AnimeTitle titles={mediaSelect.title} />
                     {mediaSelect.seasonYear && (
                       <span> ({mediaSelect.seasonYear})</span>
                     )}

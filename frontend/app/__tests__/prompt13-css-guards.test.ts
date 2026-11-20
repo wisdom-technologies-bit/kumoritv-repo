@@ -113,7 +113,7 @@ test("the debug logging from part A is gone", () => {
   }
 });
 
-test("the components that display titles all go through displayTitle", () => {
+test("the components that display titles go through displayTitle or <AnimeTitle>", () => {
   const mustUseDisplayTitle = [
     "app/components/HomePage/KeepWatchingSection/components/KeepWatchingEpisodeInfo/index.tsx",
     "app/my-lists/components/MediasContainer/index.tsx",
@@ -130,6 +130,9 @@ test("the components that display titles all go through displayTitle", () => {
 
   for (const path of mustUseDisplayTitle) {
     const source = read(join(ROOT, path));
-    assert.match(source, /displayTitle/, `${path} must use displayTitle`);
+    // Part B: a visible title renders through <AnimeTitle> (three spans, chosen by
+    // CSS); a title that has to be a STRING (alt, aria-label, template) still goes
+    // through displayTitle. Either way, never `.title.romaji` by hand.
+    assert.match(source, /displayTitle|<AnimeTitle/, `${path} must use displayTitle or <AnimeTitle>`);
   }
 });

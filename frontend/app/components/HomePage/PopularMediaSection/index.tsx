@@ -104,8 +104,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                     <MediaCard.MediaImgLink
                       mediaInfo={media}
                       mediaId={media.id}
-                      title={displayTitle(media.title)}
-                      formatOrType={media.format}
+                      title={displayTitle(media.title)}formatOrType={media.format}
                       url={media.coverImage.large}
                     />
 
@@ -115,8 +114,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                     />
 
                     <MediaCard.LinkTitle
-                      title={displayTitle(media.title)}
-                      id={media.id}
+                      title={displayTitle(media.title)}id={media.id}
                     />
                   </MediaCard.Container>
                 </SwiperSlide>
@@ -129,8 +127,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
               <MediaCard.MediaImgLink
                 mediaInfo={media}
                 mediaId={media.id}
-                title={displayTitle(media.title)}
-                formatOrType={media.format}
+                title={displayTitle(media.title)}formatOrType={media.format}
                 url={media.coverImage.large}
               />
 
@@ -140,8 +137,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
               />
 
               <MediaCard.LinkTitle
-                title={displayTitle(media.title)}
-                id={media.id}
+                title={displayTitle(media.title)}id={media.id}
               />
             </MediaCard.Container>
           ))}
@@ -161,8 +157,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                 <MediaCard.MediaImgLink
                   mediaInfo={media}
                   mediaId={media.id}
-                  title={displayTitle(media.title)}
-                  formatOrType={media.format}
+                  title={displayTitle(media.title)}formatOrType={media.format}
                   url={media.coverImage.large}
                 />
 
@@ -172,8 +167,7 @@ function PopularMediaSection({ animesList }: { animesList: MediaData[] }) {
                 />
 
                 <MediaCard.LinkTitle
-                  title={displayTitle(media.title)}
-                  id={media.id}
+                  title={displayTitle(media.title)}id={media.id}
                 />
               </MediaCard.Container>
             ))}
