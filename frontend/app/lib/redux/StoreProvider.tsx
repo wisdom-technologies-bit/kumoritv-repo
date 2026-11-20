@@ -2,7 +2,7 @@
 import { useRef } from "react";
 import { Provider } from "react-redux";
 import { AppStore } from "@/app/lib/redux/store";
-import { userCustomStore } from "../user/anilistUserLoginOptions";
+import { getAppStore } from "./appStore";
 
 export default function StoreProvider({
   children,
@@ -14,7 +14,7 @@ export default function StoreProvider({
   if (!storeRef.current) {
     // Create the store instance the first time this renders
     // storeRef.current = makeStore()
-    storeRef.current = userCustomStore;
+    storeRef.current = getAppStore();
   }
 
   return <Provider store={storeRef.current}>{children}</Provider>;

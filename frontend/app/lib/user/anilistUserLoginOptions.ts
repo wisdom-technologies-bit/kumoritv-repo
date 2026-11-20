@@ -7,7 +7,7 @@
 // browser call to AniList.
 import axios from "axios";
 import { addUserInfo, removeUserInfo } from "@/app/lib/redux/features/manageUserData";
-import { makeStore } from "../redux/store";
+import { getAppStore } from "../redux/appStore";
 import userSettingsActions from "@/app/api/cookie/userCookieSettingsActions";
 import { createBrowserSupabaseClient } from "@/app/lib/supabase/browser";
 import {
@@ -26,7 +26,8 @@ import {
 import type { AnilistViewer } from "@/app/lib/anilist/viewer";
 import { normaliseTitleLanguage, TITLE_LANGUAGE_COOKIE } from "@/app/lib/titles/language";
 
-export const userCustomStore = makeStore();
+/** @deprecated Use getAppStore(); kept so older imports keep working. */
+export const userCustomStore = { dispatch: (...args: Parameters<ReturnType<typeof getAppStore>["dispatch"]>) => getAppStore().dispatch(...args), getState: () => getAppStore().getState() };
 
 export const ANILIST_USER_STORAGE_KEY = "anilist-user";
 
@@ -115,7 +116,7 @@ function storeUser(viewer: AnilistViewer, seededTitleLanguage?: string) {
   const user = viewerToUser(viewer);
 
   localStorage.setItem(ANILIST_USER_STORAGE_KEY, JSON.stringify(user));
-  userCustomStore.dispatch(addUserInfo(user));
+  getAppStore().dispatch(addUserInfo(user));
 
   const seeded = normaliseTitleLanguage(seededTitleLanguage);
 
@@ -260,7 +261,7 @@ export async function checkAccessTokenStillValid() {
 
     return;
   } catch {
-    userCustomStore.dispatch(removeUserInfo());
+    getAppStore().dispatch(removeUserInfo());
   }
 }
 
