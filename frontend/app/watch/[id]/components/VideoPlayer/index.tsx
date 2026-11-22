@@ -31,6 +31,8 @@ import {
 import { useWatchState } from "../WatchState";
 import ClipEndCard from "../ClipEndCard";
 import PrerollAd from "./PrerollAd";
+import { primeAdRequestContext } from "@/app/lib/ads/ad-request";
+import { loadImaSdk } from "@/app/lib/ads/preroll-ima";
 import {
   logPrerollOutcome,
   onPrerollDebug,
@@ -534,6 +536,33 @@ export default function VideoPlayer({
       }
     };
   }, [prerollRun, sourceId]);
+
+  /**
+   * Prompt 42: the ad library and the viewer's device details are fetched BEFORE
+   * the Play tap, not inside it. IMA has to `initialize()` within the gesture, and
+   * an awaited script load inside the tap loses it on a phone - which is why an ad
+   * that did arrive could not start with sound. This also puts the SDK in cache
+   * for the overlay, so a fill starts in the same task as the tap.
+   */
+  useEffect(() => {
+    if (!preroll?.enabled) return undefined;
+
+    let cancelled = false;
+
+    void primeAdRequestContext().catch(() => null);
+    void loadImaSdk(8000)
+      .then(() => {
+        if (!cancelled) prerollDebug("ima_ready");
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) prerollDebug("ima_preload_failed", String((error as Error)?.message || ""));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preroll?.enabled]);
 
   useEffect(() => {
     if (!preroll?.enabled) return undefined;

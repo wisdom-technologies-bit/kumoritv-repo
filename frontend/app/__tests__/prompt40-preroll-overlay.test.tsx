@@ -88,6 +88,7 @@ function baseState(): PrerollAdState {
     skipAfterSec: 5,
     skippable: false,
     customControls: true,
+    localSkip: false,
     muted: false,
     clickThrough: null,
   };

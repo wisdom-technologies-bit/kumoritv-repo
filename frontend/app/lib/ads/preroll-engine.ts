@@ -18,6 +18,12 @@ export type PrerollAdState = {
   skippable: boolean;
   /** True when the engine has no UI of its own, so ours must render skip/mute/click. */
   customControls: boolean;
+  /**
+   * Prompt 42: the engine HAS its own UI (IMA) but the creative carries no
+   * `skipoffset`, so it never offers a skip at all. Our button then counts
+   * `skipAfterSec` of ad time and ends the ad itself.
+   */
+  localSkip: boolean;
   muted: boolean;
   clickThrough: string | null;
 };
@@ -57,6 +63,7 @@ export const BASE_AD_STATE: Omit<PrerollAdState, "engine"> = {
   skipAfterSec: null,
   skippable: false,
   customControls: false,
+  localSkip: false,
   muted: false,
   clickThrough: null,
 };
@@ -64,15 +71,17 @@ export const BASE_AD_STATE: Omit<PrerollAdState, "engine"> = {
 /**
  * The skip control's state, in one place: our own button waits `skipAfterSec` of
  * AD playback (engine time), while an engine with its own UI (IMA) reports when
- * its native skip is ready.
+ * its native skip is ready. `localSkip` is the third case: IMA's UI is in use but
+ * the tag has no skipoffset, so we time the skip ourselves (Prompt 42).
  */
 export function prerollSkipUi(
-  state: Pick<PrerollAdState, "customControls" | "skippable" | "skipAfterSec">,
+  state: Pick<PrerollAdState, "customControls" | "localSkip" | "skippable" | "skipAfterSec">,
   elapsedSec: number,
   fallbackAfterSec: number,
 ) {
   const after = state.skipAfterSec ?? fallbackAfterSec;
-  const canSkip = state.customControls ? elapsedSec >= after : Boolean(state.skippable);
+  const selfTimed = state.customControls || state.localSkip;
+  const canSkip = selfTimed ? elapsedSec >= after : Boolean(state.skippable);
   const skipIn = Math.max(0, Math.ceil(after - elapsedSec));
 
   return { canSkip, skipIn, label: canSkip ? "Skip ad" : `Skip in ${skipIn}` };

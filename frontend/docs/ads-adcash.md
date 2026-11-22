@@ -562,3 +562,77 @@ page view only - it is not stored, it sets no cookie, and it does nothing while
 disable the format in the Adcash dashboard. If it survives, it is the browser's
 own UI (Chrome's translated-page or download bubble). The repo's own audit
 (`grep -rn "position: *fixed" app`) has no fixed download element.
+
+---
+
+# In-stream video: why the ad never appeared (Prompt 42, 2026-11-22)
+
+**Symptom.** With `PREROLL_ENABLED=1` and the zone tag configured, the watch page
+requested zone `12451816` on Play and the episode started without an ad - or, when
+a sample creative was supplied, with a broken overlay. The tag itself is reachable
+(CORS for `https://kumoritv.top`, HTTP 200), so the fault was in our player.
+
+## The three faults
+
+| # | Fault | Where | Effect |
+|---|---|---|---|
+| 1 | The manager was built with `new ima.AdsManager(...)`. That is not a constructor in Google's library - the SDK hands the manager over through `event.getAdsManager(video, settings)`. | `app/lib/ads/preroll-ima.ts` | Every **filled** ad threw and was recorded as `ima_manager_error`, so a real fill was indistinguishable from a broken stack. |
+| 2 | The overlay's hard stop (`PREROLL_START_TIMEOUT_MS + PREROLL_VAST_TIMEOUT_MS`, capped at 8s) also ran while the creative was playing. | `app/watch/[id]/components/VideoPlayer/PrerollAd.tsx` | A 15-30s ad was cut off at 8s and the episode started over it. |
+| 3 | The tag was requested bare (`?r=12451816`). | `app/lib/ads/preroll-ima.ts` | The ad server saw only a reduced User-Agent (`Android 10; K` on any modern Android phone) and no page address, which is the traffic advertisers bid lowest on. |
+
+## What changed
+
+1. **The manager comes from the SDK.** `event.getAdsManager(video, renderingSettings)`
+   with `AdsRenderingSettings.uiElements = [AD_ATTRIBUTION, COUNTDOWN, SKIP,
+   CLICK_THROUGH]`, then `init()` + `start()`. This is Adcash's own documented
+   setup (Video.js + `videojs-ima` drives the same SDK).
+2. **The start budget is a start budget.** `playingRef` tells the overlay whether a
+   creative is already playing; the hard stop only ends an ad that never started.
+   Nothing else was relaxed: a tag that answers with nothing still hands the
+   episode over inside 8s.
+3. **`maxAdSec` caps instead of rejecting.** Both engines now stop a creative that
+   runs longer than `PREROLL_MAX_AD_SEC` (with a 2s grace) instead of turning a 31s
+   ad into "no ad". A 15-30s fill is never touched.
+4. **Our own Skip when the tag has no `skipoffset`.** IMA offers no skip button for
+   such a creative (`getSkipTimeOffset()` returns `-1`), so `localSkip` turns on the
+   overlay's own countdown and Skip, which stops the ad after
+   `PREROLL_SKIP_AFTER_SEC` of ad time. When the tag *does* carry a skipoffset, IMA
+   keeps its native skip and no second button is drawn.
+5. **Device details travel with the request** (`app/lib/ads/ad-request.ts`):
+   `cb` (one request per play), `url` (the page), `os`, `osv`, `br`, `brv`. A
+   parameter the tag already carries is never overwritten, an empty value is never
+   sent, and a non-https tag is left exactly as configured. Client hints
+   (`navigator.userAgentData.getHighEntropyValues`) are preferred, so an Android 13
+   phone is reported as Android 13 rather than the frozen `Android 10` the UA string
+   claims.
+6. **The SDK and the hints are primed before the Play tap** (`VideoPlayer/index.tsx`).
+   IMA must `initialize()` inside the user gesture; awaiting a script load inside the
+   tap lost the gesture on a phone, which is why an ad that did arrive could not
+   start with sound.
+
+## Verification
+
+```bash
+cd frontend
+npm test                       # 1470 pass; the 2 failures are pre-existing on master
+npx tsc -p tsconfig.json --noEmit   # no new errors
+```
+
+`app/__tests__/prompt42-instream-load.test.tsx` covers the three faults: the
+manager hand-off (a fake `google.ima` that only provides `getAdsManager`), the
+hard stop not touching a playing ad, our Skip for a creative without a skipoffset,
+the request carrying the device details, and the two source guards that keep the
+old calls from coming back.
+
+## Still not provable from here
+
+- **Fill.** From this sandbox the tag answers `<?xml version="1.0"?><VAST version="4.0"></VAST>`
+  (empty, no `<Ad>`) both bare and with the new parameters - it is a datacenter IP,
+  not Nigerian mobile traffic. An empty VAST is a normal no-fill and the episode
+  plays; it is not a code fault.
+- **Dashboard numbers.** Impressions/payout can only be confirmed in the Adcash
+  panel after real views.
+- **Real-device playback.** Open a fresh episode on a phone, press Play once and
+  watch for the "Ad" badge, the countdown, Skip after 5s and then the episode. In
+  DevTools -> Network, `select.php` should now show `cb`, `url`, `os`, `osv`, `br`
+  and `brv` alongside `r=12451816`.
