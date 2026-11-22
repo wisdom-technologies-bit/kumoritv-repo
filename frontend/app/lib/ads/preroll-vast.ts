@@ -202,12 +202,6 @@ export async function startVastPreroll(options: PrerollStartOptions): Promise<Pr
     return { skip: () => {}, toggleMute: () => muted, destroy: () => {} };
   }
 
-  // An ad longer than the budget is not an ad we will show.
-  if (ad.durationSec != null && ad.durationSec > options.maxAdSec) {
-    fail("ad_too_long", 405);
-
-    return { skip: () => {}, toggleMute: () => muted, destroy: () => {} };
-  }
   const bandwidth = Number((globalThis as any)?.navigator?.connection?.downlink ?? 0) * 1000;
   const media = pickMediaFile(ad.mediaFiles, {
     viewportHeight: Math.round(container.getBoundingClientRect().height) || 720,
@@ -242,11 +236,6 @@ export async function startVastPreroll(options: PrerollStartOptions): Promise<Pr
   video.addEventListener("loadedmetadata", () => {
     const duration = Number(video?.duration);
 
-    if (Number.isFinite(duration) && duration > options.maxAdSec) {
-      fail("ad_too_long", 405);
-
-      return;
-    }
     emit({
       remainingSec: Number.isFinite(duration) ? Math.max(0, duration) : null,
       skipAfterSec: skipAfter,
@@ -255,6 +244,21 @@ export async function startVastPreroll(options: PrerollStartOptions): Promise<Pr
   video.addEventListener("playing", () => {
     started = true;
     window.clearTimeout(startTimer);
+    // Prompt 42: `maxAdSec` is a cap on a creative that runs long, not a filter
+    // that turns a 31s ad into "no ad". It only starts counting from the first
+    // real ad second, so it can never cut a 15-30s fill.
+    const duration = Number(video?.duration);
+    const capSec =
+      Number.isFinite(duration) && duration > 0
+        ? Math.min(duration + 2, options.maxAdSec + 2)
+        : options.maxAdSec + 2;
+
+    timers.push(
+      window.setTimeout(() => {
+        if (done) return;
+        finish({ kind: "skipped", reason: "ad_too_long", errorCode: 405 });
+      }, Math.max(1000, capSec * 1000)),
+    );
     emit({ playing: true, skippable: skipAfter <= 0 });
     fireOnce("creativeView");
     fireOnce("start");

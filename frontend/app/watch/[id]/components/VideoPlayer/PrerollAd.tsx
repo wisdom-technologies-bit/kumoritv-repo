@@ -28,6 +28,7 @@ import {
   type PrerollAdState,
   type PrerollOutcome,
 } from "@/app/lib/ads/preroll-engine";
+import { primeAdRequestContext } from "@/app/lib/ads/ad-request";
 import { startImaPreroll } from "@/app/lib/ads/preroll-ima";
 import { openAdvertiser, startVastPreroll } from "@/app/lib/ads/preroll-vast";
 import styles from "./preroll.module.css";
@@ -75,6 +76,9 @@ export default function PrerollAd({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<PrerollAdHandle | null>(null);
   const finishedRef = useRef(false);
+  // Prompt 42: the hard stop is a START budget. Once the creative plays, the ad's
+  // own length (and the engine's cap) governs - this flag is what tells them apart.
+  const playingRef = useRef(false);
   const skipButtonRef = useRef<HTMLButtonElement | null>(null);
   const [ad, setAd] = useState<PrerollAdState>({ ...BASE_AD_STATE, engine: "ima", skipAfterSec });
   const [elapsed, setElapsed] = useState(0);
@@ -122,6 +126,9 @@ export default function PrerollAd({
     let cancelled = false;
     recordPrerollCount("requests");
     prerollDebug("request", "engine=ima-first");
+    // The ad request carries the viewer's platform/browser details; priming costs
+    // nothing when the player already did it before the Play tap.
+    void primeAdRequestContext().catch(() => null);
 
     const options = {
       container,
@@ -134,6 +141,7 @@ export default function PrerollAd({
         if (cancelled) return;
         if (state.playing && !ad.playing) prerollDebug("ad_started");
         if (state.skippable && !ad.skippable) prerollDebug("skippable");
+        playingRef.current = state.playing;
         setAd(state);
       },
       onDone: (outcome: PrerollOutcome) => {
@@ -161,14 +169,28 @@ export default function PrerollAd({
     // Prompt 41: start + tag, capped at 8s. Was start + tag + 2s (12s with the
     // old defaults), which is why a known-empty tag looked like a stuck overlay.
     const budget = prerollHardStopMs({ startTimeoutMs, vastTimeoutMs });
-    const hardStop = window.setTimeout(
-      () => finish({ kind: "timeout", reason: "hard_timeout", ms: budget }),
-      budget,
-    );
+    let watchdog = 0;
+    const hardStop = window.setTimeout(() => {
+      // Prompt 42: an ad that is already playing is never cut off here. Before,
+      // this 8s timer ended every ad mid-creative, so a 15-30s fill looked like a
+      // 8s ad and the content jumped in over it.
+      if (playingRef.current) {
+        // The creative is running, so the only thing worth guarding is a stall:
+        // its own length plus slack, after which the episode is let through.
+        watchdog = window.setTimeout(
+          () => finish({ kind: "timeout", reason: "ad_stalled", ms: budget }),
+          Math.max(5000, (Number(maxAdSec) || 0) * 1000 + 5000),
+        );
+
+        return;
+      }
+      finish({ kind: "timeout", reason: "hard_timeout", ms: budget });
+    }, budget);
 
     return () => {
       cancelled = true;
       window.clearTimeout(hardStop);
+      window.clearTimeout(watchdog);
       handleRef.current?.destroy();
       handleRef.current = null;
     };
@@ -267,7 +289,7 @@ export default function PrerollAd({
             >
               {ad.muted ? "Unmute" : "Mute"}
             </button>
-            {ad.customControls && (
+            {(ad.customControls || ad.localSkip) && (
               <button
                 ref={skipButtonRef}
                 type="button"
