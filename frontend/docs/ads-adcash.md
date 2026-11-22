@@ -285,7 +285,7 @@ today - no script is loaded, no request is made, no DOM is added.
 | `ADCASH_VAST_URL` | empty | The zone's VAST Tag URL. Empty = off, whatever the flag says. Must be `https://`. |
 | `PREROLL_INTERVAL_MIN` | `20` | At most one pre-roll per viewer per N minutes (`0` = every eligible play). |
 | `PREROLL_SKIP_AFTER_SEC` | `5` | Skip appears after this many ad seconds **only when the VAST has no `skipoffset`**. Clamped to 10. |
-| `PREROLL_MAX_AD_SEC` | `30` | An ad longer than this is treated as "no ad". |
+| `PREROLL_MAX_AD_SEC` | `30` | A creative longer than this is stopped at this point (+2s grace) and the episode starts; it is no longer rejected as "no ad". |
 | `PREROLL_START_TIMEOUT_MS` | `6000` | Budget for the creative to start (also the IMA SDK load budget). |
 | `PREROLL_VAST_TIMEOUT_MS` | `4000` | Budget for one VAST document fetch (fallback engine). |
 
@@ -515,7 +515,7 @@ it never leaves a spinner on screen.
 | `ADCASH_VAST_URL` | empty | off while empty; the zone tag, never committed |
 | `PREROLL_INTERVAL_MIN` | `20` | one pre-roll per viewer per 20 min; `0` = every eligible play |
 | `PREROLL_SKIP_AFTER_SEC` | `5` | only when the VAST has no `skipoffset`; clamped to 10 |
-| `PREROLL_MAX_AD_SEC` | `30` | longer creative counts as no ad |
+| `PREROLL_MAX_AD_SEC` | `30` | a longer creative is capped, not rejected |
 | `PREROLL_START_TIMEOUT_MS` | `5000` | engine start (also the IMA SDK load budget) |
 | `PREROLL_VAST_TIMEOUT_MS` | `3000` | the tag request itself |
 | `PREROLL_NOFILL_COOLDOWN_MIN` | `10` | stay quiet this long after a no-fill; `0` disables |
